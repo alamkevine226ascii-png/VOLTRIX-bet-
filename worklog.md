@@ -1156,3 +1156,23 @@ Stage Summary:
 - Moteur v2.1 : 0 modification ; prédictions production : 0 modification ; écritures shadow : 0 (SELECT only).
 - Recommandation avant basculement : sourcer la fraîcheur de ligne sur updatedAt des ancres (mode ancre déjà correct) ou enrichir la fraîcheur série avec l'horodatage ancre — couche données uniquement.
 - Environnement restauré et pérenne : secret dans 3 fichiers locaux chmod 600 + prêt pour Vercel Env Vars (prochaine étape GitHub → Vercel selon l'analyse Task 31).
+
+---
+Task ID: 33
+Agent: Super Z (agent principal)
+Task: Préparation GitHub + audit de sécurité complet pre-push (secrets, .gitignore, historique). Moteur v2.1 : 0 modification. Vercel : non déployé.
+
+Work Log:
+- Découverte : .git pré-existant (41 auto-commits plateforme UUID, 2873 objets/~88 Mo, 1690 fichiers suivis incluant skills/download/tool-results/upload/backups/db).
+- Audit historique : .env commité 3 fois (789b561, a2f54bf, 4023f18) — vérifié blob par blob : 0 secret Neon dans les 3 (URL SQLite sans identifiant) ; secret Neon jamais commité.
+- .gitignore durci : +/skills/ /download/ /tool-results/ /upload/ /backups/ /db/ /examples/ blindtest/data suivi-preview dev.pid *.bak*.
+- Historique réécrit en commit orphelin unique (244 fichiers, 4,2 Mo) + reflog expire + gc --prune=now --aggressive → ancien historique physiquement purgé (288 objets restants).
+- Scan de secrets sur contenu stagé : 12 familles de motifs (npg_, fragments réels mot de passe/token, neon.tech, ep-round-cloud, URL avec credentials, sk-/AKIA, PEM, x-access-token, passwords en dur) — TOUTES négatives ; 3 mentions documentaires DATABASE_URL=file: sans identifiant.
+- Push effectué avec token en env éphémère (jamais en fichier/config — vérifié) : main = 024f9917274fb2b7ed3fee8c2ca6825a2fa5c14d, SHA distant vérifié identique par ls-remote.
+- Fichiers moteur confirmés dans l'arbre poussé (prediction.ts, analyze.ts, sync/*, schema.prisma, dev.sh).
+- Rapport d'audit : download/AUDIT-securite-git-2026-09-15.md.
+
+Stage Summary:
+- Repo GitHub alimenté : 1 commit propre (024f991), 244 fichiers / 4,2 Mo, zéro secret (contenu + historique).
+- Problème majeur évité : l'historique plateforme aurait poussé ~100 Mo d'artifacts ; .env historique était sans secret mais l'approche orpheline garantit un historique irréprochable.
+- Recommandations : rotation du PAT (transité par le chat), branch protection + secret scanning GitHub, env vars Vercel (DATABASE_URL pooler + DIRECT_URL) au moment du déploiement — option hybride Task 31 pour la sync.
