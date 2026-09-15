@@ -1176,3 +1176,60 @@ Stage Summary:
 - Repo GitHub alimenté : 1 commit propre (024f991), 244 fichiers / 4,2 Mo, zéro secret (contenu + historique).
 - Problème majeur évité : l'historique plateforme aurait poussé ~100 Mo d'artifacts ; .env historique était sans secret mais l'approche orpheline garantit un historique irréprochable.
 - Recommandations : rotation du PAT (transité par le chat), branch protection + secret scanning GitHub, env vars Vercel (DATABASE_URL pooler + DIRECT_URL) au moment du déploiement — option hybride Task 31 pour la sync.
+
+---
+Task ID: 34
+Agent: Super Z (agent principal)
+Task: Audit pré-déploiement GitHub → Vercel → Neon (routes, dépendances ESPN, boucles, env vars, build, worker). 0 modification de code, 0 déploiement.
+
+Work Log:
+- Cartographie des 12 routes API : 4 pures lectures Neon (forecasts/week via ForecastSnapshot, report pdf-lib/StandardFonts sans fichiers locaux, export, matches), 5 avec appels ESPN directs à la volée (match/[id] via analyzeMatch + écriture syncTeamHistory, predictions via analyzeBatch, performance via resolvePredictionsForDate, cashout et bankroll/resolve via fetchScoreboard), 2 routes worker (sync/tick, forecasts/tick — écritures Neon, GET non protégés), sync/status.
+- Découverte clé : analyzeMatch reconstruit ses entrées en direct depuis ESPN (fetchScoreboard/fetchTeamSchedule/fetchStandings/fetchInjuries) — la parité Neon démontrée par le shadow-run porte sur les entrées, pas sur le chemin de calcul production.
+- 0 fs/readFile/writeFile dans src/ ; custom.db jamais référencé ; preds-cache = localStorage client ; logEspnCall = mémoire ; cache/rate-limit sweeps = per-instance inoffensifs ; sharp installé mais non importé.
+- ensureSyncLoop/ensureForecastLoop appelés depuis routes de lecture (matches:403, forecasts/week, sync/*) — setInterval morts sur Vercel → garde VERCEL proposée (non appliquée).
+- Build : pas de prisma generate explicite ; cp -r standalone inutiles sur Vercel → build script proposé (non appliqué) : prisma generate && prisma migrate deploy && next build.
+- Env vars exactes confirmées : DATABASE_URL (pooler, runtime via db.ts) + DIRECT_URL (CLI migrations via schema directUrl, jamais le code applicatif). ESPN/météo sans clé. CRON_SECRET optionnel futur.
+- Worker indépendant démontré (serveur local ↔ Neon sans GitHub/Vercel) ; caveat : amorçage paresseux des boucles par trafic API → instrumentation.ts ou keepalive curl recommandés côté worker.
+- Auto-commit plateforme 95a0dff (worklog +20 lignes) re-scané (1 faux positif = noms de motifs dans le texte) et poussé — remote vérifié = local.
+- Rapport : download/AUDIT-pre-deploiement-vercel-2026-09-15.md.
+
+Stage Summary:
+- ✅ Compatible sans changement : pages principales lues depuis Neon, pdf-lib sans assets, zéro fichier local/SQLite dans src, deps 100 % Vercel-compatible, worker indépendant, moteur v2.1 intouché (poussé à l'identique).
+- ⚠️ Avant Vercel : garde VERCEL sur les 2 boucles, protection/neutralisation des routes worker, build script Prisma, décision sur les 5 routes à appels ESPN à la volée (maxDuration ou bascule Neon précalculée).
+- ❌ Incompatible : la sync elle-même sur Vercel (rôle exclusif du worker permanent) ; next dev en prod (non bloquant).
+- 4 modifications de code identifiées, aucune appliquée (conforme instruction).
+
+---
+Task ID: 35
+Agent: Super Z (agent principal)
+Task: Validation des modifications d'infrastructure 1-3. AVANT application : cartographie finale d'analyzeMatch (source ESPN de chaque donnée / existence Neon / table+colonne / équivalence historique / impact moteur si absente / besoin ESPN résiduel) + potentiel de migration des 5 routes ESPN. PUIS application des mods 1-3 uniquement, diff exact, preuve moteur v2.1 intouché. Aucune migration de route, 0 déploiement.
+
+Work Log:
+- CARTOGRAPHIE analyzeMatch (6 blocs de données) : ① identification event/équipes/kickoff/statut/scores/venue ← fetchScoreboard (site.api.espn.com/…/scoreboard?dates=) → Neon Match (espnEventId unique, homeTeamId/Name, awayTeamId/Name, kickoffAt, status, statusDetail, espnState, homeScore, awayScore, venue, venueCity, venueCountry, season) — équivalence exacte (même payload, ingestion idempote 10 min/90 s) ; ② cotes ← mapOdds du scoreboard → OddsOpenClose (espnOpenOdds/espnCloseOdds ancre + openOdds/closeOdds captures) + OddsSnapshot série — équivalence ancre PROUVÉE GO shadow-run (33/33 byte-identiques) ; ③ calendriers 2 saisons ×2 équipes ← fetchTeamSchedule (…/teams/{id}/schedule?season=) ×4 appels → Neon Match via syncTeamHistory/sweep (TeamHistorySyncState, budget 40/6 h, TTL 24 h) — équivalence PARTIELLE (seuls matchs joués importés, fenêtre 7 j upcoming, dépend du sweep) ; ④ classement ← fetchStandings (apis/v2/…/standings?season=) → StandingsSnapshot (1 ligne/ligue+season+équipe+JOUR) — équivalence champ à champ, historique depuis déploiement seulement ; ⑤ blessures ← fetchInjuries (…/injuries) → InjurySnapshot — équivalence même payload, quotidienneté dépend du context-sync ; ⑥ météo ← fetchWeather (Open-Meteo geocoding+forecast, PAS ESPN) → WeatherSnapshot (goalsFactor, <48 h, 1 capture/jour). Impact moteur : cotes (calibration O/U + valueBets), calendriers (λ Poisson/Elo/Forme/fatigue), blessures (λ clamp 0.92–1), météo (goalsFactor λ) = MOTEUR ; standings (rank/points/gamesPlayed/enjeux/leagueTeamsCount — commentaire prediction.ts l.590 « ne touchent JAMAIS les λ ») et données event (affichage) = HORS moteur ; derby = interne aux noms (analyzeMatch passe isDerby:false), nowMs = horloge.
+- POTENTIEL DE MIGRATION des 5 routes (indiqué, NON implémenté) : match/[id] → 100 % migrable (Match+OddsOpenClose+StandingsSnapshot+InjurySnapshot+WeatherSnapshot+getH2HFromDb déjà Neon) ; predictions → migrable idem via lecture Neon au lieu d'analyzeMatch ESPN ; performance → resolvePredictionsForDate peut lire Match FINAL au lieu de fetchScoreboard (closingOdds via OddsOpenClose) ; cashout → phases in/post migrables via Match (statusDetail/homeScore/awayScore live 90 s), legLiveProb conservé ; bankroll/resolve → grading migrable sur Match, fallback orphans sans leagueCode reste dépendant (scan 10 ligues) ou requiert enrichissement.
+- MOD 1 appliquée (garde VERCEL boucles) : src/lib/sync/sync-job.ts ensureSyncLoop + src/lib/forecast/job.ts ensureForecastLoop → `if (process.env.VERCEL === '1') return;` en tête — protège tous les appelants paresseux (matches:403, sync/status, forecasts/week, sync/tick) sans les modifier ; warmer/lectures caches laissés (Neon-only, inoffensifs per-instance).
+- MOD 2 appliquée (build Prisma) : package.json build = `prisma generate && prisma migrate deploy && next build && cp …` — client généré à coup sûr sur Vercel + migrations idempotentes alignées à chaque déploiement.
+- MOD 3 appliquée (routes worker neutralisées sous Vercel) : src/app/api/sync/tick/route.ts + src/app/api/forecasts/tick/route.ts → 403 JSON « Route worker désactivée sur Vercel… » avant toute exécution (anti double-écriture avec le worker, anti facturation serverless) ; GET forecast/tick délègue à POST donc couvert.
+- Vérifications : tsc --noEmit → 0 erreur src/ (erreurs préexistantes examples/+scripts/ hors périmètre) ; git diff = 5 fichiers exactement (51 insertions, 1 suppression) ; prediction.ts/analyze.ts ABSENTS du diff (git status) ; serveur local relancé implicitement OK : /api/sync/status 200, db.connected, Neon 7116 matchs/938 snapshots — gardes inactives localement (VERCEL unset).
+- Rapport : download/CARTOGRAPHIE-analyzeMatch-et-mods-2026-09-16.md.
+
+Stage Summary:
+- Mods 1-3 appliquées et vérifiées : gardes VERCEL (2 boucles), build Prisma (generate+migrate deploy), routes worker 403 sous Vercel. 5 fichiers modifiés, +51/−1.
+- Moteur v2.1 STRICTEMENT inchangé (prediction.ts, analyze.ts hors diff — preuve git) ; aucune migration de route effectuée (potentiel documenté seulement).
+- Sous Vercel : boucles no-op, routes worker 403, lectures Neon inchangées → l'app reste 100 % fonctionnelle en lecture avec le worker permanent alimentant Neon (architecture hybride Task 31).
+- Prochaines étapes possibles : pousser ces 5 fichiers sur GitHub, configurer env vars Vercel (DATABASE_URL pooler + DIRECT_URL), déployer le worker permanent.
+
+---
+Task ID: 36
+Agent: Super Z (agent principal)
+Task: Validation finale des modifications 1-3 (Task 35) + commit propre unique + push GitHub. Vérifications pré-push exigées : moteur byte-identique, 0 secret, build Prisma, gardes VERCEL, routes worker bloquées, tsc 0 erreur.
+
+Work Log:
+- Re-vérifié les 7 points de contrôle pré-push : (1) prediction.ts/analyze.ts blob-identiques à la baseline poussée 024f991 (blobs git 58c3e95f / ad71154e, diff 0 ligne) ; (2) 0 secret dans le diff à pousser (familles npg_/neon.tech/ghp_/AKIA/PEM/etc. négatives ; unique correspondance sur l'arbre = ligne documentaire du worklog Task 33 listant les motifs, faux positif) ; (3) package.json build = prisma generate && prisma migrate deploy && next build && cp ; (4) garde VERCEL en tête de ensureSyncLoop (sync-job.ts:78) ; (5) garde VERCEL en tête de ensureForecastLoop (forecast/job.ts:378) ; (6) /api/sync/tick + /api/forecasts/tick → 403 sous VERCEL=1, GET délégué à POST ; (7) tsc --noEmit : 0 erreur sous src/ (erreurs restantes = examples/ + scripts/ préexistantes, hors périmètre).
+- Constaté que les mods 1-3 avaient été englobées par 2 auto-commits plateforme NON poussés (e863b2b worklog seul, 28f5220 code+worklog, messages UUID) ; remote = 95a0dff.
+- Regroupés en UN commit propre à message explicite (reset --soft 95a0dff + recommit) : 5 fichiers code + worklog, push fast-forward garanti, aucun historique distant réécrit.
+- Push BLOQUÉ en l'état : aucun credential GitHub dans la session (PAT Task 33 en env éphémère non persisté ; credential helper absent, .git-credentials absent, gh CLI absent, token absent de l'env et des traces locales). Commit local définitif prêt ; le SHA local sera publié tel quel dès réception du PAT.
+
+Stage Summary:
+- Commit propre local = exactement les mods 1-3 + worklog (6 fichiers) ; moteur v2.1 prouvé byte-identique (blobs git) ; 0 secret ; tsc src/ = 0 erreur ; gardes VERCEL ×2 ; routes worker 403.
+- Push en attente du PAT utilisateur.

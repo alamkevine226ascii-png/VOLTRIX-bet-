@@ -63,8 +63,19 @@ async function backfillRecent(): Promise<boolean> {
 /**
  * Démarre la boucle de synchronisation (idempotent — gardes globalThis).
  * À appeler paresseusement depuis les routes API.
+ *
+ * Task 35 — GARDE VERCEL : sur le runtime serverless Vercel, un
+ * setInterval ne survit pas à l'invocation (processus gelé/terminé) et
+ * chaque cold start relancerait un backfill — incompatibilité démontrée
+ * par l'audit Task 34. La synchronisation ESPN → Neon est le rôle
+ * EXCLUSIF du worker permanent (architecture hybride Task 31). Ici la
+ * fonction devient un no-op : TOUS les appelants (routes de lecture
+ * matches / sync/status / forecasts/week / sync/tick) sont protégés
+ * sans modification individuelle. Localement (VERCEL absent) :
+ * comportement strictement inchangé.
  */
 export function ensureSyncLoop(): void {
+  if (process.env.VERCEL === '1') return;
   if (g.__voltrixSyncLoopStarted) return;
   g.__voltrixSyncLoopStarted = true;
 

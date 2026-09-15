@@ -366,8 +366,16 @@ export async function runForecastTick(opts: TickOptions = {}): Promise<TickStats
  * accès aux endpoints forecast. L'UI déclenche aussi des ticks
  * rapprochés quand elle est ouverte (ping 90 s) — les verrous
  * rendent les doublons inoffensifs.
+ *
+ * Task 35 — GARDE VERCEL (miroir de ensureSyncLoop) : le job de
+ * prévisions (figage des snapshots, résultats, évaluations) écrit dans
+ * Neon et repose sur un setInterval — deux choses que le runtime
+ * serverless ne garantit pas. Sur Vercel, cette fonction devient un
+ * no-op : le travail est assuré par le worker permanent. Localement :
+ * comportement strictement inchangé.
  */
 export function ensureForecastLoop(): void {
+  if (process.env.VERCEL === '1') return;
   if (g.__forecastLoopStarted) return;
   g.__forecastLoopStarted = true;
   const LOOP_MS = 5 * 60_000;
