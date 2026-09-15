@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    width: 1000px; height: 560px;
+    font-family: 'Liberation Sans', Arial, sans-serif;
+    background: #ffffff;
+    position: relative;
+  }
+  .canvas { position: absolute; inset: 0; padding: 24px 30px; }
+  .row { display: flex; justify-content: space-between; }
+  .row2 { margin-top: 96px; }
+  .node {
+    width: 218px; min-height: 136px;
+    background: #eef4f8;
+    border: 1.5px solid #b9cdd9;
+    border-radius: 10px;
+    padding: 12px 14px 12px 14px;
+    position: relative;
+  }
+  .node.src { background: #f3f0ea; border-color: #d3c9b4; }
+  .node.out { background: #edf3ef; border-color: #b4cdbd; }
+  .step {
+    display: inline-block;
+    font-size: 16px; font-weight: 700; color: #ffffff;
+    background: #3e91bb; border-radius: 6px;
+    padding: 2px 8px; margin-bottom: 7px; letter-spacing: 0.5px;
+  }
+  .node.src .step { background: #8a7a55; }
+  .node.out .step { background: #4a7e5b; }
+  .ttl { font-size: 24px; font-weight: 700; color: #202224; line-height: 1.15; margin-bottom: 6px; }
+  .dsc { font-size: 18px; color: #565c60; line-height: 1.3; }
+  .arrow-h { position: absolute; top: 50%; width: 26px; height: 2px; background: #70777a; }
+  .arrow-h::after {
+    content: ''; position: absolute; right: -1px; top: -4px;
+    border-left: 8px solid #70777a; border-top: 5px solid transparent; border-bottom: 5px solid transparent;
+  }
+  .a1 { left: 246px; } .a2 { left: 492px; } .a3 { left: 738px; }
+  .c1 { position: absolute; right: 139px; top: 172px; width: 2px; height: 44px; background: #70777a; }
+  .c2 { position: absolute; left: 139px; right: 139px; top: 214px; height: 2px; background: #70777a; }
+  .c3 { position: absolute; left: 139px; top: 214px; width: 2px; height: 46px; background: #70777a; }
+  .c3::after {
+    content: ''; position: absolute; bottom: -1px; left: -4px;
+    border-top: 8px solid #70777a; border-left: 5px solid transparent; border-right: 5px solid transparent;
+  }
+  .legende {
+    position: absolute; left: 30px; bottom: 14px;
+    font-size: 16px; color: #787f82;
+  }
+  .legende span { margin-right: 22px; }
+  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+</style>
+</head>
+<body>
+<div class="canvas">
+  <div class="row">
+    <div class="node src">
+      <span class="step">ENTRÉE</span>
+      <div class="ttl">ESPN API</div>
+      <div class="dsc">Scoreboard, cotes DraftKings, forme, classements, h2h, blessures, Elo</div>
+    </div>
+    <div class="arrow-h a1"></div>
+    <div class="node">
+      <span class="step">1</span>
+      <div class="ttl">Scan &amp; cache</div>
+      <div class="dsc">Filtre jour UTC strict, repli feuille J−1, cache LRU 600 entrées</div>
+    </div>
+    <div class="arrow-h a2"></div>
+    <div class="node">
+      <span class="step">2</span>
+      <div class="ttl">Features équipe</div>
+      <div class="dsc">GF/GA par contexte, forme récente, rang, Elo 2 saisons</div>
+    </div>
+    <div class="arrow-h a3"></div>
+    <div class="node">
+      <span class="step">3</span>
+      <div class="ttl">Buts attendus λ</div>
+      <div class="dsc">Shrinkage n/(n+10), blessures, étape Elo, bornes [0.25 ; 3.8]</div>
+    </div>
+  </div>
+  <div class="c1"></div><div class="c2"></div><div class="c3"></div>
+  <div class="row row2">
+    <div class="node">
+      <span class="step">4</span>
+      <div class="ttl">Calibration</div>
+      <div class="dsc">calibrateTotals sur les lignes O/U réelles (dé-marging)</div>
+    </div>
+    <div class="node" style="margin-left: 26px;">
+      <span class="step">5</span>
+      <div class="ttl">Matrice Poisson</div>
+      <div class="dsc">Score 0..15 × 0..15, proba de chaque score final</div>
+    </div>
+    <div class="node" style="margin-left: 26px;">
+      <span class="step">6</span>
+      <div class="ttl">Marchés &amp; cotes</div>
+      <div class="dsc">1X2, DC, O/U, BTTS, firstToScore — cote juste = 1/p</div>
+    </div>
+    <div class="node out">
+      <span class="step">SORTIES</span>
+      <div class="ttl">Produits</div>
+      <div class="dsc">Combinator (×10), Vente (cash-out), Précision (Brier)</div>
+    </div>
+  </div>
+  <div class="legende">
+    <span><span class="dot" style="background:#f3f0ea;border:1px solid #d3c9b4;"></span>Données</span>
+    <span><span class="dot" style="background:#eef4f8;border:1px solid #b9cdd9;"></span>Traitement</span>
+    <span><span class="dot" style="background:#edf3ef;border:1px solid #b4cdbd;"></span>Rendu utilisateur</span>
+  </div>
+</div>
+</body>
+</html>

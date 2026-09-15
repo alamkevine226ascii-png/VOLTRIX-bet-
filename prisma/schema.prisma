@@ -1,0 +1,523 @@
+// ============================================================
+// VOLTRIX bet — Schéma de base de données
+// Task 28 : migration SQLite → Neon PostgreSQL (cahier des charges
+// « Base Neon + centralisation des données »).
+//
+// Neon devient la source principale de données :
+//   ESPN → Synchronisation (espn_event_id, idempotent) → NEON → VOLTRIX
+//
+// Les 6 modèles d'origine (Prediction, ForecastMatch, ForecastSnapshot,
+// MatchResult, ForecastEvaluation, ForecastJobRun) sont conservés À
+// L'IDENTIQUE (fonctionnalités Task 21/22/25 non cassées) — seul
+// MatchResult gagne une colonne `winner` (§6 du cahier).
+// Les nouveaux modèles implémentent §3-§29 : matches, teams,
+// competitions, cotes historisées, snapshots génériques immuables.
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")   // Neon pooler (runtime app — pgbouncer)
+  directUrl = env("DIRECT_URL")     // Neon direct (migrations / DDL)
+}
+
+// ============================================================
+// SUIVI DES PRONOS (legacy Task 21/22) — mutable par design :
+// le règlement (resolved/result/closingOdds) met à jour la ligne.
+// Les colonnes d'audit (predictionTime, modelVersion, rawProbability,
+// inputsDigest) restent figées à la création.
+// ============================================================
+
+// Pronostics générés par le moteur VOLTRIX — suivis pour mesurer la performance
+model Prediction {
+  id          String   @id @default(cuid())
+  matchId     String
+  league      String // code ESPN (ex: eng.1)
+  leagueName  String
+  matchDate   DateTime
+  homeTeam    String
+  awayTeam    String
+  market      String // "1X2" | "O/U 2.5" | "BTTS"
+  pick        String // "1 - Arsenal" | "Plus de 2.5" | "Oui"...
+  probability Float
+  odds        Float? // cote décimale AU MOMENT du prono si dispo (seule cote utilisée pour le ROI — Task 21-a FIX 2)
+  oddsCapturedAt DateTime? // moment de capture de `odds` (création/rafraîchissement du prono — anti look-ahead, Task 21-a FIX 2)
+  closingOdds Float? // cote de clôture ESPN capturée à la RÉSOLUTION (jamais utilisée pour le ROI — audit look-ahead, Task 21-a FIX 2)
+  pickedTeamId String? // ID équipe ESPN du côté piqué (marché 1X2) — résolution fiable par ID, repli nom (Task 21-a FIX 5)
+  predictionTime DateTime? // timestamp de GÉNÉRATION de la prédiction — DISTINCT de matchDate (= kickoffTime). Fixé à la CRÉATION de la ligne, JAMAIS réécrit par les upserts suivants, même si probability/odds sont rafraîchis (c'est oddsCapturedAt qui bouge) — plan V2→V3 étape 1 « ne jamais substituer kickoffTime à predictionTime » (Task 22-a)
+  modelVersion   String? // version du moteur (MODEL_VERSION, '@/lib/model-version') au moment de la génération — écrite à la création, JAMAIS réécrite ; NULL = lignes d'avant le versionnement (pré-v2.1, Task 22-a)
+  rawProbability Float? // probabilité BRUTE (pré-calibration : p.raw pour O/U et BTTS ; pour 1X2 = probability, la calibration ne touche que les totals) — à côté de `probability` (finale/calibrée) (Task 22-a)
+  inputsDigest   String? // empreinte JSON compacte (< 300 car.) des entrées du moteur au moment de la génération : hasOdds, ligne O/U marché, tailles d'historique (matchs home/away par équipe), nb blessures, standings dispo — plan étape 5 « geler les entrées » / reconstructibilité (Task 22-a)
+  confidence  Int
+  resolved    Boolean  @default(false)
+  result      String? // "WIN" | "LOSE" | "VOID"
+  createdAt   DateTime @default(now())
+
+  @@unique([matchId, market])
+  @@index([matchDate])
+  @@index([resolved])
+}
+
+// ============================================================
+// PRÉVISIONS HEBDOMADAIRES — système de suivi & d'audit du moteur
+// (cahier des charges « Prévisions » §19 : séparation stricte entre
+// ce que VOLTRIX savait AVANT le match et ce qui s'est passé APRÈS.
+// Trois concepts distincts, trois tables distinctes :
+//   ForecastMatch      = registre des matchs de la semaine (ESPN)
+//   ForecastSnapshot   = prédiction FIGÉE (insert-only, jamais UPDATE)
+//   MatchResult        = résultat officiel (stocké séparément)
+//   ForecastEvaluation = métriques dérivées (recalculables)
+// + ForecastJobRun = journal des exécutions du job automatique)
+// ============================================================
+
+// Registre des matchs connus (état ESPN, mutable — ce n'est PAS la prédiction)
+model ForecastMatch {
+  id           String   @id @default(cuid())
+  matchId      String   @unique // ID unique ESPN — identifiant principal (§3, jamais les noms d'équipes)
+  league       String // code ESPN (ex: eng.1)
+  leagueName   String
+  kickoff      DateTime // coup d'envoi
+  homeTeamId   String?
+  homeTeam     String
+  homeLogo     String?
+  awayTeamId   String?
+  awayTeam     String
+  awayLogo     String?
+  espnState    String? // 'pre' | 'in' | 'post' (état brut ESPN au dernier scan)
+  statusDetail String? // libellé brut ESPN ("FT", "Postponed", "42'"…)
+  firstSeenAt  DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([kickoff])
+}
+
+// PRÉDICTION FIGÉE (§5 règle absolue) — INSERT-ONLY :
+// aucune ligne n'est jamais modifiée après création. Une nouvelle
+// analyse avant coup d'envoi = nouvelle `version` (nouvelle ligne),
+// jamais une réécriture silencieuse de la précédente.
+// Task 28 : protégée AUSSI par trigger PostgreSQL (immutabilité §20).
+model ForecastSnapshot {
+  id             String   @id @default(cuid())
+  matchId        String
+  version        Int      @default(1) // 1re publication = 1, ré-analyse = 2, 3…
+  // --- Informations générales (figées) ---
+  league         String
+  leagueName     String
+  kickoff        DateTime // coup d'envoi (= date du match)
+  homeTeamId     String?
+  homeTeam       String
+  homeLogo       String?
+  awayTeamId     String?
+  awayTeam       String
+  awayLogo       String?
+  // --- 1X2 (figé) ---
+  p1x2Home       Float
+  p1x2Draw       Float
+  p1x2Away       Float
+  pick1x2        String // "1" | "X" | "2"
+  pick1x2Label   String // "1 - Arsenal" (libellé complet affichable)
+  pickedTeamId   String? // ID équipe ESPN du côté piqué (1X2)
+  confidence     Int // 1..5 — niveau de confiance du moteur
+  // --- O/U 2.5 (figé) ---
+  pOver25        Float // probabilité CALIBRÉE (finale)
+  pUnder25       Float
+  pickOu25       String // "OVER" | "UNDER"
+  pOver25Raw     Float? // probabilité BRUTE (pré-calibration) si dispo
+  pUnder25Raw    Float?
+  // --- BTTS (figé) ---
+  pBttsYes       Float
+  pBttsNo        Float
+  pickBtts       String // "YES" | "NO"
+  pBttsYesRaw    Float?
+  pBttsNoRaw     Float?
+  // --- Audit (figé) ---
+  predictionTime DateTime // moment de GÉNÉRATION — toujours < kickoff (§6), jamais réécrit
+  modelVersion   String // version du moteur (MODEL_VERSION) — jamais réécrite
+  inputsDigest   String? // empreinte compacte des entrées moteur
+  odds1x2Home    Float? // cotes DISPONIBLES au moment de la prédiction (§4)
+  odds1x2Draw    Float?
+  odds1x2Away    Float?
+  oddsOver25     Float?
+  oddsUnder25    Float?
+  oddsBttsYes    Float? // ESPN ne publie pas de BTTS → généralement null
+  oddsBttsNo     Float?
+  oddsCapturedAt DateTime? // moment de capture des cotes
+  ouMarketLine   Float? // ligne O/U du marché au moment de la prédiction (audit calibration)
+  published      Boolean  @default(true) // version publiée (affichée + évaluée) ; les versions remplacées restent en base
+  frozenAt       DateTime @default(now()) // moment du gel
+  createdAt      DateTime @default(now())
+
+  @@unique([matchId, version])
+  @@index([kickoff])
+  @@index([matchId])
+}
+
+// RÉSULTAT OFFICIEL (§6/§8 du cahier Task 28) — stocké SÉPARÉMENT de la
+// prédiction. Le résultat ne modifie jamais ForecastSnapshot.
+// Définitif uniquement lorsque le statut ESPN indique que la rencontre
+// est terminée (FINAL) — POSTPONED/CANCELLED/SUSPENDED → VOID côté éval.
+model MatchResult {
+  id           String   @id @default(cuid())
+  matchId      String   @unique
+  status       String // "SCHEDULED" | "LIVE" | "FINAL" | "POSTPONED" | "CANCELLED" | "SUSPENDED" | "UNKNOWN"
+  statusDetail String? // libellé ESPN ("FT", "AET", "Postponed"…)
+  homeScore    Int?
+  awayScore    Int?
+  winner       String? // Task 28 §6 : "HOME" | "AWAY" | "DRAW" | null (non final)
+  retrievedAt  DateTime // date/heure de récupération du résultat (§8)
+  source       String   @default("ESPN")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// ÉVALUATION DÉRIVÉE (§19) — recalculable à tout moment depuis
+// ForecastSnapshot + MatchResult ; jamais l'inverse.
+model ForecastEvaluation {
+  id          String   @id @default(cuid())
+  matchId     String   @unique
+  snapshotId  String // snapshot publié évalué
+  grade1x2    String? // "CORRECT" | "INCORRECT" | "VOID" | null (non évaluable)
+  gradeOu25   String?
+  gradeBtts   String?
+  resultKey   String? // empreinte du résultat au moment du calcul ("FINAL:2-1" / "VOID:Postponed") — re-évaluation si le résultat change
+  evaluatedAt DateTime
+  updatedAt   DateTime @updatedAt
+}
+
+// JOURNAL DU JOB AUTOMATIQUE (§20) — traçabilité des exécutions
+model ForecastJobRun {
+  id         String    @id @default(cuid())
+  startedAt  DateTime
+  finishedAt DateTime?
+  phase      String // "scan" | "predict" | "results" | "evaluate" | "done" | "error"
+  stats      String? // JSON {scanned, newPredictions, resultsUpdated, evaluated, …}
+  error      String?
+}
+
+// ============================================================
+// NOYAU NEON — Task 28 (§3-§11, §25)
+// ============================================================
+
+// §9 : compétitions / ligues — les matchs référencent la compétition par son ID
+model Competition {
+  id           String   @id @default(cuid())
+  espnLeagueId String   @unique // code ESPN (ex: eng.1) — référence principale
+  name         String
+  country      String?
+  sport        String   @default("soccer")
+  season       Int? // saison courante connue au dernier scan
+  logo         String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  matches Match[]
+}
+
+// §8 : équipes — espnTeamId unique pour corriger définitivement
+// les problèmes d'identification par nom
+model Team {
+  id           String   @id @default(cuid())
+  espnTeamId   String   @unique // ID équipe ESPN — référence principale (§8)
+  name         String
+  shortName    String?
+  abbreviation String?
+  logo         String?
+  country      String?
+  competition  String? // code ESPN de la compétition principale connue
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  homeMatches Match[] @relation("HomeTeam")
+  awayMatches Match[] @relation("AwayTeam")
+}
+
+// §3 : table centrale des rencontres — RECONNAISSANCE PAR espn_event_id
+// (jamais par les noms d'équipes). Unicité stricte ⇒ synchronisation
+// idempotente : 10 récupérations du même match = 1 ligne (§5).
+model Match {
+  id              String   @id @default(cuid())
+  espnEventId     String   @unique // ID événement ESPN (ex: 401234567) — anti-doublon (§3)
+  competitionId   String?
+  competitionName String?
+  season          Int?
+  homeTeamId      String?
+  homeTeamName    String
+  awayTeamId      String?
+  awayTeamName    String
+  kickoffAt       DateTime
+  status          String   @default("SCHEDULED") // canonique ESPN (§4) : SCHEDULED | PRE | LIVE | HALFTIME | POST | FINAL | CANCELED | POSTPONED | SUSPENDED | DELAYED | UNKNOWN
+  statusDetail    String? // libellé brut ESPN ("FT", "42'", "Postponed"…)
+  espnState       String? // état brut ESPN 'pre' | 'in' | 'post'
+  homeScore       Int?
+  awayScore       Int?
+  venue           String?
+  venueCity       String? // Task 29 : ville du stade seule — clé de la capture météo (Open-Meteo) sans rappeler ESPN
+  venueCountry    String? // Task 29 : pays du stade — parité avec les entrées météo du moteur (ville + pays)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  competition Competition? @relation(fields: [competitionId], references: [id])
+  homeTeam    Team?        @relation("HomeTeam", fields: [homeTeamId], references: [espnTeamId])
+  awayTeam    Team?        @relation("AwayTeam", fields: [awayTeamId], references: [espnTeamId])
+
+  @@index([kickoffAt])
+  @@index([status])
+  @@index([homeTeamId])
+  @@index([awayTeamId])
+  @@index([competitionId])
+  @@index([homeTeamId, awayTeamId, status]) // H2H (§7) : les deux ordres domicile/extérieur
+}
+
+// §10 : cotes HISTORISÉES — jamais écrasées. Chaque changement de cote
+// détecté par la synchronisation insère une nouvelle ligne (audit
+// statistique : 1X2 Home 1.85 @10:00 → 1.82 @12:00 → 1.79 @15:00 → …)
+model OddsSnapshot {
+  id         String   @id @default(cuid())
+  matchId    String // ID événement ESPN (couplage faible — ingestion-friendly)
+  marketType String // "1X2" | "OVER_UNDER" | "MONEYLINE"…
+  outcome    String // "HOME" | "DRAW" | "AWAY" | "OVER" | "UNDER"
+  line       Float? // ligne pour OVER_UNDER (2.5, 3.5…)
+  odds       Float // cote décimale
+  bookmaker  String? // provider ESPN (ex: DraftKings)
+  capturedAt DateTime // moment de la capture
+  source     String   @default("ESPN")
+  createdAt  DateTime @default(now())
+
+  @@index([matchId])
+  @@index([capturedAt])
+  @@index([matchId, marketType, outcome])
+}
+
+// ============================================================
+// ARCHITECTURE GÉNÉRIQUE DES PRÉDICTIONS (§11-§20, §27)
+// MATCH → PREDICTION SNAPSHOT (figé) → MARCHÉS → ISSUES
+// + composants du modèle (Poisson / Elo / Forme / VOLTRIX final).
+// Extensible sans migration : un nouveau marché = de nouvelles lignes
+// (marketKey/outcomeKey libres), pas de colonne à ajouter.
+// INSERT-ONLY (§20) : une ré-analyse = un NOUVEAU snapshot, jamais une
+// réécriture. Protégé par triggers PostgreSQL d'immutabilité.
+// ============================================================
+
+model PredictionSnapshot {
+  id             String   @id @default(cuid())
+  snapshotUid    String   @unique @default(cuid()) // identifiant unique du snapshot (§27)
+  matchId        String // ID événement ESPN
+  version        Int      @default(1) // 1re publication = 1, ré-analyse = 2, 3…
+  competitionId  String? // code ESPN ligue
+  competition    String? // nom lisible
+  season         Int?
+  kickoffAt      DateTime
+  homeTeamId     String?
+  homeTeamName   String
+  awayTeamId     String?
+  awayTeamName   String
+  predictionTime DateTime // moment de GÉNÉRATION (§27) — toujours < kickoff
+  modelVersion   String // version du moteur (§27)
+  inputsDigest   String? // empreinte des entrées moteur (§27 : « que savait VOLTRIX ? »)
+  confidence     Int?
+  source         String   @default("VOLTRIX")
+  frozenAt       DateTime @default(now()) // date/heure de gel
+  createdAt      DateTime @default(now())
+
+  markets PredictionMarket[]
+
+  @@unique([matchId, version])
+  @@index([matchId])
+  @@index([kickoffAt])
+  @@index([predictionTime])
+}
+
+// Marché d'un snapshot : 1X2, DOUBLE_CHANCE, OVER_UNDER (line=2.5),
+// BTTS, FIRST_GOAL_TIME, FIRST_TEAM_TO_SCORE, EXACT_SCORE…
+model PredictionMarket {
+  id         String   @id @default(cuid())
+  snapshotId String
+  marketKey  String // "1X2" | "DOUBLE_CHANCE" | "OVER_UNDER" | "BTTS" | "FIRST_GOAL_TIME" | "FIRST_TEAM_TO_SCORE" | "EXACT_SCORE"
+  line       Float? // ligne pour OVER_UNDER (1.5 / 2.5 / 3.5 — extensible §14 sans migration)
+  createdAt  DateTime @default(now())
+
+  snapshot   PredictionSnapshot    @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  outcomes   PredictionOutcome[]
+  components PredictionComponent[]
+
+  @@index([snapshotId])
+  @@index([snapshotId, marketKey])
+}
+
+// Issue d'un marché avec sa probabilité (finale = calibrée + brute).
+// outcomeKey libre : HOME_WIN/DRAW/AWAY_WIN (§12), 1X/12/X2 (§13),
+// OVER/UNDER (§14), BTTS_YES/BTTS_NO (§15), BEFORE_16/MIN_16_30/…/
+// NO_GOAL (§16), HOME/AWAY/NO_GOAL (§17), "2-1" pour EXACT_SCORE.
+// `pick` = issue retenue par le moteur pour ce marché.
+model PredictionOutcome {
+  id             String  @id @default(cuid())
+  marketId       String
+  outcomeKey     String
+  label          String? // libellé affichable ("Entre la 16e et 30e"…)
+  probability    Float // probabilité FINALE (calibrée)
+  rawProbability Float? // probabilité BRUTE (pré-calibration) si disponible
+  pick           Boolean @default(false)
+  createdAt      DateTime @default(now())
+
+  market PredictionMarket @relation(fields: [marketId], references: [id], onDelete: Cascade)
+
+  @@unique([marketId, outcomeKey])
+  @@index([marketId])
+}
+
+// §19 : composants du modèle — conserve les probabilités produites par
+// chaque composant (POISSON / ELO / FORME) à côté du final (VOLTRIX),
+// pour les diagnostics futurs (« Elo a dégradé la prédiction »).
+// probabilities = JSON { outcomeKey: prob } pour le marché porteur.
+model PredictionComponent {
+  id            String   @id @default(cuid())
+  marketId      String
+  component     String // "POISSON" | "ELO" | "FORME" | "VOLTRIX"
+  probabilities Json // { "HOME_WIN": 0.43, "DRAW": 0.26, "AWAY_WIN": 0.31 }
+  createdAt     DateTime @default(now())
+
+  market PredictionMarket @relation(fields: [marketId], references: [id], onDelete: Cascade)
+
+  @@unique([marketId, component])
+  @@index([marketId])
+}
+
+// Journal du synchroniseur ESPN → Neon (§5/§24) — traçabilité des cycles
+model SyncJobRun {
+  id         String    @id @default(cuid())
+  startedAt  DateTime
+  finishedAt DateTime?
+  phase      String // "backfill" | "cycle" | "live" | "team-history" | "context" | "done" | "error"
+  stats      String? // JSON {leagues, eventsUpserted, teamsUpserted, oddsInserted, …}
+  error      String?
+}
+
+// ============================================================
+// TASK 29 — CENTRALISATION DES ENTRÉES MOTEUR (audit ESPN consultation)
+// Objectif : permettre À TERME la suppression des appels ESPN de
+// consultation par analyzeMatch, sans toucher au moteur v2.1.
+// Principes (identiques au noyau Task 28) :
+//   - ID ESPN comme référence (espnLeagueId / espnTeamId / espnEventId) ;
+//   - IDEMPOTENCE par contrainte d'unicité (upsert / skipDuplicates) ;
+//   - HISTORISATION horodatée (capturedAt + snapshotDate), jamais
+//     d'écrasement de l'historique — append-only par jour ;
+//   - ingestion source='sync' (voie légitime ESPN → Neon).
+// ============================================================
+
+// Priorité 1 — CLASSEMENTS : 1 ligne par (ligue, saison, équipe, JOUR UTC).
+// Permet la reconstruction « as-of » de l'état du classement à une date
+// donnée (audit « que savait le moteur » + modificateur enjeux reproductible).
+// NB : ESPN ne publie que l'état COURANT — l'historique ne peut pas être
+// rétro-backfillé, il se construit à partir de la date de déploiement.
+model StandingsSnapshot {
+  id            String   @id @default(cuid())
+  espnLeagueId  String // code ESPN (ex: eng.1)
+  season        Int // saison (convention analyze.ts : 2025/2026…)
+  espnTeamId    String
+  teamName      String
+  snapshotDate  DateTime @db.Date // jour UTC du snapshot (idempotence)
+  rank          Int?
+  gamesPlayed   Int      @default(0)
+  wins          Int      @default(0)
+  ties          Int      @default(0)
+  losses        Int      @default(0)
+  pointsFor     Int      @default(0) // buts pour
+  pointsAgainst Int      @default(0) // buts contre
+  points        Int      @default(0)
+  capturedAt    DateTime // moment exact de la capture
+  source        String   @default("ESPN")
+  createdAt     DateTime @default(now())
+
+  @@unique([espnLeagueId, season, espnTeamId, snapshotDate]) // 1 ligne/équipe/jour — re-sync = update de la valeur du jour
+  @@index([espnLeagueId, season, snapshotDate])
+  @@index([espnTeamId])
+}
+
+// Priorité 2 — BLESSURES : instantané quotidien par ligue.
+// Append-only par jour : une blessure guérie disparaît des snapshots du
+// jour suivant mais reste lisible dans l'historique (replay exact).
+model InjurySnapshot {
+  id           String   @id @default(cuid())
+  espnLeagueId String
+  espnTeamId   String
+  playerName   String
+  position     String?
+  status       String? // libellé brut ESPN ("Out", "Questionable"…)
+  snapshotDate DateTime @db.Date // jour UTC du snapshot (idempotence)
+  capturedAt   DateTime
+  source       String   @default("ESPN")
+  createdAt    DateTime @default(now())
+
+  @@unique([espnLeagueId, espnTeamId, playerName, snapshotDate])
+  @@index([espnLeagueId, snapshotDate])
+  @@index([espnTeamId])
+}
+
+// « Autres données moteur » — MÉTÉO (Open-Meteo, pas ESPN) : facteur buts
+// injecté dans les lambdas Poisson. Append-only : une capture par match et
+// par jour (celle qui SERT aux prédictions du jour → replay possible).
+model WeatherSnapshot {
+  id              String   @id @default(cuid())
+  espnEventId     String // ID événement ESPN
+  city            String?
+  country         String?
+  tempC           Float?
+  windKmh         Float?
+  precipitationMm Float?
+  weatherCode     Int?
+  description     String?
+  goalsFactor     Float? // multiplicateur buts utilisé par le moteur (1 / 0.98 / 0.95…)
+  capturedAt      DateTime
+  source          String   @default("Open-Meteo")
+  createdAt       DateTime @default(now())
+
+  @@unique([espnEventId, capturedAt])
+  @@index([espnEventId])
+}
+
+// Priorité 4 — COTES OPEN/CLOSE : 1 ligne par (match, marché, issue, ligne).
+// Complète la SÉRIE OddsSnapshot (insert-on-change) par l'ANCRAGE open/close
+// déclaré par ESPN + première/dernière captures effectives. Upsert idempotent
+// (jamais de doublon par clé) — le détail des mouvements reste dans OddsSnapshot.
+model OddsOpenClose {
+  id              String   @id @default(cuid())
+  matchId         String // ID événement ESPN
+  marketType      String // "1X2" | "OVER_UNDER"
+  outcome         String // HOME | DRAW | AWAY | OVER | UNDER
+  line            Float? // ligne pour OVER_UNDER
+  openOdds        Float? // première capture effective (approximation d'ouverture si ESPN ne déclare pas)
+  openCapturedAt  DateTime?
+  closeOdds       Float? // dernière capture effective avant coup d'envoi
+  closeCapturedAt DateTime?
+  espnOpenOdds    Float? // open PUBLIÉ par ESPN (dernière valeur déclarée vue)
+  espnCloseOdds   Float? // close PUBLIÉ par ESPN (dernière valeur déclarée vue)
+  captures        Int      @default(0) // nb de captures agrégées dans cette ligne
+  updatedAt       DateTime @updatedAt
+  source          String   @default("ESPN")
+
+  @@unique([matchId, marketType, outcome, line])
+  @@index([matchId])
+}
+
+// Priorité 3 — PILOTAGE DE LA COUVERTURE DES HISTORIQUES ÉQUIPES.
+// État par équipe : quand l'historique (calendriers ESPN 2 saisons → Match)
+// a été synchronisé en dernier, combien de matchs importés, quel statut.
+// Rend le « sweep » systématique idempotent et auditable (fini le 4/cycle
+// opaques : chaque équipe a une traçabilité).
+model TeamHistorySyncState {
+  id              String    @id @default(cuid())
+  espnTeamId      String    @unique
+  leagueCode      String
+  teamName        String?
+  seasonsSynced   String? // ex "2025,2026"
+  matchesImported Int       @default(0) // total cumulé importé pour cette équipe
+  lastSyncedAt    DateTime?
+  lastResult      String? // "ok" | "vide" | "échec"
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([lastSyncedAt])
+}

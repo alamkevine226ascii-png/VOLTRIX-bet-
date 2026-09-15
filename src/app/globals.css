@@ -1,0 +1,242 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-voltrix-sans);
+  --font-display: var(--font-voltrix-display);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-volt: var(--volt);
+  --color-volt-dim: var(--volt-dim);
+}
+
+/* ============================================================
+   VOLTRIX bet — Thème dark premium + jaune néon
+   ============================================================ */
+
+:root {
+  --radius: 1.25rem;
+  --volt: #e8ff00;
+  --volt-dim: #b8cc00;
+
+  --background: #0a0a0c;
+  --foreground: #f4f4f0;
+  --card: #141418;
+  --card-foreground: #f4f4f0;
+  --popover: #17171c;
+  --popover-foreground: #f4f4f0;
+  --primary: #e8ff00;
+  --primary-foreground: #0a0a0c;
+  --secondary: #1e1e24;
+  --secondary-foreground: #f4f4f0;
+  --muted: #1a1a20;
+  --muted-foreground: #9a9a92;
+  --accent: #22222a;
+  --accent-foreground: #e8ff00;
+  --destructive: #ff4d5e;
+  --border: rgba(255, 255, 255, 0.08);
+  --input: rgba(255, 255, 255, 0.1);
+  --ring: #e8ff00;
+  --chart-1: #e8ff00;
+  --chart-2: #a3e635;
+  --chart-3: #ff4d5e;
+  --chart-4: #38bdf8;
+  --chart-5: #f97316;
+  --sidebar: #141418;
+  --sidebar-foreground: #f4f4f0;
+  --sidebar-primary: #e8ff00;
+  --sidebar-primary-foreground: #0a0a0c;
+  --sidebar-accent: #22222a;
+  --sidebar-accent-foreground: #e8ff00;
+  --sidebar-border: rgba(255, 255, 255, 0.08);
+  --sidebar-ring: #e8ff00;
+}
+
+.dark {
+  --background: #0a0a0c;
+  --foreground: #f4f4f0;
+  --card: #141418;
+  --card-foreground: #f4f4f0;
+  --popover: #17171c;
+  --popover-foreground: #f4f4f0;
+  --primary: #e8ff00;
+  --primary-foreground: #0a0a0c;
+  --secondary: #1e1e24;
+  --secondary-foreground: #f4f4f0;
+  --muted: #1a1a20;
+  --muted-foreground: #9a9a92;
+  --accent: #22222a;
+  --accent-foreground: #e8ff00;
+  --destructive: #ff4d5e;
+  --border: rgba(255, 255, 255, 0.08);
+  --input: rgba(255, 255, 255, 0.1);
+  --ring: #e8ff00;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+    /* Supprime le flash gris/clair au tap sur iOS (perçu comme
+       un manque de fluidité) */
+    -webkit-tap-highlight-color: transparent;
+  }
+  html {
+    /* Coupe le chaînage de scroll / pull-to-refresh accidentel :
+       scroll plus stable près des bords, sensation « app » */
+    overscroll-behavior-y: none;
+  }
+  body {
+    @apply bg-background text-foreground;
+    background: radial-gradient(1200px 500px at 50% -10%, rgba(232, 255, 0, 0.07), transparent 60%), #0a0a0c;
+    font-feature-settings: "tnum";
+    /* Supprime le délai du double-tap (garde le pinch-zoom) */
+    touch-action: manipulation;
+  }
+  ::selection {
+    background: rgba(232, 255, 0, 0.25);
+  }
+}
+
+/* Scrollbar custom */
+.volt-scroll::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.volt-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.volt-scroll::-webkit-scrollbar-thumb {
+  background: rgba(232, 255, 0, 0.25);
+  border-radius: 999px;
+}
+.volt-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(232, 255, 0, 0.45);
+}
+
+/* Barre de probabilité animée */
+.volt-bar {
+  transition: width 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Glow jaune néon */
+.volt-glow {
+  box-shadow: 0 0 24px rgba(232, 255, 0, 0.12), 0 0 2px rgba(232, 255, 0, 0.35);
+}
+
+@keyframes volt-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+.volt-live-dot {
+  animation: volt-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes volt-shimmer {
+  0% { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+.volt-skeleton {
+  background: linear-gradient(90deg, #16161a 25%, #202028 50%, #16161a 75%);
+  background-size: 800px 100%;
+  animation: volt-shimmer 1.6s infinite linear;
+}
+
+/* Safe area iOS */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.pt-safe {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+/* ============================================================
+   Utilitaires performance (compositing / rendu)
+   À cibler au cas par cas — JAMAIS globalement.
+   ============================================================ */
+
+/* Promotion de couche GPU : isole l'élément sur sa propre couche
+   compositée (translateZ(0)) pour que scale/transform tournent
+   côté compositeur sans re-rastérisation. Ne PAS poser sur un
+   ancêtre d'un élément backdrop-filter (risque de casser le
+   flou dans certains navigateurs). */
+.gpu-layer {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+/* Rendu différé des longues listes : à poser sur les items d'une
+   liste scrollable (les cartes hors écran ne sont ni mises en
+   page ni peintes). contain-intrinsic-size = hauteur estimée. */
+.cv-auto {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 128px;
+}
+
+/* Variante cartes de match (Task 11-c) : les 162 cartes de
+   l'accueil font ~221-303 px de haut — l'estimation 128px de
+   .cv-auto sous-estimerait la scrollbar de ~28 000 px. Estimée
+   ici à la médiane mesurée (303px) ; le mot-clé `auto` fait
+   retenir au navigateur la vraie taille une fois rendue. */
+.cv-auto-card {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 304px;
+}
+
+/* Capsule de l'onglet actif (tab-bar) : glissement transform/width
+   uniquement (compositing, zéro layout), courbe avec léger
+   overshoot ≈ spring framer-motion stiffness 520 / damping 42
+   qu'elle remplace. 0 Ko de JS (framer-motion retiré). */
+.volt-capsule {
+  transition:
+    transform 0.38s cubic-bezier(0.3, 1.25, 0.45, 1),
+    width 0.38s cubic-bezier(0.3, 1.25, 0.45, 1);
+}
+
+/* Respect de prefers-reduced-motion (animations décoratives) */
+@media (prefers-reduced-motion: reduce) {
+  .volt-live-dot,
+  .volt-skeleton {
+    animation: none;
+  }
+  .volt-bar {
+    transition: none;
+  }
+  .volt-capsule {
+    transition: none;
+  }
+}

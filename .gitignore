@@ -1,0 +1,79 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files (can opt-in for committing if needed)
+.env*
+
+# vercel
+.vercel
+
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+local-*
+.claude
+.z-ai-config
+*.log
+dev.log
+dev.out.log
+test
+prompt
+
+server.log
+
+# ---- Audit sécurité pre-push (2026-09-15) — artifacts exclus de Git ----
+# Skills plateforme (61 Mo, hors projet)
+/skills/
+# Livrables et données générés (rapports, JSON shadow-run/backtest, 53 Mo)
+/download/
+# Artifacts internes plateforme
+/tool-results/
+# Zone de dépôt utilisateur (scratch)
+/upload/
+# Sauvegardes locales (bancs SQLite, copies env — NE JAMAIS committer)
+/backups/
+# Base SQLite historique (pré-Neon) — la base de référence est Neon PostgreSQL
+/db/
+# Boilerplate template
+/examples/
+# Gros jeux de données blindtest (code conservé, données régénérables)
+scripts/blindtest/data/
+scripts/suivi-preview/
+# Fichiers d'état runtime
+.zscripts/dev.pid
+*.bak
+*.bak-*
+
+# Secret Neon (Task 28) — jamais dans Git (le .env racine est déjà couvert par .env*)
+.zscripts/.env.neon
+backups/.env.neon.copy

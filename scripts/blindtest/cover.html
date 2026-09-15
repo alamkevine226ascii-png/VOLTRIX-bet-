@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;700;900&family=Noto+Sans+SC:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+  <style>
+    @page { size: 794px 1123px; margin: 0; }
+    :root {
+      /* Palette cascade (seed 21) — alias --c-* pour couverture */
+      --c-bg: #f2f1f0;
+      --c-accent: #96771c;
+      --c-text: #22211f;
+      --c-muted: #87857d;
+      --c-mid: #675e45;
+      --c-surface: #ecebe8;
+    }
+    html, body {
+      margin: 0; padding: 0;
+      width: 794px; height: 1123px;
+      background: var(--c-bg);
+      font-family: 'Inter', 'Noto Sans SC', sans-serif;
+      color: var(--c-text);
+    }
+    @media screen {
+      html { height: auto; display: flex; justify-content: center; min-height: 100vh; background: var(--c-bg); }
+      body { transform-origin: top center; scale: min(1, calc(100vw / 794), calc(100vh / 1123)); margin: 0 auto; box-shadow: 0 0 60px rgba(0,0,0,0.18); }
+    }
+    .cover { width: 794px; height: 1123px; position: relative; border: none; outline: none; box-shadow: none; }
+
+    /* ── Layer 1 : grille de fond (2 %, clippée) ── */
+    .layer-1 {
+      position: absolute; inset: 0; overflow: hidden; z-index: 1;
+      background-image:
+        repeating-linear-gradient(0deg, rgba(103, 94, 69, 0.05) 0px, rgba(103, 94, 69, 0.05) 0.5px, transparent 0.5px, transparent 50px),
+        repeating-linear-gradient(90deg, rgba(103, 94, 69, 0.05) 0px, rgba(103, 94, 69, 0.05) 0.5px, transparent 0.5px, transparent 50px);
+    }
+
+    /* ── Layer 2 : ligne d'ancrage verticale ultra-épaisse ── */
+    .layer-2 { position: absolute; inset: 0; z-index: 2; }
+    .anchor-line {
+      position: absolute;
+      left: 95px;               /* 0.12 × W */
+      top: 112px;               /* 0.10 × H */
+      bottom: 112px;            /* jusqu'à 0.90 × H */
+      width: 8px;               /* 6pt */
+      background: var(--c-accent);
+    }
+
+    /* ── Layer 3 : contenu ── */
+    .layer-3 { position: absolute; inset: 0; z-index: 3; }
+    .kicker {
+      position: absolute;
+      left: 150px; top: 168px;  /* 0.15 × H */
+      font-size: 15px; font-weight: 400;
+      letter-spacing: 4px; text-transform: uppercase;
+      color: var(--c-mid); opacity: 0.62;
+      max-width: 580px; line-height: 1.75;
+    }
+    .hero {
+      position: absolute;
+      left: 150px; top: 300px;  /* zone B ≈ 0.27 × H */
+      font-size: 72px; font-weight: 900;
+      line-height: 1.12; letter-spacing: -1px;
+      color: var(--c-text);
+      max-width: 600px;
+    }
+    .summary {
+      position: absolute;
+      left: 150px; top: 562px;  /* 0.50 × H */
+      font-size: 16.5px; font-weight: 400;
+      line-height: 1.62; color: var(--c-text); opacity: 0.85;
+      max-width: 476px;         /* 0.60 × W */
+    }
+    .meta {
+      position: absolute;
+      left: 150px; top: 842px;  /* 0.75 × H */
+      font-size: 17px; font-weight: 500;
+      line-height: 1.75; color: var(--c-mid);
+      max-width: 560px;
+    }
+    .meta .sep { color: var(--c-accent); font-weight: 700; }
+    .footer {
+      position: absolute;
+      left: 150px; bottom: 78px;
+      font-size: 14px; font-weight: 400;
+      letter-spacing: 3px; text-transform: uppercase;
+      color: var(--c-muted); opacity: 0.62;
+    }
+  </style>
+</head>
+<body>
+  <div class="cover">
+    <div class="layer-1"></div>
+    <div class="layer-2">
+      <div class="anchor-line"></div>
+    </div>
+    <div class="layer-3">
+      <div class="kicker">Rapport d’audit — Simulation aveugle<br>de validation du modèle de prédiction</div>
+      <div class="hero">VOLTRIX<br>bet</div>
+      <div class="summary">
+        Photographie fidèle de ce que le moteur v2.1 a prédit sur 1&nbsp;328 matchs de juin,
+        juillet et août 2026 — prédictions générées uniquement à partir de données pré-match,
+        gelées puis scellées (SHA-256) avant la révélation des résultats. Qualité statistique
+        mesurée contre le marché, Poisson simple, Elo simple et MIX.
+      </div>
+      <div class="meta">
+        Période testée <span class="sep">·</span> 1<sup>er</sup> juin – 31 août 2026<br>
+        Échantillon <span class="sep">·</span> 24 compétitions · 5&nbsp;312 prédictions gelées<br>
+        Moteur <span class="sep">·</span> version v2.1, strictement inchangé
+      </div>
+      <div class="footer">Données ESPN · Brier · LogLoss · RPS · Calibration</div>
+    </div>
+  </div>
+</body>
+</html>

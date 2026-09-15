@@ -1,0 +1,691 @@
+{
+  "meta": {
+    "generatedAt": "2026-09-13T01:22:11.035Z",
+    "task": "21-d — backtest walk-forward + baselines + params ligues",
+    "window": {
+      "from": "2026-08-10",
+      "to": "2026-09-12"
+    },
+    "leagues": [
+      "eng.1",
+      "esp.1",
+      "ita.1",
+      "ger.1",
+      "fra.1",
+      "por.1",
+      "ned.1",
+      "bra.1",
+      "usa.1",
+      "uefa.champions"
+    ],
+    "perLeagueMatches": {
+      "por.1": 26,
+      "ned.1": 25,
+      "esp.1": 32,
+      "bra.1": 31,
+      "usa.1": 61,
+      "fra.1": 21,
+      "eng.1": 22,
+      "ita.1": 22,
+      "ger.1": 10
+    },
+    "maxMatches": 250,
+    "engineVersion": "21-b (calibration pipeline + p.raw) + 21-d (champ optionnel leagueGoalAverages)",
+    "asOfDiscipline": {
+      "historiques": "fetchTeamSchedule saison courante + précédente, filtre STRICT date < T (walk-forward)",
+      "classement": "endpoint standings ESPN INTERDIT (état actuel = fuite) — synthétisé depuis les matchs < T (table partielle des 2 historiques, rang calculé dedans)",
+      "blessures": "[] — endpoint ESPN = blessures ACTUELLES uniquement (= fuite) ; choix documenté",
+      "meteo": "null (influence retirée des λ en 21-b)",
+      "cotes": "summary ESPN pickcenter (DraftKings, open/close connus au coup d'envoi) — le scoreboard historique ne conserve PAS les cotes des matchs terminés (odds=[null] vérifié)",
+      "isDerby": "détection rivalités codée du moteur (runEngine)",
+      "nowMs": "kickoff du match (fatigue/14 jours as-of)"
+    },
+    "counts": {
+      "collectedEligible": 250,
+      "evaluated": 250,
+      "withMarketOdds": 245,
+      "withOu25Line": 149,
+      "matchesWithLeagueParams": 250,
+      "excluded": {
+        "voidOrCancelled": 2,
+        "notFinalOrNoScore": 0,
+        "noTeams": 0,
+        "outsideWindow": 0
+      }
+    },
+    "requests": {
+      "scoreboard": 270,
+      "schedule": 364,
+      "summary": 250,
+      "total": 884
+    },
+    "leaguesSeasons": {
+      "historical": [
+        2025,
+        2026
+      ],
+      "leagueParamsReference": 2025
+    }
+  },
+  "leagueParams": {
+    "reference": "saison précédente (zéro fuite)",
+    "byLeague": {
+      "por.1": {
+        "homeAvg": 1.5,
+        "awayAvg": 1.188,
+        "drawRate": 0.266,
+        "sample": 304
+      },
+      "ned.1": {
+        "homeAvg": 1.812,
+        "awayAvg": 1.383,
+        "drawRate": 0.267,
+        "sample": 303
+      },
+      "esp.1": {
+        "homeAvg": 1.578,
+        "awayAvg": 1.123,
+        "drawRate": 0.243,
+        "sample": 374
+      },
+      "bra.1": {
+        "homeAvg": 1.535,
+        "awayAvg": 1.005,
+        "drawRate": 0.261,
+        "sample": 368
+      },
+      "usa.1": {
+        "homeAvg": 1.657,
+        "awayAvg": 1.359,
+        "drawRate": 0.25,
+        "sample": 540
+      },
+      "fra.1": {
+        "homeAvg": 1.597,
+        "awayAvg": 1.244,
+        "drawRate": 0.241,
+        "sample": 303
+      },
+      "eng.1": {
+        "homeAvg": 1.516,
+        "awayAvg": 1.222,
+        "drawRate": 0.275,
+        "sample": 374
+      },
+      "ita.1": {
+        "homeAvg": 1.286,
+        "awayAvg": 1.168,
+        "drawRate": 0.254,
+        "sample": 374
+      },
+      "ger.1": {
+        "homeAvg": 1.783,
+        "awayAvg": 1.457,
+        "drawRate": 0.247,
+        "sample": 300
+      }
+    },
+    "global": {
+      "homeAvg": 1.581,
+      "awayAvg": 1.238,
+      "drawRate": 0.256,
+      "sample": 3240
+    }
+  },
+  "results": {
+    "oneXtwo": {
+      "market": {
+        "n": 244,
+        "brier": 0.5724509765206027,
+        "logLoss": 0.9656832081801292,
+        "rps": 0.19532357579908302,
+        "accuracy": 0.5245901639344263,
+        "calibration": [
+          {
+            "label": "0-50",
+            "count": 114,
+            "avgProb": 0.424563897306903,
+            "actualRate": 0.38596491228070173
+          },
+          {
+            "label": "50-60",
+            "count": 65,
+            "avgProb": 0.543508572714379,
+            "actualRate": 0.5076923076923077
+          },
+          {
+            "label": "60-70",
+            "count": 38,
+            "avgProb": 0.6526758906361124,
+            "actualRate": 0.7105263157894737
+          },
+          {
+            "label": "70-80",
+            "count": 21,
+            "avgProb": 0.7480019048687808,
+            "actualRate": 0.9047619047619048
+          },
+          {
+            "label": "80-100",
+            "count": 6,
+            "avgProb": 0.843718562877041,
+            "actualRate": 0.8333333333333334
+          }
+        ]
+      },
+      "poisson": {
+        "n": 250,
+        "brier": 0.5805293034449527,
+        "logLoss": 0.9803603136231673,
+        "rps": 0.1992999735429364,
+        "accuracy": 0.528,
+        "calibration": [
+          {
+            "label": "0-50",
+            "count": 142,
+            "avgProb": 0.4311813074675131,
+            "actualRate": 0.4014084507042254
+          },
+          {
+            "label": "50-60",
+            "count": 53,
+            "avgProb": 0.5438905138059793,
+            "actualRate": 0.5660377358490566
+          },
+          {
+            "label": "60-70",
+            "count": 35,
+            "avgProb": 0.6536382275175291,
+            "actualRate": 0.7428571428571429
+          },
+          {
+            "label": "70-80",
+            "count": 14,
+            "avgProb": 0.740862339830224,
+            "actualRate": 1
+          },
+          {
+            "label": "80-100",
+            "count": 6,
+            "avgProb": 0.8260635935275656,
+            "actualRate": 0.8333333333333334
+          }
+        ]
+      },
+      "elo": {
+        "n": 250,
+        "brier": 0.5897615915272953,
+        "logLoss": 0.9901608730622634,
+        "rps": 0.2065027632444219,
+        "accuracy": 0.492,
+        "calibration": [
+          {
+            "label": "0-50",
+            "count": 135,
+            "avgProb": 0.41595556601977823,
+            "actualRate": 0.37037037037037035
+          },
+          {
+            "label": "50-60",
+            "count": 47,
+            "avgProb": 0.5464123824031282,
+            "actualRate": 0.46808510638297873
+          },
+          {
+            "label": "60-70",
+            "count": 50,
+            "avgProb": 0.6454326811156864,
+            "actualRate": 0.68
+          },
+          {
+            "label": "70-80",
+            "count": 18,
+            "avgProb": 0.7412839354827886,
+            "actualRate": 0.9444444444444444
+          }
+        ]
+      },
+      "voltrix": {
+        "n": 250,
+        "brier": 0.5803170272000002,
+        "logLoss": 0.9782123454483599,
+        "rps": 0.20079526494000002,
+        "accuracy": 0.512,
+        "calibration": [
+          {
+            "label": "0-50",
+            "count": 129,
+            "avgProb": 0.427798449612403,
+            "actualRate": 0.3643410852713178
+          },
+          {
+            "label": "50-60",
+            "count": 58,
+            "avgProb": 0.5515999999999999,
+            "actualRate": 0.5517241379310345
+          },
+          {
+            "label": "60-70",
+            "count": 44,
+            "avgProb": 0.6415318181818181,
+            "actualRate": 0.7045454545454546
+          },
+          {
+            "label": "70-80",
+            "count": 19,
+            "avgProb": 0.7371421052631579,
+            "actualRate": 0.9473684210526315
+          }
+        ]
+      },
+      "voltrixLeague": {
+        "n": 250,
+        "brier": 0.5798075100800003,
+        "logLoss": 0.977455873297743,
+        "rps": 0.20063659800000003,
+        "accuracy": 0.512,
+        "calibration": [
+          {
+            "label": "0-50",
+            "count": 132,
+            "avgProb": 0.42854621212121224,
+            "actualRate": 0.36363636363636365
+          },
+          {
+            "label": "50-60",
+            "count": 59,
+            "avgProb": 0.5565050847457628,
+            "actualRate": 0.559322033898305
+          },
+          {
+            "label": "60-70",
+            "count": 39,
+            "avgProb": 0.6417512820512821,
+            "actualRate": 0.717948717948718
+          },
+          {
+            "label": "70-80",
+            "count": 20,
+            "avgProb": 0.73472,
+            "actualRate": 0.95
+          }
+        ]
+      }
+    },
+    "ou25": {
+      "market": {
+        "n": 149,
+        "brier": 0.2449557851345139,
+        "logLoss": 0.6828515560334293,
+        "rps": null,
+        "accuracy": 0.5033557046979866,
+        "calibration": [
+          {
+            "label": "50-60",
+            "count": 132,
+            "avgProb": 0.5500243683768371,
+            "actualRate": 0.4621212121212121
+          },
+          {
+            "label": "60-70",
+            "count": 17,
+            "avgProb": 0.606734999835988,
+            "actualRate": 0.8235294117647058
+          }
+        ]
+      },
+      "poisson": {
+        "n": 250,
+        "brier": 0.22740457392000005,
+        "logLoss": 0.6455687084014394,
+        "rps": null,
+        "accuracy": 0.62,
+        "calibration": [
+          {
+            "label": "50-60",
+            "count": 119,
+            "avgProb": 0.5468352941176474,
+            "actualRate": 0.5462184873949579
+          },
+          {
+            "label": "60-70",
+            "count": 88,
+            "avgProb": 0.6444090909090907,
+            "actualRate": 0.6363636363636364
+          },
+          {
+            "label": "70-80",
+            "count": 37,
+            "avgProb": 0.7371297297297296,
+            "actualRate": 0.7837837837837838
+          },
+          {
+            "label": "80-100",
+            "count": 6,
+            "avgProb": 0.8287666666666667,
+            "actualRate": 0.8333333333333334
+          }
+        ]
+      },
+      "voltrixCal": {
+        "n": 250,
+        "brier": 0.22357635179999993,
+        "logLoss": 0.6377560719446121,
+        "rps": null,
+        "accuracy": 0.604,
+        "calibration": [
+          {
+            "label": "50-60",
+            "count": 135,
+            "avgProb": 0.5497214814814811,
+            "actualRate": 0.4740740740740741
+          },
+          {
+            "label": "60-70",
+            "count": 88,
+            "avgProb": 0.6444965909090912,
+            "actualRate": 0.7386363636363636
+          },
+          {
+            "label": "70-80",
+            "count": 24,
+            "avgProb": 0.7339833333333335,
+            "actualRate": 0.7916666666666666
+          },
+          {
+            "label": "80-100",
+            "count": 3,
+            "avgProb": 0.8144666666666667,
+            "actualRate": 1
+          }
+        ]
+      },
+      "voltrixRaw": {
+        "n": 250,
+        "brier": 0.22339281903999994,
+        "logLoss": 0.6380680917564928,
+        "rps": null,
+        "accuracy": 0.652,
+        "calibration": [
+          {
+            "label": "50-60",
+            "count": 142,
+            "avgProb": 0.5437352112676055,
+            "actualRate": 0.5845070422535211
+          },
+          {
+            "label": "60-70",
+            "count": 85,
+            "avgProb": 0.6430282352941173,
+            "actualRate": 0.7176470588235294
+          },
+          {
+            "label": "70-80",
+            "count": 20,
+            "avgProb": 0.73416,
+            "actualRate": 0.8
+          },
+          {
+            "label": "80-100",
+            "count": 3,
+            "avgProb": 0.8405333333333335,
+            "actualRate": 1
+          }
+        ]
+      },
+      "voltrixLeagueCal": {
+        "n": 250,
+        "brier": 0.22361675183999993,
+        "logLoss": 0.6378276278317921,
+        "rps": null,
+        "accuracy": 0.604,
+        "calibration": [
+          {
+            "label": "50-60",
+            "count": 136,
+            "avgProb": 0.5498051470588236,
+            "actualRate": 0.47058823529411764
+          },
+          {
+            "label": "60-70",
+            "count": 87,
+            "avgProb": 0.6446425287356322,
+            "actualRate": 0.7471264367816092
+          },
+          {
+            "label": "70-80",
+            "count": 24,
+            "avgProb": 0.7337916666666668,
+            "actualRate": 0.7916666666666666
+          },
+          {
+            "label": "80-100",
+            "count": 3,
+            "avgProb": 0.8144666666666667,
+            "actualRate": 1
+          }
+        ]
+      },
+      "voltrixLeagueRaw": {
+        "n": 250,
+        "brier": 0.22371524263999998,
+        "logLoss": 0.6389073066501585,
+        "rps": null,
+        "accuracy": 0.656,
+        "calibration": [
+          {
+            "label": "50-60",
+            "count": 157,
+            "avgProb": 0.5440375796178347,
+            "actualRate": 0.5796178343949044
+          },
+          {
+            "label": "60-70",
+            "count": 75,
+            "avgProb": 0.6372466666666667,
+            "actualRate": 0.7866666666666666
+          },
+          {
+            "label": "70-80",
+            "count": 17,
+            "avgProb": 0.7311882352941176,
+            "actualRate": 0.7647058823529411
+          },
+          {
+            "label": "80-100",
+            "count": 1,
+            "avgProb": 0.8612,
+            "actualRate": 1
+          }
+        ]
+      }
+    },
+    "btts": {
+      "market": {
+        "n": 0,
+        "brier": null,
+        "logLoss": null,
+        "rps": null,
+        "accuracy": null,
+        "calibration": []
+      },
+      "poisson": {
+        "n": 250,
+        "brier": 0.22946481756257206,
+        "logLoss": 0.6501737251657538,
+        "rps": null,
+        "accuracy": 0.616,
+        "calibration": [
+          {
+            "label": "50-60",
+            "count": 147,
+            "avgProb": 0.5509073871726308,
+            "actualRate": 0.5510204081632653
+          },
+          {
+            "label": "60-70",
+            "count": 82,
+            "avgProb": 0.63768785269098,
+            "actualRate": 0.6707317073170732
+          },
+          {
+            "label": "70-80",
+            "count": 20,
+            "avgProb": 0.7296663883893022,
+            "actualRate": 0.85
+          },
+          {
+            "label": "80-100",
+            "count": 1,
+            "avgProb": 0.8033092583184074,
+            "actualRate": 1
+          }
+        ]
+      },
+      "voltrixCal": {
+        "n": 250,
+        "brier": 0.2427752808656422,
+        "logLoss": 0.679431161120157,
+        "rps": null,
+        "accuracy": 0.58,
+        "calibration": [
+          {
+            "label": "50-60",
+            "count": 155,
+            "avgProb": 0.5450650720090753,
+            "actualRate": 0.535483870967742
+          },
+          {
+            "label": "60-70",
+            "count": 82,
+            "avgProb": 0.6366442448199263,
+            "actualRate": 0.6585365853658537
+          },
+          {
+            "label": "70-80",
+            "count": 12,
+            "avgProb": 0.7490260919857638,
+            "actualRate": 0.6666666666666666
+          },
+          {
+            "label": "80-100",
+            "count": 1,
+            "avgProb": 0.8184474407697331,
+            "actualRate": 0
+          }
+        ]
+      },
+      "voltrixRaw": {
+        "n": 250,
+        "brier": 0.24717947395371526,
+        "logLoss": 0.6883735349167703,
+        "rps": null,
+        "accuracy": 0.572,
+        "calibration": [
+          {
+            "label": "50-60",
+            "count": 161,
+            "avgProb": 0.5447766393623431,
+            "actualRate": 0.5527950310559007
+          },
+          {
+            "label": "60-70",
+            "count": 67,
+            "avgProb": 0.6418275357110883,
+            "actualRate": 0.582089552238806
+          },
+          {
+            "label": "70-80",
+            "count": 22,
+            "avgProb": 0.7524128494021938,
+            "actualRate": 0.6818181818181818
+          }
+        ]
+      },
+      "voltrixLeagueCal": {
+        "n": 250,
+        "brier": 0.2425658837250194,
+        "logLoss": 0.6789819137939053,
+        "rps": null,
+        "accuracy": 0.568,
+        "calibration": [
+          {
+            "label": "50-60",
+            "count": 156,
+            "avgProb": 0.5455570368012811,
+            "actualRate": 0.5064102564102564
+          },
+          {
+            "label": "60-70",
+            "count": 79,
+            "avgProb": 0.6355754633719941,
+            "actualRate": 0.6962025316455697
+          },
+          {
+            "label": "70-80",
+            "count": 14,
+            "avgProb": 0.7429478042914696,
+            "actualRate": 0.5714285714285714
+          },
+          {
+            "label": "80-100",
+            "count": 1,
+            "avgProb": 0.8193347168676368,
+            "actualRate": 0
+          }
+        ]
+      },
+      "voltrixLeagueRaw": {
+        "n": 250,
+        "brier": 0.24888254754380842,
+        "logLoss": 0.691991452412662,
+        "rps": null,
+        "accuracy": 0.556,
+        "calibration": [
+          {
+            "label": "50-60",
+            "count": 168,
+            "avgProb": 0.5429150818401287,
+            "actualRate": 0.5416666666666666
+          },
+          {
+            "label": "60-70",
+            "count": 61,
+            "avgProb": 0.6390317232126946,
+            "actualRate": 0.5737704918032787
+          },
+          {
+            "label": "70-80",
+            "count": 21,
+            "avgProb": 0.7493446331366126,
+            "actualRate": 0.6190476190476191
+          }
+        ]
+      }
+    },
+    "variantComparison": {
+      "matchesWithLeagueParams": 250,
+      "global": {
+        "rps": 0.20079526494000002,
+        "brier1x2": 0.5803170272000002,
+        "brierOuRaw": 0.22339281903999994,
+        "brierOuCal": 0.22357635179999993
+      },
+      "league": {
+        "rps": 0.20063659800000003,
+        "brier1x2": 0.5798075100800003,
+        "brierOuRaw": 0.22371524263999998,
+        "brierOuCal": 0.22361675183999993
+      },
+      "decision": {
+        "activated": false,
+        "criteria": "RPS 1X2 amélioré ET Brier O/U 2.5 (brut) amélioré ET calibré non dégradé",
+        "lines": [
+          "RPS 1X2  : global 0.20080 → ligue 0.20064 (AMÉLIORÉ, n=250)",
+          "Brier O/U brut : global 0.22339 → ligue 0.22372 (non amélioré)",
+          "Brier O/U calibré : global 0.22358 → ligue 0.22362 (DÉGRADÉ)"
+        ]
+      }
+    }
+  }
+}
