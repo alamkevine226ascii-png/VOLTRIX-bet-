@@ -78,6 +78,27 @@ function getBudgetMs(): number {
   return DEFAULT_BUDGET_MS;
 }
 
+/** §26-bis — Chaîne de continuation SERVEUR : plafond d'itérations internes
+ *  d'UNE invocation (8 × 45 s = 360 s > mur 240 s — le mur est contraignant ;
+ *  le plafond de boucles reste une ceinture de sécurité contre les tranches
+ *  anormalement courtes). */
+function getChainMaxLoops(): number {
+  const raw = parseInt(process.env.SYNC_CHAIN_MAX_LOOPS ?? '', 10);
+  if (Number.isFinite(raw) && raw >= 1 && raw <= 50) return raw;
+  return 8;
+}
+/** §26-bis — Mur temporel de la chaîne serveur, compté depuis le DÉBUT de
+ *  l'invocation. Doit rester < maxDuration de la route (300 s) avec marge :
+ *  la synchronisation complète mesurée (215,7 s) tient DANS UNE SEULE
+ *  invocation (45 s + 4×45 s ≈ 225 s ≤ 240 s) — sans jamais dépendre du
+ *  navigateur. Au-delà, l'invocation se termine proprement en partial et la
+ *  reprise est assurée par le cron (GET) / le prochain wake. */
+function getChainMaxWallMs(): number {
+  const raw = parseInt(process.env.SYNC_CHAIN_MAX_WALL_MS ?? '', 10);
+  if (Number.isFinite(raw) && raw >= 30_000 && raw <= 900_000) return raw;
+  return 240_000;
+}
+
 // ---------- Progression (curseur de reprise conservé dans Neon) ----------
 
 export interface WakeProgress {
@@ -509,6 +530,55 @@ async function wakeTeamHistory(): Promise<number> {
   return synced;
 }
 
+// ---------- Chaîne de continuation SERVEUR (§26-bis) ----------
+
+export interface WakeChainResult {
+  loops: number;
+  ended: 'success' | 'failed' | 'budget' | 'stopped';
+  runId?: string;
+}
+
+/**
+ * §26-bis — Enchaîne les tranches de synchronisation CÔTÉ SERVEUR jusqu'à
+ * completion. Appelée par la route wake via after() : le passage d'une
+ * tranche à la suivante NE DÉPEND PAS du navigateur — l'utilisateur peut
+ * fermer l'application dès la première réponse, la chaîne continue dans
+ * l'invocation serveur (Neon = source de vérité du curseur).
+ *
+ * Chaque itération repasse par runWake → claim conditionnel (runningLock
+ * IS NULL + index unique partiel) : s'il existe JAMAIS deux runners, un
+ * seul obtient le curseur, l'autre reçoit already_running et s'arrête.
+ */
+export async function runWakeChainUntilDone(startedAtMs: number): Promise<WakeChainResult> {
+  const maxLoops = getChainMaxLoops();
+  const maxWall = getChainMaxWallMs();
+  let loops = 0;
+  for (;;) {
+    if (loops >= maxLoops || Date.now() - startedAtMs > maxWall) {
+      syncLog('RUNNING', `phase=chain-stop loops=${loops} maxLoops=${maxLoops} (budget invocation atteint — curseur conservé, reprise par cron GET / prochain wake)`);
+      return { loops, ended: 'budget' };
+    }
+    loops++;
+    const r = await runWake({ triggerSource: 'wake-chain' });
+    if (r.started && r.status === 'success') {
+      return { loops, ended: 'success', runId: r.runId };
+    }
+    if (r.status === 'failed') {
+      // Échec réel : la chaîne s'arrête (curseur conservé, relançable) —
+      // le cron / le prochain wake retente plus tard, sans perdre la
+      // progression déjà enregistrée.
+      syncLog('RUNNING', `phase=chain-failed loops=${loops} runId=${r.runId ?? '-'} (chaîne stoppée sur échec — reprise ultérieure)`);
+      return { loops, ended: 'failed', runId: r.runId };
+    }
+    if (r.status !== 'partial') {
+      // fresh / already_running : plus rien à enchaîner dans CETTE invocation
+      // (un concurrent tient le curseur, ou les données sont redevenues
+      // fraîches) — s'arrêter proprement sans polluer.
+      return { loops, ended: 'stopped', runId: r.runId };
+    }
+  }
+}
+
 // ---------- Pipeline principal ----------
 
 /**
@@ -523,6 +593,9 @@ export async function runWake(opts?: { triggerSource?: string; budgetMs?: number
   await ensureWakeIndex();
 
   const state = await getSyncState();
+
+  // Job dont le verrou orphelin sera récupéré au §1 (curseur à reprendre).
+  let recovered: string | null = null;
 
   // 1) Un job est-il déjà actif ?
   if (state.running) {
@@ -546,6 +619,7 @@ export async function runWake(opts?: { triggerSource?: string; budgetMs?: number
       return { started: false, reason: 'already_running', runId: state.running.id };
     }
     syncLog('LOCK_RECOVERED', `runId=${state.running.id} ageMs=${age} (verrou orphelin)`);
+    recovered = state.running.id; // le curseur de CE job sera repris plus bas
   }
 
   // 2) Données fraîches (et pas de LIVE périmé) → aucun travail (idempotence).
@@ -566,6 +640,19 @@ export async function runWake(opts?: { triggerSource?: string; budgetMs?: number
       prog = state.resumable.progress;
       prog.resumedCount += 1;
       resumed = true;
+    }
+  }
+  // …y compris le job dont le verrou orphelin vient d'être récupéré :
+  // le travail déjà fait (curseur) N'EST PAS jeté, la MÊME ligne continue.
+  if (!run && recovered) {
+    const ok = await claimResumable(recovered);
+    if (ok) {
+      const row = await db.syncJobRun.findUnique({ where: { id: recovered }, select: { progress: true } });
+      run = { id: recovered };
+      prog = parseProgress(row?.progress ?? null) ?? freshProgress();
+      prog.resumedCount += 1;
+      resumed = true;
+      syncLog('RUNNING', `runId=${run.id} phase=recovered-resume leaguesDone=${prog.leaguesDone}/${prog.leaguesTotal} (curseur orphelin repris)`);
     }
   }
   // …sinon nouveau job (null = un concurrent vient de prendre le verrou).
