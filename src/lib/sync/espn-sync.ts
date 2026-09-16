@@ -708,23 +708,60 @@ export interface LeagueSyncResult {
   oddsInserted: number;
 }
 
-/** Récupère le scoreboard d'une ligue sur une plage et l'ingère en batch (idempotent). */
+/**
+ * Récupère le scoreboard d'une ligue sur une plage et l'ingère en batch (idempotent).
+ *
+ * Task 45 — CORRECTION ESPN (constatée 2026-09) : l'endpoint scoreboard
+ * répond désormais HTTP 400 « Failed to get events endpoint. » à tout
+ * paramètre de PLAGE `dates=A-B` (même 7 jours) — seule la forme
+ * jour unique `dates=YYYYMMDD` reste valide. La fenêtre est donc
+ * parcourue JOUR PAR JOUR (1 appel/jour/ligue) et les événements sont
+ * fusionnés/dédupliqués par id AVANT un unique ingestBatch (le mode
+ * BATCH par ligue est préservé — aucun aller-retour par événement).
+ * Idempotent : le même match récupéré N fois = 1 ligne (espn_event_id).
+ */
 export async function syncLeagueWindow(leagueCode: string, from: Date, to: Date, season: number | null): Promise<LeagueSyncResult> {
   const out: LeagueSyncResult = { events: 0, failed: false, matchesCreated: 0, matchesUpdated: 0, resultsUpserted: 0, oddsInserted: 0 };
-  const url = `${SITE}/${leagueCode}/scoreboard?dates=${yyyymmdd(from)}-${yyyymmdd(to)}&limit=400`;
-  const raw = await espnRawJson<{ leagues?: Array<{ name?: string }>; season?: { year?: number }; events?: RawEventFull[] }>(url);
-  if (!raw) return { ...out, failed: true };
-  const leagueName = raw.leagues?.[0]?.name ?? getLeague(leagueCode)?.name ?? null;
-  const seasonYear = season ?? raw.season?.year ?? null;
-  const events = (raw.events ?? []).map(normalizeRawEvent).filter((e): e is NormalizedEvent => e !== null);
+  const events: NormalizedEvent[] = [];
+  const seen = new Set<string>();
+  let leagueName: string | null = getLeague(leagueCode)?.name ?? null;
+  let seasonYear: number | null = season;
+  let daysOk = 0;
+  let daysTotal = 0;
+
+  // Jours UTC de `from` à `to` (bornes incluses).
+  const dayMs = 24 * 3_600_000;
+  const startDay = Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate());
+  const endDay = Date.UTC(to.getUTCFullYear(), to.getUTCMonth(), to.getUTCDate());
+  for (let day = startDay; day <= endDay; day += dayMs) {
+    daysTotal++;
+    const url = `${SITE}/${leagueCode}/scoreboard?dates=${yyyymmdd(new Date(day))}&limit=400`;
+    const raw = await espnRawJson<{ leagues?: Array<{ name?: string }>; season?: { year?: number }; events?: RawEventFull[] }>(url);
+    if (!raw) continue; // jour raté → marqué failed si AUCUN jour ne passe
+    daysOk++;
+    leagueName = raw.leagues?.[0]?.name ?? leagueName;
+    seasonYear = seasonYear ?? raw.season?.year ?? null;
+    for (const ev of raw.events ?? []) {
+      const n = normalizeRawEvent(ev);
+      if (n && !seen.has(n.espnEventId)) {
+        seen.add(n.espnEventId);
+        events.push(n);
+      }
+    }
+  }
+  out.failed = daysOk === 0 && daysTotal > 0;
   out.events = events.length;
+  if (!events.length) return out;
   try {
     const r = await ingestBatch(events, { leagueCode, leagueName, season: seasonYear });
     out.matchesCreated = r.matchesCreated;
     out.matchesUpdated = r.matchesUpdated;
     out.resultsUpserted = r.resultsCreated + r.resultsUpdated;
     out.oddsInserted = r.oddsInserted;
-  } catch {
+  } catch (e) {
+    // Task 45 §26 : un échec d'ingestion ne doit JAMAIS être muet — le
+    // diagnostic (logs structurés) exige de voir la cause racine.
+    console.warn(`[VOLTRIX SYNC] ingestion ${leagueCode} échouée : ${e instanceof Error ? e.message : String(e)}`);
     out.events = 0;
   }
   return out;

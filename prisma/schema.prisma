@@ -385,14 +385,23 @@ model PredictionComponent {
   @@index([marketId])
 }
 
-// Journal du synchroniseur ESPN → Neon (§5/§24) — traçabilité des cycles
+// Journal du synchroniseur ESPN → Neon (§5/§24) — traçabilité des cycles.
+// Task 45 (§26 Wake-on-Demand) : synchronisation à la demande déclenchée
+// par le frontend (POST /api/sync/wake) — complément puis remplacement du
+// worker permanent. Colonnes NULLABLES → rétrocompatibles avec les lignes
+// historiques du worker (status/triggerSource NULL = exécution worker).
 model SyncJobRun {
-  id         String    @id @default(cuid())
-  startedAt  DateTime
-  finishedAt DateTime?
-  phase      String // "backfill" | "cycle" | "live" | "team-history" | "context" | "done" | "error"
-  stats      String? // JSON {leagues, eventsUpserted, teamsUpserted, oddsInserted, …}
-  error      String?
+  id            String    @id @default(cuid())
+  startedAt     DateTime
+  finishedAt    DateTime?
+  phase         String // "backfill" | "cycle" | "live" | "team-history" | "context" | "wake" | "done" | "error"
+  stats         String? // JSON {leagues, eventsUpserted, teamsUpserted, oddsInserted, …}
+  error         String?
+  // --- Task 45 §26 : état de synchronisation + verrou anti-concurrence ---
+  status        String? // "running" | "success" | "partial" | "failed" (NULL = lignes worker historiques)
+  triggerSource String? // "wake" | "worker" | "manual" | "test" (NULL = worker historique)
+  runningLock   String? // "RUNNING" tant que le job est actif — index unique partiel (migration) → 1 SEUL job actif en base
+  progress      String? // JSON {phase, chunk, leaguesTotal, leaguesDone, cycle, live, …} — curseur de reprise (budget/timeout)
 }
 
 // ============================================================

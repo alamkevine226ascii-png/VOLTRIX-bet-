@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Space_Grotesk, Inter } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
+import { SyncWakeButton } from "@/components/voltrix/sync-wake-button";
 
 const voltrixDisplay = Space_Grotesk({
   variable: "--font-voltrix-display",
@@ -55,6 +56,11 @@ export default function RootLayout({
         className={`${voltrixSans.variable} ${voltrixDisplay.variable} antialiased bg-background text-foreground font-sans`}
       >
         {children}
+        {/* Task 45 §26 — Wake on Demand : bouton « Actualiser les données »
+            global (rendu null quand les données sont fraîches). Écoute
+            l'état de Neon ; à la fin d'une sync, diffuse l'événement
+            'voltrix:sync-done' que les pages écoutent pour se recharger. */}
+        <SyncWakeButton />
         <Toaster />
         <script
           dangerouslySetInnerHTML={{

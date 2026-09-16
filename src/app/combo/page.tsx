@@ -64,6 +64,7 @@ import {
   oddsWithMargin,
 } from '@/lib/market-odds';
 import { buildComboCard, shareCard } from '@/components/voltrix/share';
+import { VOLTRIX_SYNC_DONE_EVENT } from '@/components/voltrix/sync-wake-button';
 import { saveComboTicket } from '@/lib/combo-store';
 import { cn } from '@/lib/utils';
 
@@ -106,6 +107,10 @@ export default function ComboPage() {
   // Vivier complet des jambes candidates (tous marchés, tous matchs analysés),
   // rempli à chaque génération : sert aux alternatives de remplacement.
   const poolRef = useRef<ComboLeg[]>([]);
+  // Task 45 §26 — dernière date connue pour le listener 'voltrix:sync-done'
+  // (la callback d'écoute est stable, la ref porte la valeur fraîche).
+  const dateRef = useRef(date);
+  const mountedRef = useRef(false);
   // Pile des tickets précédant chaque échange (bouton « Annuler l'échange »)
   const undoStack = useRef<ComboResult[]>([]);
   const [hasUndo, setHasUndo] = useState(false);
@@ -118,7 +123,10 @@ export default function ComboPage() {
   const abort = useRef(false);
   const seed = useRef(1);
 
-  useEffect(() => setMounted(true), []);
+  useEffect(() => {
+    setMounted(true);
+    mountedRef.current = true; // Task 45 §26
+  }, []);
 
   // Chargement des critères persisted (localStorage) au montage
   useEffect(() => {
@@ -153,6 +161,20 @@ export default function ComboPage() {
   useEffect(() => {
     if (mounted) loadMatches(date);
   }, [mounted, date, loadMatches]);
+
+  // Task 45 §26 — synchronisation terminée → recharger le vivier du jour
+  // avec les données fraîches (le combiné en cours est réinitialisé : il
+  // reposait sur d'anciennes cotes/probabilités).
+  useEffect(() => {
+    dateRef.current = date;
+  }, [date]);
+  useEffect(() => {
+    const onSyncDone = () => {
+      if (mountedRef.current) loadMatches(dateRef.current);
+    };
+    window.addEventListener(VOLTRIX_SYNC_DONE_EVENT, onSyncDone);
+    return () => window.removeEventListener(VOLTRIX_SYNC_DONE_EVENT, onSyncDone);
+  }, [loadMatches]);
 
   const upcoming = useMemo(
     () =>

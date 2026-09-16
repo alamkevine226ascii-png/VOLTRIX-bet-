@@ -68,7 +68,7 @@ for (let i = 0; i < 50; i++) {
     await new Promise((r) => setTimeout(r, 200));
   }
 }
-execSync('bunx prisma db push --skip-generate', {
+execSync('node_modules/.bin/prisma db push --skip-generate', {
   cwd: ROOT,
   env: { ...process.env, DATABASE_URL: dbUrl, DIRECT_URL: dbUrl },
   stdio: 'pipe',

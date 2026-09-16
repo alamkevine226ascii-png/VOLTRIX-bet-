@@ -26,6 +26,7 @@ import {
 import type { LightMatch, MatchesResponse, QuickPred } from '@/lib/types';
 import { MatchCard, MatchCardSkeleton } from '@/components/voltrix/match-card';
 import { VoltrixTabBar, type TabKey } from '@/components/voltrix/tab-bar';
+import { VOLTRIX_SYNC_DONE_EVENT } from '@/components/voltrix/sync-wake-button';
 import { loadCachedPreds, saveCachedPreds } from '@/lib/preds-cache';
 import { cn } from '@/lib/utils';
 
@@ -255,6 +256,18 @@ export default function Home() {
   useEffect(() => {
     if (mounted) loadMatches(date);
   }, [mounted, date, loadMatches]);
+
+  // Task 45 §26 — Wake on Demand : une synchronisation ESPN → Neon vient de
+  // se terminer (déclenchée par le bouton « Actualiser les données », ici ou
+  // chez un autre utilisateur) → recharger avec isRefresh=true : les cartes
+  // restent à l'écran et l'analyse repart sur les données fraîches (merge).
+  useEffect(() => {
+    const onSyncDone = () => {
+      if (dateRef.current) loadMatches(dateRef.current, true);
+    };
+    window.addEventListener(VOLTRIX_SYNC_DONE_EVENT, onSyncDone);
+    return () => window.removeEventListener(VOLTRIX_SYNC_DONE_EVENT, onSyncDone);
+  }, [loadMatches]);
 
   // Relance manuelle de l'analyse d'un match en échec
   const retryMatch = useCallback(

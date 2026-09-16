@@ -37,6 +37,7 @@ import {
 } from 'lucide-react';
 import { VoltrixTabBar } from '@/components/voltrix/tab-bar';
 import { TeamLogo, ConfidenceStars } from '@/components/voltrix/shared';
+import { VOLTRIX_SYNC_DONE_EVENT } from '@/components/voltrix/sync-wake-button';
 import { dayHeaderFr } from '@/lib/forecast/week';
 import { cn } from '@/lib/utils';
 
@@ -238,6 +239,17 @@ export default function PrevisionsPage() {
   useEffect(() => {
     weekStartRef.current = weekStart;
   }, [weekStart]);
+
+  // Task 45 §26 — synchronisation ESPN → Neon terminée (bouton « Actualiser
+  // les données », ici ou chez un autre utilisateur) → recharger la semaine
+  // affichée avec les données fraîches (nouveaux matchs, statuts, résultats).
+  useEffect(() => {
+    const onSyncDone = () => {
+      if (aliveRef.current) load(weekStartRef.current);
+    };
+    window.addEventListener(VOLTRIX_SYNC_DONE_EVENT, onSyncDone);
+    return () => window.removeEventListener(VOLTRIX_SYNC_DONE_EVENT, onSyncDone);
+  }, [load]);
 
   // Ping automatique du job (90 s) tant que la page est ouverte —
   // garantit la génération des prédictions et la récupération des résultats.

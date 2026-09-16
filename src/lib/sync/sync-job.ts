@@ -20,6 +20,7 @@
 // ============================================================
 
 import { db } from '@/lib/db';
+import { espnStats } from '@/lib/espn';
 import { runSyncCycle, refreshLiveMatches } from './espn-sync';
 import { runContextSync } from './context-sync';
 
@@ -46,6 +47,17 @@ const CYCLE_DAYS_BACK = 4; // résultats récents jusqu'à confirmation (week-en
 const CYCLE_DAYS_AHEAD = 14; // aujourd'hui + 7 jours au minimum, semaine complète au-delà
 const BACKFILL_DAYS_BACK = 21;
 const BACKFILL_DAYS_AHEAD = 14;
+
+/**
+ * Task 45 §26 — journal structuré du worker (diagnostic post-déploiement).
+ * Même format que le wake (wake.ts) : le champ SOURCE permet de distinguer
+ * [VOLTRIX SYNC] SOURCE=EXISTING_WORKER … de SOURCE=WAKE …
+ * STATUS = STARTED | SUCCESS | FAILED ; DURATION_MS / ESPN_CALLS (delta du
+ * compteur process) / MATCHES_UPDATED / ODDS_UPDATED quand applicables.
+ */
+function workerLog(status: string, extra: string = ''): void {
+  console.log(`[VOLTRIX SYNC] SOURCE=EXISTING_WORKER STATUS=${status}${extra ? ' ' + extra : ''}`);
+}
 
 /** Un backfill récent existe-t-il déjà ? (évite de re-scanner 21 j à chaque démarrage) */
 async function backfillRecent(): Promise<boolean> {
@@ -84,14 +96,21 @@ export function ensureSyncLoop(): void {
   setTimeout(async () => {
     if (g.__voltrixSyncBackfillChecked) return;
     g.__voltrixSyncBackfillChecked = true;
+    const t0 = Date.now();
+    const e0 = espnStats.total;
     try {
       if (await backfillRecent()) {
         // base déjà remplie récemment → cycle léger uniquement
-        await runSyncCycle({ daysBack: CYCLE_DAYS_BACK, daysAhead: CYCLE_DAYS_AHEAD, phase: 'cycle' });
+        workerLog('STARTED', 'phase=cycle (backfill récent en base)');
+        const stats = await runSyncCycle({ daysBack: CYCLE_DAYS_BACK, daysAhead: CYCLE_DAYS_AHEAD, phase: 'cycle' });
+        workerLog('SUCCESS', `phase=cycle ESPN_CALLS=${espnStats.total - e0} MATCHES_UPDATED=${stats.matchesCreated + stats.matchesUpdated} ODDS_UPDATED=${stats.oddsInserted} DURATION_MS=${Date.now() - t0}`);
         return;
       }
-      await runSyncCycle({ daysBack: BACKFILL_DAYS_BACK, daysAhead: BACKFILL_DAYS_AHEAD, phase: 'backfill' });
-    } catch {
+      workerLog('STARTED', 'phase=backfill');
+      const stats = await runSyncCycle({ daysBack: BACKFILL_DAYS_BACK, daysAhead: BACKFILL_DAYS_AHEAD, phase: 'backfill' });
+      workerLog('SUCCESS', `phase=backfill ESPN_CALLS=${espnStats.total - e0} MATCHES_UPDATED=${stats.matchesCreated + stats.matchesUpdated} ODDS_UPDATED=${stats.oddsInserted} DURATION_MS=${Date.now() - t0}`);
+    } catch (e) {
+      workerLog('FAILED', `phase=backfill error="${e instanceof Error ? e.message : 'erreur'}" DURATION_MS=${Date.now() - t0}`);
       // tolerant : le cycle suivant réessaiera
     }
   }, 15_000);
@@ -100,8 +119,16 @@ export function ensureSyncLoop(): void {
   setInterval(() => {
     if (g.__voltrixSyncCycleRunning) return;
     g.__voltrixSyncCycleRunning = true;
+    const t0 = Date.now();
+    const e0 = espnStats.total;
+    workerLog('STARTED', 'phase=cycle');
     runSyncCycle({ daysBack: CYCLE_DAYS_BACK, daysAhead: CYCLE_DAYS_AHEAD, phase: 'cycle' })
-      .catch(() => {})
+      .then((stats) => {
+        workerLog('SUCCESS', `phase=cycle ESPN_CALLS=${espnStats.total - e0} MATCHES_UPDATED=${stats.matchesCreated + stats.matchesUpdated} ODDS_UPDATED=${stats.oddsInserted} DURATION_MS=${Date.now() - t0}`);
+      })
+      .catch((e) => {
+        workerLog('FAILED', `phase=cycle error="${e instanceof Error ? e.message : 'erreur'}" DURATION_MS=${Date.now() - t0}`);
+      })
       .finally(() => {
         g.__voltrixSyncCycleRunning = false;
       });
@@ -111,8 +138,16 @@ export function ensureSyncLoop(): void {
   setInterval(() => {
     if (g.__voltrixSyncLiveRunning) return;
     g.__voltrixSyncLiveRunning = true;
+    const t0 = Date.now();
+    const e0 = espnStats.total;
+    workerLog('STARTED', 'phase=live');
     refreshLiveMatches()
-      .catch(() => {})
+      .then((stats) => {
+        workerLog('SUCCESS', `phase=live ESPN_CALLS=${espnStats.total - e0} MATCHES_UPDATED=${stats.matchesCreated + stats.matchesUpdated} ODDS_UPDATED=${stats.oddsInserted} DURATION_MS=${Date.now() - t0}`);
+      })
+      .catch((e) => {
+        workerLog('FAILED', `phase=live error="${e instanceof Error ? e.message : 'erreur'}" DURATION_MS=${Date.now() - t0}`);
+      })
       .finally(() => {
         g.__voltrixSyncLiveRunning = false;
       });
@@ -126,8 +161,16 @@ export function ensureSyncLoop(): void {
     g.__voltrixSyncContextBooted = true;
     if (g.__voltrixSyncContextRunning) return;
     g.__voltrixSyncContextRunning = true;
+    const t0 = Date.now();
+    const e0 = espnStats.total;
+    workerLog('STARTED', 'phase=context');
     runContextSync({ teamBudget: 40 })
-      .catch(() => {})
+      .then((stats) => {
+        workerLog('SUCCESS', `phase=context ESPN_CALLS=${espnStats.total - e0} MATCHES_UPDATED=0 ODDS_UPDATED=0 standings=${stats.standingsUpserted} injuries=${stats.injuriesUpserted} DURATION_MS=${Date.now() - t0}`);
+      })
+      .catch((e) => {
+        workerLog('FAILED', `phase=context error="${e instanceof Error ? e.message : 'erreur'}" DURATION_MS=${Date.now() - t0}`);
+      })
       .finally(() => {
         g.__voltrixSyncContextRunning = false;
       });
@@ -135,8 +178,16 @@ export function ensureSyncLoop(): void {
   setInterval(() => {
     if (g.__voltrixSyncContextRunning) return;
     g.__voltrixSyncContextRunning = true;
+    const t0 = Date.now();
+    const e0 = espnStats.total;
+    workerLog('STARTED', 'phase=context');
     runContextSync({ teamBudget: 40 })
-      .catch(() => {})
+      .then((stats) => {
+        workerLog('SUCCESS', `phase=context ESPN_CALLS=${espnStats.total - e0} MATCHES_UPDATED=0 ODDS_UPDATED=0 standings=${stats.standingsUpserted} injuries=${stats.injuriesUpserted} DURATION_MS=${Date.now() - t0}`);
+      })
+      .catch((e) => {
+        workerLog('FAILED', `phase=context error="${e instanceof Error ? e.message : 'erreur'}" DURATION_MS=${Date.now() - t0}`);
+      })
       .finally(() => {
         g.__voltrixSyncContextRunning = false;
       });
