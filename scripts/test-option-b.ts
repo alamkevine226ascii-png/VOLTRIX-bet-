@@ -76,6 +76,11 @@ execSync('bunx prisma db push --skip-generate', {
 
 const { PrismaClient } = await import('@prisma/client');
 const db = new PrismaClient({ datasources: { db: { url: dbUrl } } });
+// ---------- §20bis (Task 44) : protection Prediction posée sur CE cluster AVANT tout test ----------
+// Les checks de persistance figée et d'idempotence re-POST (upsert update:{}) tournent
+// donc AVEC la garde PostgreSQL active (sondes de rejet en fin de fichier).
+const { FREEZE_STATEMENTS } = await import('./prediction-freeze-sql');
+for (const stmt of FREEZE_STATEMENTS) await db.$executeRawUnsafe(stmt);
 const { MODEL_VERSION } = await import('../src/lib/model-version');
 const {
   computeValueBetsCount,
@@ -606,6 +611,33 @@ try {
   console.log('  ℹ Audit Task 39 (16/09) attendait ≈ 32 avec jambes / 24 sans cotes sur le jour J — indicatif (données vivantes).');
 } catch (e) {
   console.warn(`  ⚠ validation croisée réseau ignorée : ${(e as Error).message}`);
+}
+
+// ---------- §20bis : protection Prediction ACTIVE pendant toute la suite ----------
+// Le trigger (scripts/apply-prediction-freeze.ts) a été posé juste après
+// `prisma db push` : tous les checks ci-dessus (persistance figée, re-POST
+// idempotent via upsert update:{}) ont donc tourné AVEC la garde PostgreSQL.
+// Sondes finales : les mutations interdites sont bien rejetées en situation.
+section('§20bis — sondes trigger Prediction (payload figé, DELETE interdit)');
+const trigs = await db.$queryRawUnsafe<Array<{ tgname: string }>>(
+  `SELECT tgname FROM pg_trigger WHERE tgrelid = '"Prediction"'::regclass AND tgname LIKE 'Prediction_freeze_%' AND NOT tgisinternal ORDER BY tgname;`
+);
+check('§20bis : 2 triggers Prediction_freeze_* actifs sur ce PG temporaire', trigs.length === 2, JSON.stringify(trigs.map((t) => t.tgname)));
+const probe = await db.prediction.create({
+  data: { matchId: 'fz-probe', league: 'test.1', leagueName: 'Test League', matchDate: new Date(Date.now() + 3600_000), homeTeam: 'Probe H', awayTeam: 'Probe A', market: '1X2', pick: '1 - Probe H', probability: 0.5, confidence: 3 },
+});
+check('§20bis : INSERT libre (création = seule voie d\'écriture du payload)', !!probe?.id);
+try {
+  await db.prediction.update({ where: { id: probe.id }, data: { probability: 0.99 } });
+  check('§20bis : mutation payload (probability) rejetée par PostgreSQL', false, 'acceptée — trigger absent ?');
+} catch (e: any) {
+  check('§20bis : mutation payload (probability) rejetée par PostgreSQL', String(e?.message ?? '').includes('VOLTRIX §20bis'), String(e?.message ?? '').slice(0, 140));
+}
+try {
+  await db.prediction.delete({ where: { id: probe.id } });
+  check('§20bis : DELETE rejeté par PostgreSQL', false, 'accepté — trigger absent ?');
+} catch (e: any) {
+  check('§20bis : DELETE rejeté par PostgreSQL', String(e?.message ?? '').includes('VOLTRIX §20bis'), String(e?.message ?? '').slice(0, 140));
 }
 
 // ---------- Nettoyage ----------

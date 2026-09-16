@@ -206,13 +206,18 @@ export async function POST(req: NextRequest) {
     // l'écriture historique : la persistance ne doit jamais bloquer l'affichage.
     // Task 22-a (plan V2→V3 étapes 1/2/14) : à la CRÉATION d'une ligne on fige
     // predictionTime (génération — DISTINCT du kickoff matchDate), modelVersion
-    // (MODEL_VERSION) et on stocke rawProbability/inputsDigest. Ces deux premiers
-    // champs sont IMMUABLES : aucun upsert/update ci-dessous ne les réécrit —
-    // un rafraîchissement de probability/odds fait bouger oddsCapturedAt, jamais
-    // predictionTime (lignes modelVersion NULL = pré-versionnement, jamais réétiquetées).
+    // (MODEL_VERSION) et on stocke rawProbability/inputsDigest.
+    // §20bis (Task 44) : le payload est FIGÉ DÈS LA PREMIÈRE PERSISTANCE — le
+    // bloc de rafraîchissement conditionnel (!resolved) est SUPPRIMÉ. Désormais
+    // upsert update:{} ne réécrit JAMAIS une ligne existante, et le trigger
+    // PostgreSQL Prediction_freeze_update (scripts/apply-prediction-freeze.ts)
+    // rejette au niveau DB toute mutation du payload (probability/odds/pick/…).
+    // Seule évolution légitime : la résolution one-way par /api/performance
+    // (resolved + result + closingOdds), autorisée par le trigger tant que la
+    // ligne n'est pas résolue. Conséquence assumée : la cote du ROI = cote à la
+    // première capture (cohérent avec les cotes figées de l'Option B/snapshots).
     // Option B : cette boucle historique ne voit que le sous-ensemble FALLBACK —
     // le chemin snapshot est persisté ci-dessus en valeurs figées.
-    let newColumnsSupported = true;
     const fallbackAnalyses = slots
       .filter((s): s is Extract<Slot, { kind: 'fallback' }> => s.kind === 'fallback')
       .map((s) => s.analysis);
@@ -222,13 +227,13 @@ export async function POST(req: NextRequest) {
       const picks = extractPicks(r);
       for (const pick of picks) {
         try {
-          // Task 19-a : upsert création + lecture, écriture CONDITIONNELLE —
-          // l'ancien upsert réécrivait probability/odds/pick même sur un prono
-          // déjà résolu (contrepied du commentaire) → la proba historique
-          // changeait a posteriori et faussait le calibrage /api/performance.
-          let row: { id: string; resolved: boolean };
+          // Task 19-a : upsert CRÉATION SEULE — update:{} ne réécrit JAMAIS une
+          // ligne existante (l'ancien upsert réécrivait probability/odds/pick même
+          // sur un prono déjà résolu → la proba historique changeait a posteriori
+          // et faussait le calibrage /api/performance). Garantie renforcée §20bis
+          // par le trigger Prediction_freeze_update côté PostgreSQL.
           try {
-            row = await db.prediction.upsert({
+            await db.prediction.upsert({
               where: { matchId_market: { matchId: r.matchId, market: pick.market } },
               create: {
                 matchId: r.matchId,
@@ -257,8 +262,7 @@ export async function POST(req: NextRequest) {
             // Repli : client Prisma sans les colonnes Task 21-a (rechargement serveur
             // requis) — recrée avec le shape historique, ou propage l'erreur d'origine
             // (contrainte unique, etc.) qui sera avalée par le catch englobant.
-            newColumnsSupported = false;
-            row = await db.prediction.upsert({
+            await db.prediction.upsert({
               where: { matchId_market: { matchId: r.matchId, market: pick.market } },
               create: {
                 matchId: r.matchId,
@@ -275,39 +279,6 @@ export async function POST(req: NextRequest) {
               },
               update: {},
             });
-          }
-          if (!row.resolved) {
-            try {
-              await db.prediction.update({
-                where: { id: row.id },
-                data: {
-                  probability: pick.probability,
-                  odds: pick.odds,
-                  confidence: pick.confidence,
-                  pick: pick.pick,
-                  pickedTeamId: pick.pickedTeamId,
-                  // `odds` est réécrit ici : l'horodatage suit la valeur réellement stockée
-                  oddsCapturedAt: new Date(),
-                  // Task 22-a : le digest/raw suivent la probabilité rafraîchie (même lot
-                  // d'entrées) — en revanche predictionTime et modelVersion ne figurent
-                  // PAS ici : immuables depuis la création (plan étapes 1 et 14).
-                  rawProbability: pick.rawProbability,
-                  inputsDigest: pick.inputsDigest,
-                },
-              });
-            } catch {
-              if (!newColumnsSupported) throw new Error('rethrow-original');
-              newColumnsSupported = false;
-              await db.prediction.update({
-                where: { id: row.id },
-                data: {
-                  probability: pick.probability,
-                  odds: pick.odds,
-                  confidence: pick.confidence,
-                  pick: pick.pick,
-                },
-              });
-            }
           }
         } catch {
           // la persistance ne doit jamais bloquer l'affichage des pronos

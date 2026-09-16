@@ -1292,3 +1292,23 @@ Stage Summary:
 - Recommandation : Option B (suppression du bloc refresh route.ts ~30 l. dans l'évolution dédiée) ; variante A zéro-modif documentée.
 - Limites documentées : TRUNCATE/DROP non bloqués (comme les 10 triggers §20 existants), corrections post-résolution nécessitent DISABLE TRIGGER manuel.
 - Artefacts de design dans la réponse (DDL + script de pose + tests) ; implémentation en attente du feu vert utilisateur.
+
+---
+Task ID: 44
+Agent: Super Z (agent principal)
+Task: GO Option B (§20bis) — implémentation protection DB Prediction : payload figé (19 colonnes), résolution one-way (resolved/result/closingOdds), DELETE interdit ; suppression du bloc refresh de /api/predictions (option B) ; moteur v2.1 et tables snapshot intouchés ; tests complets ; commit SANS push ni deploy.
+
+Work Log:
+- Reboot conteneur constaté : 2 auto-commits UUID bénins (worklog), node_modules/.tmp-pg/baseline perdus → bun install, prisma generate, PG 17.11 embarqué ré-extrait (deb.debian.org, dpkg-deb -x), baseline moteur régénérée depuis blobs git 039ee22 (5/5 OK).
+- scripts/prediction-freeze-sql.ts (NOUVEAU) : DDL partagé — fonction voltrix_prediction_freeze_guard() + 2 triggers idempotents (Prediction_freeze_update/delete), 19 colonnes figées IS DISTINCT FROM + porte one-way sur resolved/result/closingOdds tant que OLD.resolved=false, messages « VOLTRIX §20bis » nominatifs.
+- scripts/apply-prediction-freeze.ts (NOUVEAU) : runner idempotent mire apply-immutability.ts (vérifications pg_trigger/pg_proc : exactement 2 triggers + 1 fonction ; à exécuter sur Neon avec creds hors-repo).
+- src/app/api/predictions/route.ts (MODIFIÉ) : bloc refresh conditionnel (!resolved) SUPPRIMÉ (~33 l.) + flag mort newColumnsSupported/let row supprimés — la persistance fallback devient création-seule (upsert update:{}), alignée sur le chemin snapshot ; commentaires §20bis.
+- scripts/test-option-b.ts (MODIFIÉ) : trigger appliqué sur le PG temporaire APRÈS db push (toute la suite tourne AVEC la garde) + 4 sondes §20bis en fin (2 triggers présents, INSERT libre, rejet mutation, rejet DELETE) → 69 checks.
+- scripts/test-prediction-freeze.ts (NOUVEAU, 52 checks, PG 17 éphémère) : pose+idempotence (re-pose sans doublon), isolation (snapshots libres), créations full/legacy NULL, résolution légitime 2 shapes settleRow (WIN+closingOdds / LOSE repli / VOID), 19 rejets colonne-par-colonne + fingerprint bit-identique + message nominatif, dossier clos (4 rejets + no-op passe), DELETE×2, upsert réplique Option B (no-op + create ignoré + shape historique), computePerformanceStats exact (brier 0.18125, roi 1.1, byVersion), route réelle GET /api/performance 200 (0 ESPN).
+- DÉBOGAGE SQL (2 causes racines documentées dans le code) : (1) plpgsql exige END IF; même sur IF…THEN une-ligne → 19 gardes corrigées ; (2) champs camelCase des records NEW/OLD doivent être QUOTÉS (NEW."matchId") — identifiant nu rabattu en minuscules → record "new" has no field. Debug par psql + bissecte incrémentale sur PG jetable.
+- Vérifications : tsc --noEmit src/ = 0 erreur (erreurs scripts/ préexistantes, identiques au commit 23a706e — vérifié par stash) ; next build production OK (toutes routes) ; sha256sum -c baseline 5/5 OK ; scan secrets diff = 0 correspondance.
+
+Stage Summary:
+- §20bis opérationnel et prouvé : payload figé au niveau PostgreSQL, résolution one-way fonctionnelle (/api/performance), DELETE interdit, Option B compatible (no-op update:{} passe), idempotent.
+- Tests : 52/52 freeze · 69/69 option-b (trigger actif) · 31/31 perf-integrity · src/ tsc propre · build prod OK · moteur 5/5 byte-identique · 0 secret.
+- Commit local prêt ; push GitHub + deploy Vercel + application du trigger sur Neon (apply-prediction-freeze.ts) en attente de creds/GO utilisateur.
