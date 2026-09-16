@@ -1254,3 +1254,22 @@ Stage Summary:
 - Tests : 65/65 OK (dont anti-ESPN 0 fetch, idempotence, échec DB, 604 snapshots réels) ; build prod OK ; moteur byte-identique 5/5 (SHA256).
 - Accueil attendu en prod : 56/56 cartes servies depuis Neon sans ESPN ni moteur (1-3 s au lieu de 15-35 s), valueBetsCount exact sur les cartes à cotes figées.
 - Commit local prêt ; push en attente du PAT utilisateur (aucun credential dans la session — reboot).
+
+---
+Task ID: 42
+Agent: Super Z (agent principal)
+Task: Diagnostic pré-push ciblé table legacy Prediction (LECTURE SEULE — aucune modification) : inventaire exhaustif des create/update/upsert/delete, anciennes lignes modifiables ou non, périmètre des triggers d'immutabilité.
+
+Work Log:
+- Grep exhaustif repo (src/, scripts/, tests/, tout type de fichier, hors node_modules) de `.prediction*.`, `$queryRaw/$executeRaw`, `INSERT INTO/UPDATE SET/DELETE FROM "Prediction"` : inventaire complet obtenu.
+- Caractérisation contextuelle de chaque point d'écriture (route.ts 100-320, analyze.ts 356-450, performance/route.ts 30-104) : gardes applicatives identifiées (update:{}, if !row.resolved, filtre resolved:false + fenêtre J-10/J-3h).
+- Lecture scripts/apply-immutability.ts : TABLES = PredictionSnapshot, PredictionMarket, PredictionOutcome, PredictionComponent, ForecastSnapshot (10 triggers UPDATE+DELETE). Prediction legacy ABSENTE.
+- Preuves worklog Task 28 (application Neon : 10 triggers) + Task 28-audit-2 (vérification lecture seule Neon : exactement 10 triggers, ces 5 tables).
+- Re-vérification live impossible : .env local = DATABASE_URL SQLite uniquement (repli post-leak, aucune cred Neon en local par conception) — procédure de re-check documentée (pg_trigger, lecture seule).
+
+Stage Summary:
+- Écrivains prod de Prediction : (1) POST /api/predictions — upserts update:{} (snapshot L144/175 + fallback L231/261, ne réécrivent JAMAIS une ligne existante) + updates conditionnels L281/301 UNIQUEMENT si !resolved (probability/odds/confidence/pick/pickedTeamId/oddsCapturedAt/rawProbability/inputsDigest ; predictionTime/modelVersion jamais) ; (2) GET /api/performance → resolvePredictionsForDate (analyze.ts L430/436) : resolved/result/closingOdds sur resolved:false, matchDate [J-10, J-3h).
+- Anciennes lignes NON résolues : modifiables par 2 chemins applicatifs (par design). Lignes RÉSOLUES : figées applicativement (garde 19-a), PAS au niveau DB.
+- Jobs/workers/tick routes : ZÉRO écriture Prediction. Aucun SQL brut sur Prediction dans src/.
+- Triggers d'immutabilité : PredictionSnapshot/Market/Outcome/Component + ForecastSnapshot uniquement — Prediction legacy n'a AUCUN trigger (UPDATE/DELETE autorisés en base).
+- Aucune modification effectuée (diagnostic pur). Push Task 41 toujours en attente.
