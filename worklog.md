@@ -1273,3 +1273,22 @@ Stage Summary:
 - Jobs/workers/tick routes : ZÉRO écriture Prediction. Aucun SQL brut sur Prediction dans src/.
 - Triggers d'immutabilité : PredictionSnapshot/Market/Outcome/Component + ForecastSnapshot uniquement — Prediction legacy n'a AUCUN trigger (UPDATE/DELETE autorisés en base).
 - Aucune modification effectuée (diagnostic pur). Push Task 41 toujours en attente.
+
+---
+Task ID: 43
+Agent: Super Z (agent principal)
+Task: GO « sécuriser Prediction » SANS trigger d'immuabilité totale — design complet (aucune modification, aucun push) : analyse du rôle de Prediction dans /api/predictions et /api/performance, matrice champs immuables vs évolutifs, mécanisme DB proposé (trigger ciblé + porte à sens unique pour la résolution), DDL exact, compatibilité Option B//api/performance, plan de tests.
+
+Work Log:
+- Vérifications code complémentaires : fin du bloc refresh (route.ts L279-314, catch englobant avalant L312), select complet de /api/performance fetchPage (L98-136), computePerformanceStats (analyze.ts L573-603 : consomme probability=Brier+calibrage, odds=ROI, confidence=byConfidence, market/leagueName/modelVersion=cohortes, resolved/result=gating ; closingOdds JAMAIS relu = audit only).
+- Matrice de décision par champ établie (17 champs figés, 3 évolutifs one-way).
+- DDL rédigé : fonction voltrix_prediction_freeze_guard() + 2 triggers (Prediction_freeze_update, Prediction_freeze_delete), garde colonne-par-colonne IS DISTINCT FROM, résolution autorisée uniquement OLD.resolved=false, ligne résolue = dossier clos, DELETE interdit.
+- Compatibilité vérifiée opération par opération : upserts create-only Option B (INSERT/no-op OK), refresh fallback (rejeté → 2 options A zéro-modif / B suppression bloc recommandée), settleRow (autorisé), re-résolution (rejetée), scripts (DB temporaires), db push additif, SQLite local.
+- Plan de tests rédigé : scripts/test-prediction-freeze.ts (~30 checks, PG temporaire, mire test-prediction-immutability.ts) + re-run test-option-b.ts avec trigger appliqué + suite non-régression.
+- Rien modifié, rien poussé (conformément à l'instruction).
+
+Stage Summary:
+- Design livré : 17 champs figés (identité, descriptif, payload pronostic complet incl. odds/oddsCapturedAt/confidence) + 3 champs one-way (resolved/result/closingOdds) autorisés uniquement pendant resolved=false ; DELETE toujours interdit.
+- Recommandation : Option B (suppression du bloc refresh route.ts ~30 l. dans l'évolution dédiée) ; variante A zéro-modif documentée.
+- Limites documentées : TRUNCATE/DROP non bloqués (comme les 10 triggers §20 existants), corrections post-résolution nécessitent DISABLE TRIGGER manuel.
+- Artefacts de design dans la réponse (DDL + script de pose + tests) ; implémentation en attente du feu vert utilisateur.
