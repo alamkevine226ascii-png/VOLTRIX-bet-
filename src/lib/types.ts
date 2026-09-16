@@ -44,7 +44,9 @@ export interface QuickPred {
   leagueName: string;
   status: string;
   probs: { home: number; draw: number; away: number };
-  lambda: { home: number; away: number; total: number };
+  // Option B : non lu par l'UI (carte/combiné/cache — audit Task 40) et non
+  // stocké dans ForecastSnapshot → optionnel (chemin moteur le fournit, chemin snapshot l'omet).
+  lambda?: { home: number; away: number; total: number };
   confidence: number;
   confidenceLabel: string;
   recommendedBets: Array<{ market: string; pick: string; prob: number; note: string }>;

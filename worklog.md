@@ -1233,3 +1233,24 @@ Work Log:
 Stage Summary:
 - Commit propre local = exactement les mods 1-3 + worklog (6 fichiers) ; moteur v2.1 prouvé byte-identique (blobs git) ; 0 secret ; tsc src/ = 0 erreur ; gardes VERCEL ×2 ; routes worker 403.
 - Push en attente du PAT utilisateur.
+
+---
+Task ID: 41
+Agent: Super Z (agent principal)
+Task: Implémentation Option B (GO utilisateur) : ForecastSnapshot → /api/predictions → MatchCard, fallback analyzeMatch si snapshot absent. Réalignement repo sur origin/main, moteur v2.1 intouché, indicateur de diagnostic, tests anti-ESPN, diff + preuves avant push.
+
+Work Log:
+- Step 0 realign : remote origin ré-ajouté (perdu au reboot), `git fetch origin` + `git reset --hard origin/main` → HEAD = 039ee22 ; gardes Task 35/36 vérifiées présentes (forecast/job.ts:378) ; baseline SHA256 des 5 fichiers moteur sauvegardée (scripts/engine-baseline-39ee22.sha).
+- Environnement reconstruit après reboot : bun install (832 paquets), prisma generate, PostgreSQL 17.11 embarqué extrait localement (.tmp-pg/pg17, Debian .deb sans root — provider schéma = postgresql, SQLite impossible) pour les tests d'intégration.
+- src/lib/forecast/snapshot-serve.ts (NOUVEAU, 473 l., pur — n'importe que @/lib/db + model-version + types) : fetchValidSnapshots (2 SELECT, règle « dernière version publiée » = mire week.ts:88 + validation défensive modelVersion/champs clés), computeValueBetsCount (mire EXACTE buildValueBets prediction.ts:502-539 — jambes 1X2 probs finales, O/U à la ligne marché en probs BRUTES pOver25Raw/PredictionOutcome.rawProbability, edge=p×cote−1>0.02, tri desc, plafond 4, BTTS jamais, cotes FIGÉES), buildQuickPredFromSnapshot (shape QuickPred strict : recommendedBets mire prediction.ts:839-870 avec notes 1X2/DC reconstruites à l'identique, overUnder 1.5/2.5/3.5 depuis PredictionSnapshot calibré + repli 2.5, ouOdds = cotes figées, topScores [], lambda omis), buildFrozenPicks (mire extractPicks analyze.ts:272-341 sur valeurs figées), confidenceLabelOf (mire prediction.ts:796), capture fetch refcountée (espnCalls/outboundCalls par hôte, sans toucher au moteur).
+- src/app/api/predictions/route.ts (MODIFIÉ) : pré-étape snapshot (try/catch global → échec DB = tout le lot en chemin moteur), branchage par match, analyzeBatch appelé avec le SEUL sous-ensemble sans snapshot (0 HTTP si vide), persistance figée snapshot (upsert create + update:{} — predictionTime/oddsCapturedAt du snapshot, kickoff>now, idempotent, repli shape historique), boucle persistance moteur HISTORIQUE conservée verbatim pour le fallback, réponse dans l'ORDRE de la demande + `meta` additif (source snapshot/fallback/mixed/empty, counts, espnCalls, outboundCalls, snapshotLookupOk, perMatch).
+- src/lib/types.ts (MODIFIÉ, 1 ligne) : QuickPred.lambda → optionnel (non lu par carte/combo/cache — audit Task 40) ; chemin moteur le fournit toujours.
+- scripts/test-option-b.ts (NOUVEAU, 619 l., convention bun scripts/test-*) : 1) unitaires computeValueBetsCount (11 cas, dont parité arithmétique JS 0.3×3.4−1=0.0200…018 INCLUS comme buildValueBets), confidenceLabelOf (6), mapping QuickPred + FrozenPicks (12) ; 2) intégration sur VRAIE route + PG 17 éphémère : lot mixte 6 matchs (valide / sans / non publié / mauvaise version / kickoff passé) → ordre préservé, sources exactes, persistance figée colonne par colonne, idempotence re-POST (0 réécriture), ANTI-ESPN (espion global.fetch + meta : 0 appel sortant sur lot 100 % couvert ; CONTRASTE espnCalls>0 sur fallback cache froid), échec DB réel (DROP TABLE) → repli intégral ; 3) validation croisée GET lecture seule voltrixbet.vercel.app : computeValueBetsCount = recalcul indépendant sur 604 snapshots réels (285 avec jambes, 288 sans cotes → 0).
+- Correctif attrapé par le test : route.ts `bundles!.get` → `bundles?.get` (échec DB de lecture snapshot provoquait un TypeError au lieu du repli moteur).
+- Vérifications pré-push : build production COMPLET sur PG éphémère (prisma generate + migrate deploy + next build OK, toutes routes) ; tsc --noEmit src/ = 0 erreur ; sha256sum -c baseline moteur = 5/5 OK ; scan secrets diff = 0 correspondance ; patch complet 1612 l. sauvé (download/diff-option-b-complet.patch).
+
+Stage Summary:
+- Option B implémentée : 1 nouveau module pur + 1 route modifiée + 1 ligne types + 1 suite de tests ; 0 fichier moteur, 0 migration, 0 page UI.
+- Tests : 65/65 OK (dont anti-ESPN 0 fetch, idempotence, échec DB, 604 snapshots réels) ; build prod OK ; moteur byte-identique 5/5 (SHA256).
+- Accueil attendu en prod : 56/56 cartes servies depuis Neon sans ESPN ni moteur (1-3 s au lieu de 15-35 s), valueBetsCount exact sur les cartes à cotes figées.
+- Commit local prêt ; push en attente du PAT utilisateur (aucun credential dans la session — reboot).
