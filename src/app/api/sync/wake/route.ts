@@ -17,18 +17,18 @@
 //   - CHAÎNE SERVEUR (§26-bis) : quand une tranche se termine en
 //     « partial », la route programme la suite via after() — le passage
 //     tranche N → tranche N+1 est piloté PAR LE SERVEUR, dans la MÊME
-//     invocation (mur SYNC_CHAIN_MAX_WALL_MS=240 s < maxDuration 300 s ;
-//     la synchro complète mesurée à 215,7 s tient dans une invocation).
-//     L'utilisateur peut fermer son navigateur dès la première réponse :
-//     la chaîne continue sans lui. Le navigateur (boucle de secours du
-//     bouton) et le cron (GET ci-dessous) ne sont que des filets de
-//     sécurité additionnels.
-//   - GET = point d'entrée Vercel Cron (vercel.json, toutes les 5 min) :
-//     balayage idempotent — reprend tout job partial/failed/orphelin
-//     SANS AUCUNE intervention utilisateur ; no-op (0 ESPN) si les
-//     données sont fraîches et aucun job en attente. Sur un plan Vercel
-//     ne permettant pas la granularité 5 min, ce GET reste appelable par
-//     tout planificateur externe (uptime monitor, worker, etc.).
+//     invocation (mur SYNC_CHAIN_MAX_WALL_MS=110 s avec vérification
+//     anticipée < maxDuration 120 s — plafond du plan). La complétion
+//     s'étale sur 2-3 invocations enchaînées : l'utilisateur peut fermer
+//     son navigateur dès la première réponse — le cron (GET ci-dessous)
+//     et le prochain wake reprennent le curseur sans lui. La boucle de
+//     secours du bouton frontend reste un filet additionnel.
+//   - GET = point d'entrée Vercel Cron (vercel.json, quotidien — limite
+//     du plan) : balayage idempotent — reprend tout job
+//     partial/failed/orphelin SANS AUCUNE intervention utilisateur ;
+//     no-op (0 ESPN) si les données sont fraîches et aucun job en
+//     attente. Ce GET reste appelable par tout planificateur externe
+//     (uptime monitor, worker, etc.) pour une reprise plus fréquente.
 //
 // Contrairement à /api/sync/tick (403 sous Vercel — rôle exclusif du
 // worker permanent), cette route EST le mécanisme de synchronisation
@@ -44,14 +44,18 @@ export const dynamic = 'force-dynamic';
 // Budget interne d'une tranche : 45 s par défaut (SYNC_WAKE_BUDGET_MS) —
 // très en dessous de cette limite plateforme, la progression étant
 // sauvegardée dans Neon à chaque lot, et la chaîne serveur (after())
-// enchaînant les tranches suivantes dans la même invocation (mur 240 s).
-// 300 s = maximum des fonctions serverless Fluid.
-export const maxDuration = 300;
+// enchaînant les tranches suivantes dans la même invocation (mur 110 s,
+// vérification anticipée avec marge 60 s).
+// 120 s = plafond des fonctions serverless du plan Vercel actuel (les
+// déploiements échouent au-delà — mesuré 2026-09-17) ; sur un plan
+// supérieur, remonter à 300 + SYNC_CHAIN_MAX_WALL_MS=240000 restaure
+// la sync complète en UNE invocation.
+export const maxDuration = 120;
 
 /**
  * Exécute UNE tranche puis, si elle reste du travail, programme la
  * continuation serveur. t0 est capturé AVANT la tranche : le mur de la
- * chaîne (240 s) couvre l'invocation entière, pas seulement la suite.
+ * chaîne (110 s) couvre l'invocation entière, pas seulement la suite.
  */
 async function wakeOnceAndScheduleChain(triggerSource: string): Promise<WakeResult> {
   const t0 = Date.now();

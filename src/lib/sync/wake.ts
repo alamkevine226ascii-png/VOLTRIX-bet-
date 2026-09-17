@@ -52,7 +52,7 @@ export const SYNC_STALE_MS = 10 * 60_000; // 10 min
 export const LIVE_STALE_MS = 2 * 60_000; // 2 min
 /** Verrou orphelin : au-delà, une invocation RUNNING est considérée tuée
  *  (fonction Vercel terminée de force) et peut être reprise. Doit rester
- *  > maxDuration de la route (300 s) avec marge. */
+ *  > maxDuration de la route (120 s) avec marge. */
 export const STALE_LOCK_MS = 6 * 60_000; // 6 min
 /** Cadence du contexte (standings/blessures/météo) — miroir sync-job.ts. */
 const CONTEXT_INTERVAL_MS = 6 * 3_600_000; // 6 h
@@ -68,7 +68,7 @@ const MIN_REMAINING_MS = 6_000;
 const TEAM_HISTORY_MIN_MS = 12_000;
 /** Budget minimal pour démarrer la phase contexte (monolithique ≈ 15-60 s). */
 const CONTEXT_MIN_MS = 25_000;
-/** Budget par invocation — sous la limite Vercel (maxDuration 300 s) pour
+/** Budget par invocation — sous la limite Vercel (maxDuration 120 s) pour
  *  garantir une réponse propre + une progression sauvegardée. Surchargable. */
 const DEFAULT_BUDGET_MS = 45_000;
 
@@ -88,16 +88,25 @@ function getChainMaxLoops(): number {
   return 8;
 }
 /** §26-bis — Mur temporel de la chaîne serveur, compté depuis le DÉBUT de
- *  l'invocation. Doit rester < maxDuration de la route (300 s) avec marge :
- *  la synchronisation complète mesurée (215,7 s) tient DANS UNE SEULE
- *  invocation (45 s + 4×45 s ≈ 225 s ≤ 240 s) — sans jamais dépendre du
- *  navigateur. Au-delà, l'invocation se termine proprement en partial et la
- *  reprise est assurée par le cron (GET) / le prochain wake. */
+ *  l'invocation. Doit rester < maxDuration de la route (120 s — plafond du
+ *  plan Vercel actuel) avec marge : chaque tranche peut déborder de sa
+ *  budget de 45 s (phase contexte monolithique ≈ 15-60 s), la boucle
+ *  n'amorce donc une nouvelle tranche que si elapsed + budget + marge 60 s
+ *  tient sous le mur → finalisation TOUJOURS propre (partial + verrou
+ *  libéré + curseur conservé), jamais de kill plateforme. Sous ce plafond,
+ *  la complétion complète s'étale sur 2-3 invocations enchaînées — la
+ *  reprise est assurée par le cron (GET) / la boucle du bouton / le
+ *  prochain wake, SANS perte de progression (curseur Neon).
+ *  Sur un plan le permettant, remonter le mur via SYNC_CHAIN_MAX_WALL_MS
+ *  (ex. 240000) et maxDuration (300) restaure la sync complète en UNE
+ *  invocation. */
 function getChainMaxWallMs(): number {
   const raw = parseInt(process.env.SYNC_CHAIN_MAX_WALL_MS ?? '', 10);
   if (Number.isFinite(raw) && raw >= 30_000 && raw <= 900_000) return raw;
-  return 240_000;
+  return 110_000;
 }
+/** Marge de dépassement d'une tranche (phase contexte monolithique). */
+const CHAIN_TRANCHE_OVERSHOOT_MS = 60_000;
 
 // ---------- Progression (curseur de reprise conservé dans Neon) ----------
 
@@ -554,7 +563,12 @@ export async function runWakeChainUntilDone(startedAtMs: number): Promise<WakeCh
   const maxWall = getChainMaxWallMs();
   let loops = 0;
   for (;;) {
-    if (loops >= maxLoops || Date.now() - startedAtMs > maxWall) {
+    const elapsed = Date.now() - startedAtMs;
+    // Vérification ANTICIPÉE : n'amorce une nouvelle tranche que si elapsed
+    // + budget + marge de dépassement (phases monolithiques) tient sous le
+    // mur → l'invocation se termine toujours PROPREMENT (partial finalisé,
+    // verrou libéré) bien avant le kill plateforme (maxDuration).
+    if (loops >= maxLoops || elapsed + getBudgetMs() + CHAIN_TRANCHE_OVERSHOOT_MS > maxWall) {
       syncLog('RUNNING', `phase=chain-stop loops=${loops} maxLoops=${maxLoops} (budget invocation atteint — curseur conservé, reprise par cron GET / prochain wake)`);
       return { loops, ended: 'budget' };
     }
