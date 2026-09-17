@@ -1437,6 +1437,28 @@ Stage Summary:
 ---
 Task ID: 49
 Agent: Super Z (agent principal)
+Task: GO définitif final — push de tous les commits nécessaires (main == état validé), vérifications complètes GitHub/Vercel/Wake/PWA/secrets/moteur, AUCUNE modification fonctionnelle, rapport final.
+
+Work Log:
+- État constaté : HEAD local 7aee03a == origin/main 7aee03a (git ls-remote) → main DÉJÀ exactement synchronisée avec l'état validé (Task 48) ; AUCUN push ni commit supplémentaire nécessaire ni effectué (SHA validé préservé).
+- 25 fichiers marqués « modifiés » = changements de mode 100644→100755 uniquement (reboot conteneur, 0 ligne de contenu) → git restore → arbre suivi propre, identique à l'état validé.
+- Moteur v2.1 : sha256sum -c scripts/engine-baseline-39ee22.sha = 5/5 OK (prediction/analyze/espn/market-odds/model-version byte-identiques).
+- Secrets : scan patterns sur TOUT l'historique Git (rev-list --all) → npg_ 0, github_pat_ 0, ghp_ 0, postgres://user:pass@ 0 ; .zscripts/.env.neon jamais suivi (gitignore:78, 0 fichier de credentials suivi sous .zscripts — les 8 fichiers suivis sont les scripts d'outillage sandbox) ; scan valeurs réelles effectué au moment du push (Task 48, worklog). scripts/final-secret-scan.sh créé (non suivi).
+- ANOMALIE ENVIRONNEMENT : le reboot conteneur a PERDU les fichiers hors Git .zscripts/.env.neon et backups/ (token GH + creds Neon) → API GitHub rate-limitée anonymement, aucun push authentifié possible (non requis) ; à re-fournir par l'utilisateur pour toute future opération authentifiée.
+- Vercel : statut API indisponible (rate-limit, token perdu) — preuves de déploiement success par contenu : home 200, /api/sync/state 200 JSON complet, manifest VOLTRIX/standalone/4 icônes/theme #0a0a0c, sw.js CACHE_NAME voltrix-v5, icônes 192/512 → 200 image/png, HTML avec link manifest + apple-web-app-title VOLTRIX ; déploiements #3 (c0dec17) et #4 (cade33e) SUCCESS documentés T48 ; 7aee03a = worklog uniquement.
+- vercel.json (HEAD) : cron /api/sync/wake « 0 5 * * * » (conforme plan Hobby — déploiements passés avec cette config).
+- WAKE ON DEMAND PROUVÉ EN PROD : 1er GET /api/sync/wake → started:true, runId cmu5d5zmr0000l204lz9o6ev8, partial, 2 963 ESPN en 36,6 s (LIVE 3/3 + cycle 121/121, 232 cotes), verrou libéré, curseur persisté (teamHistory/context restants) ; 2e GET → même runId, resumed:true, status:SUCCESS, 8,1 s ; état final : running:null, resumable:null, lastSyncAt 2026-09-17T10:08:10Z, stale:false, contextStale:false, suggestedAction:none. Cycle §26 complet (tranche→curseur→reprise→success→verrou libéré) validé sur la production réelle.
+- PWA PROD au navigateur réel (agent-browser, 390×844) : app chargée (titre VOLTRIX bet), 0 erreur page, SW enregistré + ACTIF (scope /, page contrôlée), manifest détecté, onglet Profil → carte install présente, clic → instructions adaptées plateforme (branche « SUR ORDINATEUR » en Chromium headless ; branche native beforeinstallprompt « Installer VOLTRIX » vérifiée en T48 sur cette même prod) ; screenshot download/prod-pwa-profil.png.
+- Worklog présent ajouté en LOCAL sans commit (préserver le SHA validé des deux côtés ; plus de token de push disponible) — sera inclus dans un futur commit au prochain GO.
+
+Stage Summary:
+- MAIN EXACTEMENT SYNCHRONISÉE : local == GitHub == 7aee03a83f16b6f8db8f059faef59e03445df0c5 (état validé, zéro diff contenu). Production voltrixbet.vercel.app sert ce build validé : toutes sondes 200, Wake on Demand opérationnel (succès réel 2 tranches), PWA complète (manifest VOLTRIX, SW voltrix-v5 actif, bouton install fonctionnel), secrets 0 sur tout l'historique, moteur v2.1 byte-identique 5/5.
+- Aucune modification fonctionnelle effectuée : git restore des modes parasites uniquement + artefacts de vérification non suivis (scripts/final-secret-scan.sh, screenshot, worklog local).
+- Points ouverts pour l'utilisateur : re-fournir GH_TOKEN + DATABASE_URL Neon (.zscripts/.env.neon perdu au reboot) pour toute future opération authentifiée (push, API GitHub, accès Neon direct) ; worklog T49 à committer au prochain GO.
+
+---
+Task ID: 49
+Agent: Super Z (agent principal)
 Task: GO 4B — implémentation du pipeline ForecastSnapshot « Forecast Wake on Demand » (patron §26 Wake : détection post-sync → moteur v2.1 → snapshot), verrou runningLock sur ForecastJobRun, tranches/reprise/chaîne after(), cron supplémentaire. Zéro modification moteur v2.1, zéro historique supprimé, snapshots immuables, migration additive idempotente. Tests locaux PostgreSQL 17 isolé AVANT toute application Neon (attente GO utilisateur pour migration Neon / commit / push / deploy).
 
 Work Log:
