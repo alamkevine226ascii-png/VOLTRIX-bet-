@@ -9,7 +9,7 @@
 // tous les caches antérieurs → plus jamais de vieille UI collée.
 // ============================================================
 
-const CACHE_NAME = 'voltrix-v4'; // Task 28 : base Neon PostgreSQL
+const CACHE_NAME = 'voltrix-v5'; // Task 48 : bouton installation PWA (Profil)
 const APP_SHELL = [
   '/',
   '/manifest.webmanifest',

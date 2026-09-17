@@ -1,6 +1,6 @@
 {
-  "name": "VOLTRIX bet — Pronostics Football",
-  "short_name": "VOLTRIX bet",
+  "name": "VOLTRIX",
+  "short_name": "VOLTRIX",
   "description": "Pronostics football intelligents : Poisson, Elo, forme, H2H et value bets sur tous les matchs du jour.",
   "start_url": "/",
   "display": "standalone",

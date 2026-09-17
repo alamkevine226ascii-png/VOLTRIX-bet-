@@ -19,12 +19,12 @@ export const metadata: Metadata = {
   title: "VOLTRIX bet — Pronostics Football",
   description:
     "Pronostics football intelligents générés par un moteur mathématique : Poisson, Elo, forme récente, H2H, météo et détection de value bets sur tous les matchs du jour.",
-  applicationName: "VOLTRIX bet",
+  applicationName: "VOLTRIX",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "VOLTRIX bet",
+    title: "VOLTRIX",
   },
   icons: {
     icon: [

@@ -27,6 +27,7 @@ import type { LightMatch, MatchesResponse, QuickPred } from '@/lib/types';
 import { MatchCard, MatchCardSkeleton } from '@/components/voltrix/match-card';
 import { VoltrixTabBar, type TabKey } from '@/components/voltrix/tab-bar';
 import { VOLTRIX_SYNC_DONE_EVENT } from '@/components/voltrix/sync-wake-button';
+import { PwaInstallButton } from '@/components/voltrix/pwa-install-button';
 import { loadCachedPreds, saveCachedPreds } from '@/lib/preds-cache';
 import { cn } from '@/lib/utils';
 
@@ -663,6 +664,9 @@ function ProfileTab({ catalogueSize }: { catalogueSize?: number }) {
         </div>
         <span className='text-[#e8ff00]'>→</span>
       </Link>
+
+      {/* Installation mobile (PWA) — même app, même URL, mode standalone */}
+      <PwaInstallButton />
 
       <div className='rounded-3xl border border-[#e8ff00]/20 bg-[#e8ff00]/[0.05] p-5 volt-glow'>
         <div className='flex items-center gap-2'>
