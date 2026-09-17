@@ -1,0 +1,38 @@
+{
+  "Competition": {
+    "count": 3,
+    "md5": "e6a8324a3c53c86bde0f2c95de8d9728"
+  },
+  "Team": {
+    "count": 12,
+    "md5": "32c6f20f692eab0c1b2b00197acd78d6"
+  },
+  "Match": {
+    "count": 20,
+    "md5": "481e21888f37f1188676df31db0dc741"
+  },
+  "MatchResult": {
+    "count": 10,
+    "md5": "9efe4a7b6ffda718fa05ca39738dd326"
+  },
+  "OddsSnapshot": {
+    "count": 30,
+    "md5": "d76d3f03e5e597461ea3f08e28b8d4be"
+  },
+  "PredictionSnapshot": {
+    "count": 2,
+    "md5": "e5c8c1ace42124204f8df5084657fb22"
+  },
+  "PredictionMarket": {
+    "count": 6,
+    "md5": "6a3c9c0881ac379addf30c1a188e6c4b"
+  },
+  "PredictionOutcome": {
+    "count": 12,
+    "md5": "bd791be0157bddfd5f078e8d5f9cc48f"
+  },
+  "SyncJobRun": {
+    "count": 8,
+    "md5": "708970f1b3de94ca05e08bd2a55f1a0a"
+  }
+}

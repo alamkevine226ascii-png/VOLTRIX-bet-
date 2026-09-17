@@ -438,7 +438,20 @@ section('S7. Match LIVE → priorité LIVE (cycle inutile sauté)');
     check('LIVE : peu d appels ESPN (live seulement, pas 121 ligues)', (r.result?.espnCalls ?? 999) <= 20, `espnCalls=${r.result?.espnCalls}`);
     check('LIVE : aucune donnée supprimée', (await db.match.count()) >= countBefore);
     const m = await db.match.findFirst({ where: { espnEventId: picked.evId } });
-    check('LIVE : ligne match synchronisée (statut canonique ESPN)', !!m && ['LIVE', 'HALFTIME', 'FINAL'].includes(m.status), `status=${m?.status}`);
+    // NOTE Task 46 : l'assertion compare désormais le statut de la ligne à la
+    // VÉRITÉ ESPN ACTUELLE pour cet événement (§4 sync canonique) — et non plus
+    // à un statut live supposé. Un événement « du jour » repéré par le picker
+    // peut ne pas avoir commencé (state='pre') : la ligne DOIT alors être
+    // SCHEDULED — c'est le comportement correct (jamais d'état inventé).
+    const boardAfter = await espnMod.fetchScoreboard(picked.league, today, 'sync');
+    const evAfter = boardAfter?.events?.find((e: { id: string | number }) => String(e.id) === String(picked.evId));
+    const espnState = (evAfter as { status?: { type?: { state?: string } } } | undefined)?.status?.type?.state;
+    const expected = espnState === 'in' ? ['LIVE', 'HALFTIME'] : espnState === 'post' ? ['FINAL'] : ['SCHEDULED', 'PRE'];
+    check(
+      'LIVE : ligne match synchronisée (statut canonique = vérité ESPN actuelle)',
+      !!m && expected.includes(m.status),
+      `status=${m?.status} espnState=${espnState ?? '?'}`
+    );
     const st2 = await getSyncState();
     check('LIVE : liveStale=false après la phase live', st2.liveStale === false);
   }

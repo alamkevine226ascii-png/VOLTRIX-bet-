@@ -54,24 +54,41 @@ async function main() {
 
   // Preuve du verrou : un 2e INSERT concurrent avec runningLock='RUNNING'
   // doit être rejeté par PostgreSQL lui-même.
-  const probe = await db.$transaction(async (tx) => {
-    const a = await tx.syncJobRun.create({
-      data: { phase: 'probe', status: 'running', triggerSource: 'manual', runningLock: 'RUNNING', startedAt: new Date() },
-      select: { id: true },
-    });
-    let secondRejected = false;
-    try {
+  // NOTE Task 46 — la 1re version nettoyait la sonde par tx.delete(...) APRÈS
+  // le rejet attendu : or en PostgreSQL, une transaction où une requête a
+  // échoué est ABORTED (25P02) — toute requête suivante est ignorée et le
+  // delete plantait le script. Correctif : la transaction est toujours
+  // ROLLBACK-ée via une exception sentinelle (aucune ligne sonde ne peut
+  // subsister, aucun verrou orphelin possible, même en cas de crash).
+  class ProbeResult extends Error {
+    constructor(public secondRejected: boolean) {
+      super('PROBE_EXPECTED');
+    }
+  }
+  let probe: boolean;
+  try {
+    await db.$transaction(async (tx) => {
       await tx.syncJobRun.create({
         data: { phase: 'probe', status: 'running', triggerSource: 'manual', runningLock: 'RUNNING', startedAt: new Date() },
       });
-    } catch {
-      secondRejected = true;
-    }
-    await tx.syncJobRun.delete({ where: { id: a.id } });
-    return secondRejected;
-  });
+      let secondRejected = true;
+      try {
+        await tx.syncJobRun.create({
+          data: { phase: 'probe', status: 'running', triggerSource: 'manual', runningLock: 'RUNNING', startedAt: new Date() },
+        });
+        secondRejected = false; // l'index n'a PAS rejeté → verrou inopérant
+      } catch {
+        secondRejected = true; // rejet attendu (P2002 — index unique partiel)
+      }
+      throw new ProbeResult(secondRejected); // force le ROLLBACK dans tous les cas
+    });
+    probe = false; // inatteignable — ProbeResult est toujours levée
+  } catch (e) {
+    if (e instanceof ProbeResult) probe = e.secondRejected;
+    else throw e;
+  }
   if (!probe) throw new Error('le verrou unique n’a PAS rejeté un 2e job RUNNING — index inopérant');
-  console.log('  ✓ preuve verrou : 2e job RUNNING rejeté par PostgreSQL (sonde nettoyée)');
+  console.log('  ✓ preuve verrou : 2e job RUNNING rejeté par PostgreSQL (sonde ROLLBACK-ée — zéro résidu)');
 
   // Rappel de l'état des protections existantes (§20/§20bis — non modifiées ici).
   const triggers = await db.$queryRawUnsafe<Array<{ count: bigint }>>(
