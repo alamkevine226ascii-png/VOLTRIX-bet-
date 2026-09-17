@@ -192,9 +192,16 @@ model ForecastJobRun {
   id         String    @id @default(cuid())
   startedAt  DateTime
   finishedAt DateTime?
-  phase      String // "scan" | "predict" | "results" | "evaluate" | "done" | "error"
+  phase      String // "scan" | "predict" | "results" | "evaluate" | "done" | "error" | "forecast-wake"
   stats      String? // JSON {scanned, newPredictions, resultsUpdated, evaluated, …}
   error      String?
+  // --- Task 49 (GO 4B) : état + verrou anti-concurrence sur ForecastJobRun
+  // (miroir exact de SyncJobRun §26 — Task 45). Colonnes NULLABLES →
+  // rétrocompatibles avec les 101 lignes worker historiques (NULL).
+  status        String? // "running" | "success" | "partial" | "failed" (NULL = lignes worker historiques)
+  triggerSource String? // "forecast-wake" | "post-sync" | "cron" | "manual" | "test" (NULL = worker historique)
+  runningLock   String? // "RUNNING" tant que le job est actif — index unique partiel (migration) → 1 SEUL job actif en base
+  progress      String? // JSON {processed:[matchId], stats, espnCalls, …} — curseur de reprise (budget/timeout)
 }
 
 // ============================================================

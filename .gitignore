@@ -77,3 +77,7 @@ scripts/suivi-preview/
 # Secret Neon (Task 28) — jamais dans Git (le .env racine est déjà couvert par .env*)
 .zscripts/.env.neon
 backups/.env.neon.copy
+
+# PostgreSQL 17 embarqué (tests locaux — scripts/ensure-pg17.sh) + résidus de run
+.tmp-pg/
+.tmp/

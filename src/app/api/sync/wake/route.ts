@@ -34,11 +34,22 @@
 // worker permanent), cette route EST le mécanisme de synchronisation
 // sous Vercel. Le worker actuel reste actif (transition douce) : le
 // verrou et l'ingestion idempotente rendent la coexistence inoffensive.
+//
+//   - Task 49 (GO 4B) — DÉCLENCHEMENT POST-SYNC : quand une sync
+//     RÉUSSIT, la génération des ForecastSnapshot est déclenchée à
+//     son tour (détection des matchs sans snapshot → moteur v2.1 →
+//     snapshot, pilier de l'architecture validée). Chaîne murée par
+//     le MÊME t0 que la sync : elle ne s'amorce que si le budget
+//     d'invocation restant le permet — sinon le cron forecast
+//     (05:30 UTC) / le prochain déclenchement prennent le relais.
+//     Modification STRICTEMENT MINIMALE (2 points d'insertion) : la
+//     logique de synchronisation elle-même est INCHANGÉE.
 // ============================================================
 
 import { after } from 'next/server';
 import { NextResponse } from 'next/server';
 import { runWake, runWakeChainUntilDone, type WakeResult } from '@/lib/sync/wake';
+import { runForecastWakeChainUntilDone } from '@/lib/forecast/wake';
 
 export const dynamic = 'force-dynamic';
 // Budget interne d'une tranche : 45 s par défaut (SYNC_WAKE_BUDGET_MS) —
@@ -62,6 +73,9 @@ async function wakeOnceAndScheduleChain(triggerSource: string): Promise<WakeResu
   const result = await runWake({ triggerSource });
   if (result.started && result.status === 'partial') {
     scheduleServerChain(t0);
+  } else if (result.started && result.status === 'success') {
+    // Task 49 (GO 4B) : sync terminée dans CETTE invocation → Forecast Wake.
+    schedulePostSyncForecastWake(t0);
   }
   return result;
 }
@@ -75,6 +89,17 @@ function scheduleServerChain(t0: number): void {
         console.log(
           `[VOLTRIX SYNC] SOURCE=WAKE STATUS=CHAIN_DONE loops=${chain.loops} ended=${chain.ended}${chain.runId ? ` runId=${chain.runId}` : ''}`
         );
+        // Task 49 (GO 4B) : la CHAÎNE sync vient de finir en succès →
+        // détection post-sync (chaîne forecast murée par le même t0 —
+        // elle ne s'amorce que si le budget d'invocation restant le
+        // permet, sinon le cron forecast / prochain déclenchement
+        // prennent le relais sans perte).
+        if (chain.ended === 'success') {
+          const fc = await runForecastWakeChainUntilDone(t0);
+          console.log(
+            `[VOLTRIX FORECAST] SOURCE=POST-SYNC STATUS=CHAIN_DONE loops=${fc.loops} ended=${fc.ended}${fc.runId ? ` runId=${fc.runId}` : ''}`
+          );
+        }
       } catch (e) {
         console.error(
           `[VOLTRIX SYNC] SOURCE=WAKE STATUS=CHAIN_ERROR error="${e instanceof Error ? e.message : String(e)}" (curseur conservé dans Neon — reprise par cron GET / prochain wake)`
@@ -86,6 +111,28 @@ function scheduleServerChain(t0: number): void {
     // directs en test) — la continuité reste assurée par la boucle de
     // secours du frontend et/ou le cron GET. Aucune perte de curseur.
     console.warn('[VOLTRIX SYNC] SOURCE=WAKE STATUS=CHAIN_UNAVAILABLE (after() hors contexte — fallback frontend/cron actif)');
+  }
+}
+
+/** Task 49 (GO 4B) — déclenchement post-sync de la génération ForecastSnapshot.
+ *  La chaîne forecast vérifie elle-même le mur d'invocation (t0 d'origine)
+ *  AVANT chaque tranche : aucun risque de dépasser maxDuration. */
+function schedulePostSyncForecastWake(t0: number): void {
+  try {
+    after(async () => {
+      try {
+        const fc = await runForecastWakeChainUntilDone(t0);
+        console.log(
+          `[VOLTRIX FORECAST] SOURCE=POST-SYNC STATUS=CHAIN_DONE loops=${fc.loops} ended=${fc.ended}${fc.runId ? ` runId=${fc.runId}` : ''}`
+        );
+      } catch (e) {
+        console.error(
+          `[VOLTRIX FORECAST] SOURCE=POST-SYNC STATUS=CHAIN_ERROR error="${e instanceof Error ? e.message : String(e)}" (reprise par cron forecast GET /api/forecasts/wake / prochain déclenchement post-sync)`
+        );
+      }
+    });
+  } catch {
+    console.warn('[VOLTRIX FORECAST] SOURCE=POST-SYNC STATUS=CHAIN_UNAVAILABLE (after() hors contexte — fallback cron forecast actif)');
   }
 }
 
