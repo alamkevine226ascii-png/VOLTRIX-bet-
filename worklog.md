@@ -1505,3 +1505,23 @@ Stage Summary:
 - Catalogue élargi 121 → 140 compétitions : qualifs CAN (demande explicite, matchs live), CHAN, COSAFA, CAN féminine, Coupe du Golfe, 5 championnats africains (Ghana/Nigeria/Kenya/Ouganda/Zimbabwe), 5 championnats/coupes Europe+Monde supplémentaires, éliminatoires CDM Océanie complétés, jeunesse U17-U21 + JO, qualifs des coupes d'Europe/AFC.
 - Hygiène : 15 codes morts (supprimés par ESPN) purgés + 1 renommage — chaque code du catalogue est désormais VIVANT (140/140 HTTP 200).
 - Moteur v2.1 intouché (5/5 byte-identique), aucune dépendance ajoutée, tsc src 0 erreur, commit local sans push — GO utilisateur requis pour GitHub/Vercel.
+
+---
+Task ID: 51
+Agent: Super Z (agent principal)
+Task: « Fait le comit GitHub » — pousser le Task 50 (catalogue compétitions CAN) en gérant la divergence détectée avec origin/main.
+
+Work Log:
+- État constaté : origin/main a AVANCÉ en parallèle (autre session) → e423dde « Task 49 (GO 4B) : pipeline ForecastSnapshot Forecast Wake on Demand » ; local avait 4 commits non poussés au-dessus de 7aee03a dont c3f714e (Task 50 catalogue 121→140, attente GO).
+- Divergence analysée : merge-base 7aee03a ; local +4 (d052463 worklog T49 + scan script, cb06c64 pur bruit chmod 644→755 0 ligne, c3f714e Task 50, 9fd6563 artefacts .audit17d) ; distant +1 (e423dde : pipeline forecast wake, migration forecast_job_lock, schema.prisma, vercel.json +2e cron, worklog). Chevauchement de contenu : worklog.md uniquement.
+- Rebase interactif : cb06c64 SUPPRIMÉ (bruit de mode reboo, aucun contenu) ; 3 commits rejoués sur e423dde.
+- Conflit worklog.md ×2 résolus en reconstruisant l'ordre chronologique exact : base T48 → T49 vérif (d052463) → T49 GO4B (e423dde) → T50 — 0 marqueur de conflit résiduel, aucun contenu perdu des deux côtés.
+- Nouveaux SHAs après rebase : 518805e (T49 vérif), de2ca7b (Task 50), 7661105 (artefacts .audit17d) ; arbre suivi 100% propre.
+- Vérifications post-rebase : moteur v2.1 sha256sum -c = 5/5 OK byte-identique ; tsc --noEmit = 0 erreur ; registre leagues = 140 codes / 140 uniques / 0 doublon, caf.nations_qual (Éliminatoires CAN) présent ; scan secrets sur tout le diff à pousser (57 fichiers, +6585/-16) = 0 secret réel (1 faux positif : ligne documentaire « postgres://user:pass@ 0 » du worklog T49).
+- PUSH BLOQUÉ : token GitHub perdu au reboot conteneur (.zscripts/.env.neon absent, pas de gh CLI/credential helper/netrc) → « could not read Username » ; aucune credential disponible pour github.com.
+- worklog T51 committé en local pour figer l'état prêt-à-pousser ; dès réception d'un nouveau GH_TOKEN : push unique de 4 commits (518805e, de2ca7b, 7661105, ce commit) puis vérification ls-remote + Vercel.
+
+Stage Summary:
+- Historique linéaire reconstruit : e423dde (T49 GO4B distant, préservé) → 518805e → de2ca7b (Task 50 catalogue compétitions CAN + autres championnats) → 7661105 → commit T51 ; zéro perte, zéro force-push, le travail de l'autre session est intégré tel quel.
+- Task 50 revalidé après rebase : 140/140 codes vivants (dont qualifs CAN caf.nations_qual), tsc 0 erreur, moteur v2.1 5/5, secrets 0.
+- EN ATTENTE UTILISATEUR : nouveau GitHub PAT (stocké hors Git dans .zscripts/.env.neon chmod 600, comme les fois précédentes) pour exécuter le push ; le DATABASE_URL Neon reste également à re-fournir pour toute opération Neon directe (non requis pour ce push).
