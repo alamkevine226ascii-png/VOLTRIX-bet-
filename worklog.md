@@ -1525,3 +1525,19 @@ Stage Summary:
 - Historique linéaire reconstruit : e423dde (T49 GO4B distant, préservé) → 518805e → de2ca7b (Task 50 catalogue compétitions CAN + autres championnats) → 7661105 → commit T51 ; zéro perte, zéro force-push, le travail de l'autre session est intégré tel quel.
 - Task 50 revalidé après rebase : 140/140 codes vivants (dont qualifs CAN caf.nations_qual), tsc 0 erreur, moteur v2.1 5/5, secrets 0.
 - EN ATTENTE UTILISATEUR : nouveau GitHub PAT (stocké hors Git dans .zscripts/.env.neon chmod 600, comme les fois précédentes) pour exécuter le push ; le DATABASE_URL Neon reste également à re-fournir pour toute opération Neon directe (non requis pour ce push).
+
+---
+Task ID: 51 (suite) — PUSH EXÉCUTÉ
+Agent: Super Z (agent principal)
+Task: Exécution du push après réception du nouveau GitHub PAT (fourni par l'utilisateur).
+
+Work Log:
+- Nouveau GH_TOKEN reçu → stocké hors Git dans .zscripts/.env.neon (chmod 600, gitignore:78 confirmé, git status propre) ; askpass .zscripts/gh-askpass.sh (0 secret dedans, lit l'env).
+- PUSH RÉUSSI : e423dde..57d27d3 main -> main (4 commits : 518805e T49 vérif, de2ca7b T50 catalogue, 7661105 artefacts audit, 57d27d3 worklog T51) ; git ls-remote == HEAD local == 57d27d3ac6c4cced91e91566d8db0c3ab235d045.
+- API GitHub : commit distant confirmé (committer 2026-09-25T12:29:56Z) ; Vercel CI status → success ; GitHub Deployment id 6660989719, environment Production, sha 57d27d3ac6c4, créé 2026-09-25T12:45:12Z.
+- Production voltrixbet.vercel.app : / 200, /api/sync/state 200, /manifest.webmanifest 200 ; /api/matches → HTTP 200 avec « catalogueSize:140 » + matchs réels du jour → le catalogue Task 50 (qualifs CAN caf.nations_qual et 139 autres) est VIVANT en production.
+- Note : caf.nations_qual absent des chunks client = normal — leagues.ts n'est importé que par du code serveur (analyze.ts, /api/matches).
+
+Stage Summary:
+- MAIN GitHub == local == 57d27d3 : Task 50 (qualifs CAN + autres championnats) déployé en production et fonctionnel, travail parallèle e423dde (T49 GO4B ForecastSnapshot) intégré sans perte, 0 force-push, 0 secret dans les commits, moteur v2.1 byte-identique 5/5.
+- Déploiement Vercel Production success — la migration Neon forecast_job_lock (e423dde) est appliquée au build via migrate deploy.
