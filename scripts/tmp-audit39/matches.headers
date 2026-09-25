@@ -1,0 +1,12 @@
+HTTP/2 302 
+cache-control: no-store, max-age=0
+content-type: text/plain
+date: Wed, 16 Sep 2026 11:51:52 GMT
+location: https://vercel.com/sso-api?url=https%3A%2F%2Fvoltrixbet-esj05ejxr-voltrix.vercel.app%2Fapi%2Fmatches%3Fdate%3D2026-09-16&nonce=532d6524ddbf9a61bbeca791edc0ca02eafb3914634f53f6223dc7070cc7c5cb
+server: Vercel
+set-cookie: _vercel_sso_nonce=24ee7696bd407113afab811077a965c405c8a341145eb21c; Max-Age=3600; Path=/; Secure; HttpOnly; SameSite=Lax
+strict-transport-security: max-age=63072000; includeSubDomains; preload
+x-frame-options: DENY
+x-robots-tag: noindex
+x-vercel-id: hkg1::bhltv-1789559511869-455ab274443f
+
