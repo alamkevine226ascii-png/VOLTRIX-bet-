@@ -1483,3 +1483,25 @@ Stage Summary:
 - Garanties prouvées par tests : 1 seule génération active (verrou DB, 8 parallèles → 1 gagnant), jamais 2 snapshots [matchId, version] (UNIQUE + P2002 géré), jamais après kickoff (quadruple garde + §6), jamais de remplacement (empreinte bit-à-bit inchangée + triggers UPDATE/DELETE rejetés), reprise après interruption (curseur Neon, total exact 4/4), verrou orphelin récupéré, idempotence totale (no-op 0 ESPN 0 écriture).
 - Diff minimal : 4 fichiers modifiés (+63/-1, additif), 7 nouveaux (pipeline, route, migration, applier Neon, 3 scripts de test), 0 fichier moteur touché.
 - EN ATTENTE DU GO UTILISATEUR pour : (1) migration Neon via scripts/apply-forecast-lock.ts, (2) commit, (3) push GitHub, (4) déploiement Vercel (migrate deploy au build appliquera aussi la migration). Impact Neon estimé : 4 colonnes NULLABLES additives + 1 index unique partiel sur table 101 lignes (DDL < 1 s, verrou ACCESS EXCLUSIVE bref, aucune donnée réécrite). Impact Vercel : 2e cron quotidien (2/2 autorisés Hobby), route maxDuration=120.
+
+---
+Task ID: 50
+Agent: Super Z (agent principal)
+Task: Demande utilisateur — ajouter des compétitions (qualifications CAN + autres championnats) au catalogue ESPN.
+
+Work Log:
+- Registre officiel ESPN paginé (sports.core.api.espn.com/v2/sports/soccer/leagues, 219 slugs) → diff vs catalogue 121 codes → 127 slugs absents ; candidats sélectionnés puis validés par scoreboard (HTTP 200 + événements réels).
+- Leçon appliquée : la 1re sonde avec ?dates=A-B a renvoyé 400 sur TOUT (plage de dates rejetée par ESPN — leçon T45) ; re-sonde sans dates OK.
+- Source autoritaire pour les qualifs CAN : slug caf.nations_qual (caf.acnq/caf.acn n'existent pas) — « Africa Cup of Nations Qualifying », 14 événements live, ex « Senegal at Mozambique » 2026-09-25.
+- AJOUTS (34, tous 200 live) : CAN/CAF (caf.nations_qual, caf.championship CHAN, caf.cosafa, caf.w.nations, global.gulf_cup) ; CDM (fifa.worldq.ofc — confédération manquante, fifa.wcq.ply) ; jeunesse (uefa.euro_u21, uefa.euro_u21_qual, fifa.olympics, fifa.world.u20, fifa.world.u17, fifa.friendly_u21) ; qualifs coupes (uefa.champions_qual, uefa.europa_qual, uefa.europa.conf_qual, afc.champions_qual, afc.cup_qual) ; championnats nationaux (gha.1 9 evts, nga.1 10, ken.1 9, uga.1 7, zim.1 4, wal.1 5, nir.1 5, mlt.1 1, jam.1) ; coupes nationales (ned.cup KNVB 6 evts, por.taca.portugal, ksa.kings.cup, bra.copa_do_brazil, arg.copa, chi.copa_chi, col.copa).
+- RETRAIS (15, codes morts) : ukr.1 cro.1 hun.1 pol.1 srb.1 bul.1 svk.1 uae.1 qat.1 irn.1 vie.1 egy.1 mar.1 tun.1 alg.1 — HTTP 400 confirmé ×2 séquentiel ET absents du registre 219 slugs (ESPN les a retirés ; symptômes kor.1/T13) ; health-check complet des 121 codes existants via -P8, faux positifs throttle exclus par re-vérification séquentielle.
+- RENOMMAGE : afc.asiancup → afc.asian.cup (nouveau slug ESPN, ancien 400).
+- CATALOGUE FINAL : 140 codes (121−15+34), 0 doublon code/shortName, régions/priorités valides, 140/140 re-sondés HTTP 200 (zéro code mort autorisé).
+- VERIFS : tsc --noEmit = 0 erreur dans src/ (erreurs préexistantes hors src/ inchangées) ; moteur v2.1 sha256 5/5 byte-identique (leagues.ts hors baseline) ; aucune ref codée en dur aux codes retirés (src/ et scripts/) ; bun install + prisma generate ré-exécutés (2e reboot conteneur).
+- Impact scan : +34 requêtes 200 (~+10-12 s/scan complet, mises en cache) MAIS −15 requêtes mortes avec retry (≈−20-30 s) → bilan temps neutre ou amélioré ; wake cycle 121→140 ligues, budget/cursor inchangés (tranches + reprises par design).
+- Commit local UNIQUEMENT (src/lib/leagues.ts + worklog + scripts de sonde + scripts de vérif GitHub T49) — PAS DE PUSH, attente GO (credentials GH restaurés dans .zscripts/.env.neon lors de la vérif T49-bis, fichier ignoré).
+
+Stage Summary:
+- Catalogue élargi 121 → 140 compétitions : qualifs CAN (demande explicite, matchs live), CHAN, COSAFA, CAN féminine, Coupe du Golfe, 5 championnats africains (Ghana/Nigeria/Kenya/Ouganda/Zimbabwe), 5 championnats/coupes Europe+Monde supplémentaires, éliminatoires CDM Océanie complétés, jeunesse U17-U21 + JO, qualifs des coupes d'Europe/AFC.
+- Hygiène : 15 codes morts (supprimés par ESPN) purgés + 1 renommage — chaque code du catalogue est désormais VIVANT (140/140 HTTP 200).
+- Moteur v2.1 intouché (5/5 byte-identique), aucune dépendance ajoutée, tsc src 0 erreur, commit local sans push — GO utilisateur requis pour GitHub/Vercel.

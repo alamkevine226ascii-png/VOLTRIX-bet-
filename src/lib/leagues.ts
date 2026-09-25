@@ -5,6 +5,14 @@
 // Task 13 : +10 divisions productives (eng.3/4/5, bra.2, ned.2, mex.2,
 // arg.2, eng.w.1, fifa.friendly, uefa.wchampions) ; kor.1 RETIRÉE
 // (HTTP 400 systématique — K League retirée de l'API publique ESPN).
+// Task 50 : élargissement demande utilisateur (qualifs CAN + autres
+// championnats) — +34 codes validés LIVE (registre officiel ESPN 219
+// slugs + scoreboard HTTP 200 avec événements réels, 30 jours) ;
+// 15 codes RETIRÉS (disparus de l'API ET du registre ESPN, HTTP 400
+// confirmé en séquentiel ×2 : ukr.1 cro.1 hun.1 pol.1 srb.1 bul.1
+// svk.1 uae.1 qat.1 irn.1 vie.1 egy.1 mar.1 tun.1 alg.1 — mêmes
+// symptômes que kor.1 en T13) ; afc.asiancup migré vers
+// afc.asian.cup (renommage côté ESPN, nouveau slug au registre).
 // ============================================================
 
 export interface LeagueDef {
@@ -28,6 +36,11 @@ export const LEAGUES: LeagueDef[] = [
   { code: 'uefa.europa', name: 'Ligue Europa', shortName: 'UEL', region: 'europe', priority: 1 },
   { code: 'uefa.europa.conf', name: 'Conference League', shortName: 'UECL', region: 'europe', priority: 2 },
   { code: 'uefa.super_cup', name: 'Supercoupe de l\'UEFA', shortName: 'USC', region: 'europe', priority: 2 },
+  // Task 50 : tours de qualification des coupes d'Europe (actifs
+  // juillet-août, événements réels validés ; no-op le reste de l'année) :
+  { code: 'uefa.champions_qual', name: 'Qualifications Ligue des Champions', shortName: 'QCL', region: 'europe', priority: 3 },
+  { code: 'uefa.europa_qual', name: 'Qualifications Ligue Europa', shortName: 'QEL', region: 'europe', priority: 3 },
+  { code: 'uefa.europa.conf_qual', name: 'Qualifications Conference League', shortName: 'QCF', region: 'europe', priority: 3 },
 
   // ---------- EUROPE — Divisions inférieures ----------
   { code: 'eng.2', name: 'Championship', shortName: 'CHA', region: 'europe', priority: 2 },
@@ -58,17 +71,15 @@ export const LEAGUES: LeagueDef[] = [
   { code: 'nor.1', name: 'Eliteserien (Norvège)', shortName: 'NOR', region: 'europe', priority: 2 },
   { code: 'swe.1', name: 'Allsvenskan (Suède)', shortName: 'SWE', region: 'europe', priority: 2 },
   { code: 'rus.1', name: 'Premier-Liga (Russie)', shortName: 'RUS', region: 'europe', priority: 2 },
-  { code: 'ukr.1', name: 'Premier Liha (Ukraine)', shortName: 'UKR', region: 'europe', priority: 2 },
   { code: 'irl.1', name: 'Premier Division (Irlande)', shortName: 'IRL', region: 'europe', priority: 3 },
   { code: 'rou.1', name: 'Liga 1 (Roumanie)', shortName: 'ROU', region: 'europe', priority: 3 },
-  { code: 'pol.1', name: 'Ekstraklasa (Pologne)', shortName: 'POL', region: 'europe', priority: 3 },
   { code: 'cze.1', name: 'Ligue tchèque', shortName: 'CZE', region: 'europe', priority: 3 },
-  { code: 'cro.1', name: 'HNL (Croatie)', shortName: 'CRO', region: 'europe', priority: 3 },
-  { code: 'srb.1', name: 'Superliga (Serbie)', shortName: 'SRB', region: 'europe', priority: 3 },
-  { code: 'bul.1', name: 'Parva Liga (Bulgarie)', shortName: 'BUL', region: 'europe', priority: 3 },
-  { code: 'hun.1', name: 'NB I (Hongrie)', shortName: 'HUN', region: 'europe', priority: 3 },
-  { code: 'svk.1', name: 'Super Liga (Slovaquie)', shortName: 'SVK', region: 'europe', priority: 3 },
+  { code: 'wal.1', name: 'Cymru Premier (Pays de Galles)', shortName: 'WAL', region: 'europe', priority: 3 },
+  { code: 'nir.1', name: 'Premiership (Irlande du Nord)', shortName: 'NIR', region: 'europe', priority: 3 },
+  { code: 'mlt.1', name: 'Premier League (Malte)', shortName: 'MLT', region: 'europe', priority: 3 },
   { code: 'isr.1', name: 'Ligat Ha\'Al (Israël)', shortName: 'ISR', region: 'europe', priority: 3 },
+  // Task 50 : ukr.1/cro.1/srb.1/bul.1/hun.1/svk.1/pol.1 RETIRÉES —
+  // codes disparus de l'API ET du registre ESPN (HTTP 400, cf. kor.1).
   { code: 'eng.w.1', name: "Super League féminine (Angleterre)", shortName: 'WSL', region: 'europe', priority: 3 },
   { code: 'fra.w.1', name: 'D1 Féminine (France)', shortName: 'D1F', region: 'europe', priority: 3 },
   { code: 'esp.w.1', name: 'Liga F féminine (Espagne)', shortName: 'LFF', region: 'europe', priority: 3 },
@@ -82,6 +93,8 @@ export const LEAGUES: LeagueDef[] = [
   { code: 'ita.coppa_italia', name: 'Coppa Italia', shortName: 'CIT', region: 'europe', priority: 2 },
   { code: 'ger.dfb_pokal', name: 'DFB Pokal', shortName: 'DFB', region: 'europe', priority: 2 },
   { code: 'fra.coupe_de_france', name: 'Coupe de France', shortName: 'CDF', region: 'europe', priority: 2 },
+  { code: 'ned.cup', name: 'Coupe des Pays-Bas (KNVB Beker)', shortName: 'KNVB', region: 'europe', priority: 2 },
+  { code: 'por.taca.portugal', name: 'Taça de Portugal', shortName: 'TDP', region: 'europe', priority: 2 },
 
   // ---------- AMÉRIQUES ----------
   { code: 'usa.1', name: 'MLS', shortName: 'MLS', region: 'americas', priority: 1 },
@@ -106,6 +119,11 @@ export const LEAGUES: LeagueDef[] = [
   { code: 'hon.1', name: 'Liga Nacional (Honduras)', shortName: 'HON', region: 'americas', priority: 3 },
   { code: 'slv.1', name: 'Primera División (Salvador)', shortName: 'SLV', region: 'americas', priority: 3 },
   { code: 'gua.1', name: 'Liga Nacional (Guatemala)', shortName: 'GUA', region: 'americas', priority: 3 },
+  { code: 'jam.1', name: 'Premier League (Jamaïque)', shortName: 'JAM', region: 'americas', priority: 3 },
+  { code: 'bra.copa_do_brazil', name: 'Copa do Brasil', shortName: 'CDB', region: 'americas', priority: 2 },
+  { code: 'arg.copa', name: 'Copa Argentina', shortName: 'CAR', region: 'americas', priority: 3 },
+  { code: 'chi.copa_chi', name: 'Copa Chile', shortName: 'CCH', region: 'americas', priority: 3 },
+  { code: 'col.copa', name: 'Copa Colombia', shortName: 'COC', region: 'americas', priority: 3 },
 
   // ---------- ASIE / OCÉANIE ----------
   { code: 'jpn.1', name: 'J1 League (Japon)', shortName: 'J1', region: 'asia', priority: 1 },
@@ -114,22 +132,25 @@ export const LEAGUES: LeagueDef[] = [
   { code: 'chn.1', name: 'Chinese Super League', shortName: 'CSL', region: 'asia', priority: 2 },
   { code: 'aus.1', name: 'A-League (Australie)', shortName: 'AUS', region: 'asia', priority: 2 },
   { code: 'ksa.1', name: 'Saudi Pro League', shortName: 'SPL', region: 'asia', priority: 1 },
-  { code: 'uae.1', name: 'UAE Pro League', shortName: 'UAE', region: 'asia', priority: 3 },
-  { code: 'qat.1', name: 'Qatar Stars League', shortName: 'QAT', region: 'asia', priority: 3 },
-  { code: 'irn.1', name: 'Persian Gulf Pro League', shortName: 'IRN', region: 'asia', priority: 3 },
   { code: 'ind.1', name: 'Indian Super League', shortName: 'ISL', region: 'asia', priority: 3 },
   { code: 'idn.1', name: 'Liga 1 (Indonésie)', shortName: 'IDN', region: 'asia', priority: 3 },
   { code: 'tha.1', name: 'Thai League 1', shortName: 'THA', region: 'asia', priority: 3 },
   { code: 'mys.1', name: 'Super League (Malaisie)', shortName: 'MYS', region: 'asia', priority: 3 },
   { code: 'sgp.1', name: 'Premier League (Singapour)', shortName: 'SGP', region: 'asia', priority: 3 },
-  { code: 'vie.1', name: 'V-League (Vietnam)', shortName: 'VIE', region: 'asia', priority: 3 },
+  { code: 'ksa.kings.cup', name: "King's Cup (Arabie saoudite)", shortName: 'KSC', region: 'asia', priority: 3 },
+  // Task 50 : uae.1/qat.1/irn.1/vie.1 RETIRÉES — codes disparus de
+  // l'API ET du registre ESPN (HTTP 400, cf. kor.1).
 
   // ---------- AFRIQUE ----------
   { code: 'rsa.1', name: 'Premier Soccer League (Afrique du Sud)', shortName: 'RSA', region: 'africa', priority: 2 },
-  { code: 'egy.1', name: 'Premier League (Égypte)', shortName: 'EGY', region: 'africa', priority: 3 },
-  { code: 'mar.1', name: 'Botola Pro (Maroc)', shortName: 'MAR', region: 'africa', priority: 3 },
-  { code: 'tun.1', name: 'Ligue 1 (Tunisie)', shortName: 'TUN', region: 'africa', priority: 3 },
-  { code: 'alg.1', name: 'Ligue 1 (Algérie)', shortName: 'ALG', region: 'africa', priority: 3 },
+  // Task 50 : egy.1/mar.1/tun.1/alg.1 RETIRÉES (disparues chez ESPN,
+  // HTTP 400) — remplacées par 5 championnats africains servis par
+  // ESPN avec événements réels validés :
+  { code: 'gha.1', name: 'Premier League (Ghana)', shortName: 'GHA', region: 'africa', priority: 3 },
+  { code: 'nga.1', name: 'Premier League (Nigeria)', shortName: 'NGA', region: 'africa', priority: 3 },
+  { code: 'ken.1', name: 'Premier League (Kenya)', shortName: 'KEN', region: 'africa', priority: 3 },
+  { code: 'uga.1', name: 'Premier League (Ouganda)', shortName: 'UGA', region: 'africa', priority: 3 },
+  { code: 'zim.1', name: 'Premier Soccer League (Zimbabwe)', shortName: 'ZIM', region: 'africa', priority: 3 },
   { code: 'caf.champions', name: 'Ligue des Champions CAF', shortName: 'CCL', region: 'africa', priority: 2 },
   { code: 'caf.confed', name: 'Coupe de la Confédération', shortName: 'CCF', region: 'africa', priority: 3 },
 
@@ -143,19 +164,38 @@ export const LEAGUES: LeagueDef[] = [
   { code: 'uefa.euro', name: 'Euro', shortName: 'EURO', region: 'international', priority: 1 },
   { code: 'conmebol.america', name: 'Copa América', shortName: 'CA', region: 'international', priority: 1 },
   { code: 'concacaf.gold', name: 'Gold Cup', shortName: 'GC', region: 'international', priority: 2 },
-  { code: 'afc.asiancup', name: 'Coupe d\'Asie', shortName: 'AC', region: 'international', priority: 2 },
+  { code: 'afc.asian.cup', name: 'Coupe d\'Asie', shortName: 'AC', region: 'international', priority: 2 },
+  // Task 50 : afc.asiancup → afc.asian.cup (renommé par ESPN, nouveau
+  // slug présent au registre officiel).
   { code: 'caf.nations', name: 'CAN', shortName: 'CAN', region: 'international', priority: 1 },
+  // Task 50 — demande utilisateur : éliminatoires et compétitions CAF
+  // (codes validés live contre ESPN, événements réels) :
+  { code: 'caf.nations_qual', name: 'Éliminatoires CAN', shortName: 'QCAN', region: 'international', priority: 2 },
+  { code: 'caf.championship', name: 'CHAN — Championnat d\'Afrique des Nations', shortName: 'CHAN', region: 'international', priority: 2 },
+  { code: 'caf.cosafa', name: 'Coupe COSAFA (Afrique australe)', shortName: 'COSA', region: 'international', priority: 3 },
+  { code: 'caf.w.nations', name: 'CAN féminine', shortName: 'CANF', region: 'international', priority: 3 },
+  { code: 'global.gulf_cup', name: 'Coupe du Golfe arabe', shortName: 'GULF', region: 'international', priority: 3 },
   { code: 'fifa.worldq.uefa', name: 'Éliminatoires CDM (Europe)', shortName: 'WQE', region: 'international', priority: 2 },
   { code: 'fifa.worldq.conmebol', name: 'Éliminatoires CDM (Amérique du Sud)', shortName: 'WQS', region: 'international', priority: 2 },
   { code: 'fifa.worldq.concacaf', name: 'Éliminatoires CDM (CONCACAF)', shortName: 'WQC', region: 'international', priority: 2 },
   { code: 'fifa.worldq.afc', name: 'Éliminatoires CDM (Asie)', shortName: 'WQA', region: 'international', priority: 2 },
   { code: 'fifa.worldq.caf', name: 'Éliminatoires CDM (Afrique)', shortName: 'WQF', region: 'international', priority: 2 },
+  { code: 'fifa.worldq.ofc', name: 'Éliminatoires CDM (Océanie)', shortName: 'WQO', region: 'international', priority: 2 },
+  { code: 'fifa.wcq.ply', name: 'Barrages Éliminatoires CDM', shortName: 'WQP', region: 'international', priority: 2 },
   { code: 'uefa.euroq', name: 'Éliminatoires Euro', shortName: 'EQ', region: 'international', priority: 2 },
+  { code: 'uefa.euro_u21', name: 'Euro U21', shortName: 'EU21', region: 'international', priority: 3 },
+  { code: 'uefa.euro_u21_qual', name: 'Éliminatoires Euro U21', shortName: 'EQ21', region: 'international', priority: 3 },
+  { code: 'fifa.olympics', name: 'Jeux Olympiques — Football', shortName: 'JO', region: 'international', priority: 2 },
+  { code: 'fifa.world.u20', name: 'Coupe du Monde U20', shortName: 'U20', region: 'international', priority: 3 },
+  { code: 'fifa.world.u17', name: 'Coupe du Monde U17', shortName: 'U17', region: 'international', priority: 3 },
+  { code: 'fifa.friendly_u21', name: 'Amicaux U21', shortName: 'AU21', region: 'international', priority: 3 },
   { code: 'conmebol.libertadores', name: 'Copa Libertadores', shortName: 'LIB', region: 'international', priority: 2 },
   { code: 'conmebol.sudamericana', name: 'Copa Sudamericana', shortName: 'SUD', region: 'international', priority: 2 },
   { code: 'concacaf.champions', name: 'CONCACAF Champions Cup', shortName: 'CCC', region: 'international', priority: 2 },
   { code: 'afc.champions', name: 'AFC Champions League Elite', shortName: 'ACL', region: 'international', priority: 2 },
   { code: 'afc.cup', name: 'AFC Champions League Two', shortName: 'AC2', region: 'international', priority: 2 },
+  { code: 'afc.champions_qual', name: 'Qualifications LDC Elite (AFC)', shortName: 'QACL', region: 'international', priority: 3 },
+  { code: 'afc.cup_qual', name: 'Qualifications ACL Two (AFC)', shortName: 'QA2', region: 'international', priority: 3 },
   { code: 'club.friendly', name: 'Amicaux de Clubs', shortName: 'AMC', region: 'international', priority: 3 },
   { code: 'concacaf.nations.league', name: 'Ligue des Nations CONCACAF', shortName: 'CNL', region: 'international', priority: 3 },
 ];
