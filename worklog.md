@@ -1541,3 +1541,19 @@ Work Log:
 Stage Summary:
 - MAIN GitHub == local == 57d27d3 : Task 50 (qualifs CAN + autres championnats) déployé en production et fonctionnel, travail parallèle e423dde (T49 GO4B ForecastSnapshot) intégré sans perte, 0 force-push, 0 secret dans les commits, moteur v2.1 byte-identique 5/5.
 - Déploiement Vercel Production success — la migration Neon forecast_job_lock (e423dde) est appliquée au build via migrate deploy.
+
+---
+Task ID: 52
+Agent: Super Z (agent principal)
+Task: Correction du signalement utilisateur « les qualifications CAN ne s'affichent pas alors que des matchs ont déjà débuté ».
+
+Work Log:
+- Diagnostic : registre OK (allLeagueCodes → LEAGUES, 140 codes, y compris nouveaux) ; déploiement 12:45 OK ; le run 12:49:56→12:50:15 (19 s) était un run CONTEXTE-SEUL — la phase CYCLE (qui CRÉE les matchs depuis les scoreboards ESPN) n'avait jamais tourné depuis l'ajout des nouvelles ligues → 0 match CAN qual en base → /api/matches n'avait que 39 matchs d'anciennes ligues (état suggérait lui-même suggestedAction:"wake", liveStale:true).
+- ESPN vérifié en direct : 14 événements caf.nations_qual le 2026-09-25 (13:00Z Mozambique vs Senegal, Sudan vs Ethiopia, Tanzania vs Guinea-Bissau…).
+- Fix : GET /api/sync/wake (Wake on Demand §26, idempotent) → 1re invocation : partial, 40,1 s, 2 665 appels ESPN, +220 matchs CRÉÉS, 140/140 ligues, 0 échec, 1 143 événements vus, 711 cotes ; 2e invocation → status SUCCESS (1,5 s, total 2 683 appels).
+- Vérification affichage prod (agent-browser 390×844) : page d'accueil → puce filtre « QCAN (14) » présente dans « Tous (65) » ; clic QCAN → les 14 matchs des Éliminatoires CAN rendus avec pronostics moteur (ex. Mozambique vs Senegal 13:00, VALUE ×3), badges FORME/VALUE, cotes DRAFTKINGS ; screenshot download/prod-qcan-qualifs-can.png.
+- Le refreshLiveMatches suit désormais ces matchs (statuts/cotes live) — les coups d'envoi 13:00Z passent en live automatiquement.
+
+Stage Summary:
+- CAUSE : pas un bug de code — la phase CYCLE de la sync n'avait simplement pas encore tourné après l'élargissement du catalogue (le cron 05:00 UTC était antérieur au déploiement 12:45 ; le run 12:49 était contexte-seul). Un Wake on Demand a peuplé la base : 65 matchs du jour (39→65), 14 qualifs CAN incluses, affichage validé au navigateur réel.
+- Aucune modification de code, aucun commit fonctionnel, moteur v2.1 intouché — résolution purement opérationnelle via le flux §26 prévu pour cela.
