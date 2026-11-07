@@ -15,9 +15,9 @@ const archivo = Archivo({
 });
 
 export const metadata: Metadata = {
-  title: "KickOff — Live Football",
+  title: "VOLTRIX — Pronostics football",
   description:
-    "Live football scores, leagues, tactics and betting — neon football companion app.",
+    "Interface du système VOLTRIX bet : pronos moteur Poisson/Elo/Forme, marchés, value bets, prévisions figées, performance et portefeuille.",
   icons: {
     icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
   },
@@ -37,7 +37,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="fr" suppressHydrationWarning>
       <body
         className={`${anton.variable} ${archivo.variable} antialiased bg-[#8CB305] text-white`}
       >

@@ -1,5 +1,5 @@
-import { FootballApp } from "@/components/football/FootballApp";
+import { VoltrixApp } from "@/components/voltrix/VoltrixApp";
 
 export default function Home() {
-  return <FootballApp />;
+  return <VoltrixApp />;
 }
