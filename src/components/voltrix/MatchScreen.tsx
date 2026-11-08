@@ -1,14 +1,14 @@
 "use client";
 
 /* ============================================================
-   VOLTRIX front — Détail match (lecture simplifiée)
-   Héro illustré par la photo du stade réel où se joue le match
-   (stade de l'équipe domicile). Au défilement, le héros s'évacue
-   et une barre compacte — logos + heure — prend le relais.
-   Prono moteur en une carte claire : pick, probabilité,
-   confiance, barre 1X2 segmentée. Puis onglets : Synthèse /
-   Marchés / H2H / Contexte / Compos. Le détail du calcul
-   (Poisson, Elo, forme, λ) est replié derrière « Détail du calcul ».
+   VOLTRIX app — Détail match football (données réelles ESPN)
+   Héro illustré par la photo du stade réel où se joue le match.
+   Au défilement, le héros s'évacue et une barre compacte —
+   logos + heure — prend le relais.
+   Analyse 100 % locale : moteur Poisson/Elo/Forme du dépôt
+   VOLTRIX-bet, alimenté en direct par ESPN (aucune base).
+   Compos : réelles si publiées, sinon celles du match précédent
+   de chaque équipe — jamais inventées.
    ============================================================ */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type UIEvent } from "react";
@@ -22,26 +22,17 @@ import {
   TrendingUp,
   Umbrella,
 } from "lucide-react";
+import { oddsFmt, pct, timeLabel } from "@/lib/voltrix";
+import { analyzeFootballMatch, type FootballDetail } from "@/lib/foot/bridge";
 import {
-  fetchLineups,
-  fetchMatchDetail,
-  getApiBase,
-  oddsFmt,
-  pct,
-  timeLabel,
-} from "@/lib/voltrix";
+  loadMatchLineups,
+  type MatchLineups,
+  type TeamLineup,
+} from "@/lib/foot/lineups";
 import { stadiumImageFor } from "@/lib/stadiums";
-import { demoLineups, demoMatchDetail } from "@/lib/demo-data";
-import type {
-  MatchDetailDTO,
-  PlayerLineupsDTO,
-  TeamAnalysisDTO,
-  TeamLineupsDTO,
-} from "@/lib/voltrix-types";
 import type { LightMatch } from "@/lib/voltrix-types";
 import { TeamBadge } from "./TeamBadge";
 import {
-  DemoBadge,
   EdgeChip,
   ErrorPanel,
   FormDots,
@@ -50,7 +41,6 @@ import {
   ProbBar,
   SectionTitle,
   confidenceStars,
-  eurCompact,
 } from "./ui-bits";
 
 type TabId = "synthese" | "marches" | "h2h" | "contexte" | "compos";
@@ -87,8 +77,8 @@ function ComponentRow({ name, probs, note }: { name: string; probs: { home: numb
 }
 
 /* ---------- Terrain (Compos) ---------- */
-function Pitch({ team }: { team: TeamLineupsDTO }) {
-  const rows: Record<string, PlayerLineupsDTO[]> = { G: [], D: [], M: [], F: [] };
+function Pitch({ team }: { team: TeamLineup }) {
+  const rows: Record<string, TeamLineup["starters"][number][]> = { G: [], D: [], M: [], F: [] };
   team.starters.forEach((p) => {
     const k = p.position ?? "M";
     if (!rows[k]) rows[k] = [];
@@ -140,13 +130,12 @@ export function MatchScreen({
   light?: LightMatch;
   onBack: () => void;
 }) {
-  const [detail, setDetail] = useState<MatchDetailDTO | null>(null);
+  const [detail, setDetail] = useState<FootballDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<TabId>("synthese");
-  const [lineups, setLineups] = useState<Awaited<ReturnType<typeof loadLineups>>>(null);
+  const [lineups, setLineups] = useState<MatchLineups | null>(null);
   const [lineupsLoading, setLineupsLoading] = useState(false);
-  const isLive = getApiBase().length > 0;
 
   /* héros parti → barre compacte visible */
   const [compact, setCompact] = useState(false);
@@ -158,42 +147,43 @@ export function MatchScreen({
     setLoading(true);
     setError(null);
     try {
-      const res = isLive ? await fetchMatchDetail(matchId, leagueCode, date) : demoMatchDetail(matchId);
+      const res = await analyzeFootballMatch(matchId, leagueCode, date);
+      if (!res) throw new Error("Match introuvable dans les données ESPN.");
       setDetail(res);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Analyse indisponible");
     } finally {
       setLoading(false);
     }
-  }, [matchId, leagueCode, date, isLive]);
+  }, [matchId, leagueCode, date]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  async function loadLineups(): Promise<ReturnType<typeof demoLineups> | null> {
-    if (isLive) return fetchLineups(matchId, leagueCode);
-    return demoLineups(matchId);
-  }
-
+  /* compos : réelles si publiées, sinon celles du match précédent.
+     Lancé une fois par match (garde par ref) — le départ de la
+     requête ne doit pas s'annuler lui-même via ses propres deps. */
+  const lineupsStartedRef = useRef<string | null>(null);
   useEffect(() => {
-    if (tab !== "compos" || lineups || lineupsLoading) return;
-    let cancelled = false;
+    if (tab !== "compos" || !detail) return;
+    if (lineupsStartedRef.current === matchId) return;
+    lineupsStartedRef.current = matchId;
     setLineupsLoading(true);
-    loadLineups()
-      .then((r) => {
-        if (!cancelled) setLineups(r);
-      })
-      .catch(() => {
-        if (!cancelled) setLineups(null);
-      })
-      .finally(() => {
-        if (!cancelled) setLineupsLoading(false);
-      });
-    return () => {
-      cancelled = true;
+    const ctx = {
+      matchDate: detail.matchDate,
+      homeTeamId: detail.home.id,
+      awayTeamId: detail.away.id,
+      homeName: detail.home.name,
+      awayName: detail.away.name,
+      homeLogo: detail.home.logo,
+      awayLogo: detail.away.logo,
     };
-  }, [tab]);
+    loadMatchLineups(matchId, leagueCode, ctx)
+      .then((r) => setLineups(r))
+      .catch(() => setLineups(null))
+      .finally(() => setLineupsLoading(false));
+  }, [tab, detail, matchId, leagueCode]);
 
   /* Onglet Compos : équipe affichée */
   const [composSide, setComposSide] = useState<"home" | "away">("home");
@@ -254,7 +244,7 @@ export function MatchScreen({
     ];
   }, [pred, light, detail, homeShort, awayShort]);
 
-  const teamBlock = (t: TeamAnalysisDTO) => (
+  const teamBlock = (t: NonNullable<FootballDetail["home"]>) => (
     <div className="rounded-2xl bg-ink-3 p-3.5">
       <div className="flex items-center gap-2.5">
         <TeamBadge name={t.name} logo={t.logo} size={38} />
@@ -341,6 +331,7 @@ export function MatchScreen({
         {/* ---------- HÉROS : photo du stade du match + voile sombre ---------- */}
         <div className="relative shrink-0">
           <div className="absolute inset-0 overflow-hidden" aria-hidden="true">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={stadiumImg}
               alt=""
@@ -423,7 +414,7 @@ export function MatchScreen({
         {loading ? (
           <LoadingPanel label="Le moteur VOLTRIX analyse le match…" />
         ) : error || !detail || !pred ? (
-          <ErrorPanel message={error ?? "Analyse indisponible"} onRetry={() => void load()} isDemo={!isLive} />
+          <ErrorPanel message={error ?? "Analyse indisponible"} onRetry={() => void load()} />
         ) : (
           <main className="px-5 pb-14">
             {/* ---------- PRONO DU MOTEUR : une carte, une hiérarchie ---------- */}
@@ -592,7 +583,9 @@ export function MatchScreen({
                   </SectionTitle>
                   {pred.valueBets.length === 0 ? (
                     <p className="rounded-2xl bg-ink-3 px-4 py-3 text-[10.5px] font-semibold text-white/45">
-                      Aucune value bet détectée — le marché est aligné avec le modèle.
+                      {detail.odds?.hasOdds
+                        ? "Aucune value bet détectée — le marché est aligné avec le modèle."
+                        : "Pas de cotes publiées par ESPN pour ce match : les value bets nécessitent une cote de référence."}
                     </p>
                   ) : (
                     <div className="space-y-2">
@@ -683,27 +676,33 @@ export function MatchScreen({
                       </div>
                     ))}
                   </div>
-                  <div className="space-y-1.5">
-                    {detail.h2h.map((h, i) => (
-                      <div key={i} className="flex items-center justify-between rounded-2xl bg-ink-3 px-3.5 py-2.5">
-                        <div className="min-w-0">
-                          <p className="truncate text-[11px] font-bold text-white">
-                            {h.homeTeam} <span className="mx-1 rounded bg-black/50 px-1.5 py-0.5 font-display text-[12px] text-neon">{h.score}</span> {h.awayTeam}
-                          </p>
-                          <p className="text-[9px] font-semibold text-white/35">
-                            {new Date(h.date).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" })}
-                          </p>
+                  {detail.h2h.length === 0 ? (
+                    <p className="rounded-2xl bg-ink-3 px-4 py-3 text-[10.5px] font-semibold text-white/45">
+                      Aucune confrontation sur les deux dernières saisons (calendriers ESPN).
+                    </p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {detail.h2h.map((h, i) => (
+                        <div key={i} className="flex items-center justify-between rounded-2xl bg-ink-3 px-3.5 py-2.5">
+                          <div className="min-w-0">
+                            <p className="truncate text-[11px] font-bold text-white">
+                              {h.homeTeam} <span className="mx-1 rounded bg-black/50 px-1.5 py-0.5 font-display text-[12px] text-neon">{h.score}</span> {h.awayTeam}
+                            </p>
+                            <p className="text-[9px] font-semibold text-white/35">
+                              {new Date(h.date).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" })}
+                            </p>
+                          </div>
+                          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[8.5px] font-black uppercase ${
+                            h.winner === "home" ? "bg-neon text-black" : h.winner === "away" ? "bg-[#ff5d5d] text-white" : "bg-white/15 text-white/70"
+                          }`}>
+                            {h.winner === "draw" ? "Nul" : "Victoire"}
+                          </span>
                         </div>
-                        <span className={`shrink-0 rounded-full px-2 py-0.5 text-[8.5px] font-black uppercase ${
-                          h.winner === "home" ? "bg-neon text-black" : h.winner === "away" ? "bg-[#ff5d5d] text-white" : "bg-white/15 text-white/70"
-                        }`}>
-                          {h.winner === "draw" ? "Nul" : "Victoire"}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  )}
                   <p className="mt-3 text-[9px] leading-relaxed text-white/30">
-                    Historique synchronisé depuis ESPN (2 saisons) — comptage par identifiant d&apos;équipe, les deux ordres domicile/extérieur.
+                    Historique lu dans les calendriers ESPN des deux équipes (2 saisons) — comptage par identifiant d&apos;équipe, les deux ordres domicile/extérieur.
                   </p>
                 </div>
               ) : null}
@@ -769,6 +768,7 @@ export function MatchScreen({
                   <SectionTitle>Stade</SectionTitle>
                   <div className="overflow-hidden rounded-2xl bg-ink-3">
                     <div className="relative h-24">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={stadiumImg}
                         alt={detail.venue.name ?? "Stade du match"}
@@ -789,31 +789,27 @@ export function MatchScreen({
                 </div>
               ) : null}
 
-              {/* ---------------- COMPOS ---------------- */}
+              {/* ---------------- COMPOS (réelles ou match précédent) ---------------- */}
               {tab === "compos" ? (
                 <div>
                   {lineupsLoading ? (
-                    <LoadingPanel label="Chargement des compositions…" />
+                    <LoadingPanel label="Lecture des compositions sur ESPN…" />
                   ) : !lineups || (!lineups.home && !lineups.away) ? (
-                    <ErrorPanel message="Compositions indisponibles pour ce match." isDemo={!isLive} />
+                    <ErrorPanel message="Compositions indisponibles : ni publiées pour ce match, ni trouvées dans le dernier match de chaque équipe." />
                   ) : (
                     <div>
-                      <div className="mt-4 rounded-2xl bg-ink-3 px-3.5 py-3">
-                        <p className="text-[11.5px] font-black text-white">
-                          {lineups.venue.name ?? "Stade inconnu"}
-                          {lineups.venue.city ? ` · ${lineups.venue.city}` : ""}
+                      {/* bannière d'honnêteté */}
+                      {lineups.published ? (
+                        <p className="mt-2 rounded-2xl bg-neon/10 px-3.5 py-2.5 text-[9.5px] font-semibold leading-relaxed text-neon ring-1 ring-neon/30">
+                          Compositions officielles publiées par ESPN pour ce match.
                         </p>
-                        <p className="mt-0.5 text-[9.5px] font-semibold text-white/45">
-                          {lineups.attendance ? `${lineups.attendance.toLocaleString("fr-FR")} spectateurs · ` : ""}
-                          {lineups.weather ? `${lineups.weather.description} ${lineups.weather.tempC ?? ""}°C` : ""}
+                      ) : (
+                        <p className="mt-2 rounded-2xl bg-black/50 px-3.5 py-2.5 text-[9.5px] font-semibold leading-relaxed text-white/55 ring-1 ring-white/10">
+                          Compositions du match non encore publiées par ESPN (environ 20 à 40 minutes avant le coup
+                          d&apos;envoi). En attente, VOLTRIX affiche celles du <span className="text-white">match
+                          précédent</span> de chaque équipe — aucune n&apos;est inventée.
                         </p>
-                      </div>
-
-                      {!lineups.home?.lineupsPublished ? (
-                        <p className="mt-2 rounded-2xl bg-black/50 px-3.5 py-2.5 text-[9.5px] font-semibold leading-relaxed text-white/50 ring-1 ring-white/10">
-                          Compositions non publiées par ESPN — formation déduite des postes, aucune position inventée.
-                        </p>
-                      ) : null}
+                      )}
 
                       <div className="mt-3 flex gap-1.5 rounded-full bg-ink-3 p-1">
                         {(["home", "away"] as const).map((s) => {
@@ -827,7 +823,7 @@ export function MatchScreen({
                                 composSide === s ? "bg-neon text-black" : "text-white/60"
                               }`}
                             >
-                              {t?.shortName ?? t?.name ?? s}
+                              {t?.name ?? s}
                             </button>
                           );
                         })}
@@ -838,34 +834,43 @@ export function MatchScreen({
                         if (!t) return null;
                         return (
                           <div className="mt-3">
-                            <div className="mb-2.5 flex items-center justify-between">
+                            <div className="mb-2.5 flex items-center justify-between gap-2">
                               <span className="text-[10px] font-black uppercase tracking-widest text-white/60">
-                                {t.formation ? `${t.formation.text}${t.formation.source === "deduced" ? " (déduite)" : ""}` : "Formation ?"}
+                                {t.formation ? `Formation ${t.formation}` : "Formation non publiée"}
                               </span>
-                              {t.squadValueEur != null ? (
-                                <span className="rounded-full bg-ink-3 px-2.5 py-1 text-[9px] font-black text-neon">
-                                  Effectif {eurCompact(t.squadValueEur)}
+                              {t.source === "previous" && t.previousLabel ? (
+                                <span className="max-w-[190px] truncate rounded-full bg-ink-3 px-2.5 py-1 text-[8.5px] font-black uppercase tracking-wide text-white/50" title={t.previousLabel}>
+                                  Match préc. · {t.previousLabel}
                                 </span>
                               ) : null}
                             </div>
-                            <Pitch team={t} />
+                            {t.starters.length > 0 ? (
+                              <Pitch team={t} />
+                            ) : (
+                              <p className="rounded-2xl bg-ink-3 px-4 py-3 text-[10.5px] font-semibold text-white/45">
+                                Onze de départ introuvable pour cette équipe.
+                              </p>
+                            )}
 
-                            <SectionTitle>Banc</SectionTitle>
-                            <div className="grid grid-cols-2 gap-1.5">
-                              {t.bench.map((p) => (
-                                <div key={p.athleteId} className="flex items-center gap-2 rounded-xl bg-ink-3 px-2.5 py-2">
-                                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/10 text-[9.5px] font-black text-white/70">
-                                    {p.jersey ?? "?"}
-                                  </span>
-                                  <span className="min-w-0 flex-1 truncate text-[10px] font-bold text-white/80">{p.shortName ?? p.name}</span>
-                                  {p.tm?.valueEur ? <span className="text-[8.5px] font-black text-neon">{eurCompact(p.tm.valueEur)}</span> : null}
+                            {t.bench.length > 0 ? (
+                              <>
+                                <SectionTitle>Banc ({t.bench.length})</SectionTitle>
+                                <div className="grid grid-cols-2 gap-1.5">
+                                  {t.bench.map((p) => (
+                                    <div key={p.athleteId} className="flex items-center gap-2 rounded-xl bg-ink-3 px-2.5 py-2">
+                                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/10 text-[9.5px] font-black text-white/70">
+                                        {p.jersey ?? "?"}
+                                      </span>
+                                      <span className="min-w-0 flex-1 truncate text-[10px] font-bold text-white/80">{p.shortName ?? p.name}</span>
+                                    </div>
+                                  ))}
                                 </div>
-                              ))}
-                            </div>
-
-                            {t.coach ? (
-                              <p className="mt-3 text-center text-[9.5px] font-semibold text-white/40">Coach : {t.coach}</p>
+                              </>
                             ) : null}
+
+                            <p className="mt-3 text-center text-[8.5px] font-bold uppercase tracking-widest text-white/25">
+                              Source : ESPN · {t.source === "published" ? "compos du match" : "compos du match précédent"}
+                            </p>
                           </div>
                         );
                       })()}
@@ -877,13 +882,6 @@ export function MatchScreen({
           </main>
         )}
       </div>
-
-      {/* pastille mode démo */}
-      {!isLive ? (
-        <div className="absolute right-4 top-[70px] z-20">
-          <DemoBadge />
-        </div>
-      ) : null}
 
       {loading ? (
         <div className="absolute bottom-6 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full bg-black/70 px-3.5 py-2 ring-1 ring-white/10">

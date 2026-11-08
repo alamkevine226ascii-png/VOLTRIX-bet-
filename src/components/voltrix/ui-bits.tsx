@@ -8,7 +8,7 @@
    ============================================================ */
 
 import type { ReactNode } from "react";
-import { Loader2, WifiOff, FlaskConical, RefreshCw } from "lucide-react";
+import { Loader2, WifiOff, RefreshCw } from "lucide-react";
 import { confidenceStars, pct } from "@/lib/voltrix";
 
 /* ---------- Forme W/D/L : 5 segments néon ---------- */
@@ -175,15 +175,6 @@ export function SectionTitle({ children, right }: { children: ReactNode; right?:
   );
 }
 
-/* ---------- Badge DÉMO ---------- */
-export function DemoBadge({ className = "" }: { className?: string }) {
-  return (
-    <span className={`inline-flex items-center gap-1 rounded-full bg-[#8b5cf6]/25 px-2 py-0.5 text-[8.5px] font-black uppercase tracking-widest text-[#c4b5fd] ring-1 ring-[#8b5cf6]/40 ${className}`}>
-      <FlaskConical size={9} strokeWidth={2.6} />
-      Démo
-    </span>
-  );
-}
 
 /* ---------- Skeletons ---------- */
 export function CardSkeleton() {
@@ -230,16 +221,14 @@ export function LoadingPanel({ label = "Analyse du moteur…" }: { label?: strin
 export function ErrorPanel({
   message,
   onRetry,
-  isDemo,
 }: {
   message: string;
   onRetry?: () => void;
-  isDemo?: boolean;
 }) {
   return (
     <div className="flex flex-col items-center gap-3 py-12 text-center">
       <span className="flex h-12 w-12 items-center justify-center rounded-full bg-ink-3">
-        {isDemo ? <FlaskConical size={20} className="text-[#c4b5fd]" /> : <WifiOff size={20} className="text-white/50" />}
+        <WifiOff size={20} className="text-white/50" />
       </span>
       <p className="max-w-[280px] text-[11.5px] font-semibold leading-relaxed text-white/60">{message}</p>
       {onRetry ? (

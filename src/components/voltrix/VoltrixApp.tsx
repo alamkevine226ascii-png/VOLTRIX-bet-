@@ -1,17 +1,17 @@
 "use client";
 
 /* ============================================================
-   VOLTRIX front — Racine de l'application
-   Design conservé du front KickOff (cadre téléphone, encre +
-   lime néon, Anton) — données et écrans adaptés à l'API VOLTRIX :
-   pronos moteur, marchés, value bets, réglages.
+   VOLTRIX app — Racine de l'application mobile
+   Vrai logo, navigation par pile d'écrans (accueil / réglages /
+   détail match / détail combat) et barre d'onglets capsule
+   flottante façon iOS 27. Toutes les données sont réelles et
+   calculées localement (ESPN direct) — plus de mode démo.
    ============================================================ */
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { CheckCircle2 } from "lucide-react";
 import { Home, Settings } from "lucide-react";
-import { getApiBase } from "@/lib/voltrix";
 import { HomeScreen } from "./HomeScreen";
 import { MatchScreen } from "./MatchScreen";
 import { MmaFightScreen } from "./MmaFightScreen";
@@ -27,19 +27,12 @@ export type Screen =
 
 function LogoBadge() {
   return (
-    <span className="flex h-11 w-11 items-center justify-center rounded-full bg-neon shadow-[0_4px_18px_rgba(198,242,17,0.35)]">
-      <svg width="24" height="24" viewBox="0 0 24 24" role="img" aria-label="Logo VOLTRIX">
-        <path
-          d="M4 12 L8 5 H16 L20 12 L16 19 H8 Z"
-          fill="none"
-          stroke="#141414"
-          strokeWidth="2.2"
-          strokeLinejoin="round"
-        />
-        <path d="M12 7.5 L15.5 12 L12 16.5 L8.5 12 Z" fill="#141414" />
-        <circle cx="12" cy="12" r="1.3" fill="#c6f211" />
-      </svg>
-    </span>
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src="/logo.png"
+      alt="VOLTRIX"
+      className="h-11 w-11 rounded-2xl object-contain drop-shadow-[0_4px_16px_rgba(198,242,17,0.25)]"
+    />
   );
 }
 
@@ -54,9 +47,6 @@ export function VoltrixApp() {
   const [tab, setTab] = useState<TabId>("home");
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  /* incrémente à chaque changement d'URL d'API pour recharger les écrans */
-  const [apiEpoch, setApiEpoch] = useState(0);
 
   const current = stack[stack.length - 1];
 
@@ -121,8 +111,6 @@ export function VoltrixApp() {
     exit: (dir: number) => ({ x: dir > 0 ? "-32%" : "100%", opacity: 0.6 }),
   };
 
-  const isLive = getApiBase().length > 0;
-
   return (
     <div className="relative flex min-h-dvh w-full items-center justify-center overflow-hidden bg-black sm:p-6">
       <div
@@ -148,16 +136,11 @@ export function VoltrixApp() {
             className="absolute inset-0"
           >
             {current.name === "home" ? (
-              <HomeScreen onOpenMatch={openMatch} onOpenFight={openFight} apiEpoch={apiEpoch} />
+              <HomeScreen onOpenMatch={openMatch} onOpenFight={openFight} />
             ) : null}
 
             {current.name === "settings" ? (
-              <SettingsScreen
-                apiEpoch={apiEpoch}
-                onBaseChanged={() => setApiEpoch((e) => e + 1)}
-                headerSlot={<LogoBadge />}
-                isLive={isLive}
-              />
+              <SettingsScreen headerSlot={<LogoBadge />} />
             ) : null}
 
             {current.name === "match" ? (

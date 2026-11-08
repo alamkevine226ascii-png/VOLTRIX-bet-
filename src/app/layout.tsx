@@ -15,12 +15,24 @@ const archivo = Archivo({
 });
 
 export const metadata: Metadata = {
-  title: "VOLTRIX — Pronostics football",
+  title: "VOLTRIX — Pronostics football & MMA",
   description:
-    "Interface du système VOLTRIX bet : pronos moteur Poisson/Elo/Forme, marchés, value bets, prévisions figées, performance et portefeuille.",
+    "Pronostics football et MMA fondés sur les données ESPN, calculés localement sur votre téléphone : moteur Poisson/Elo/Forme (foot) et voltrix-mma-v1 (MMA). Aucune donnée inventée.",
+  applicationName: "VOLTRIX",
+  manifest: "/manifest.webmanifest",
   icons: {
-    icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
+    icon: [
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
   },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "VOLTRIX",
+  },
+  formatDetection: { telephone: false },
 };
 
 export const viewport: Viewport = {
@@ -28,6 +40,7 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
+  userScalable: false,
   viewportFit: "cover",
 };
 

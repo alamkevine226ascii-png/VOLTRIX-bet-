@@ -78,7 +78,7 @@ export function stadiumImageFor(
 }
 
 /* ============================================================
-   Noms de stades réels (mode démo) : le lieu affiché est le
+   Noms de stades réels (repli local) : le lieu affiché est le
    vrai stade de l'équipe domicile, avec sa ville.
    ============================================================ */
 
@@ -117,7 +117,7 @@ const VENUES: Record<string, VenueInfo> = {
   OGCN: { name: "Allianz Riviera", city: "Nice", country: "France" },
 };
 
-/** Vrai stade de l'équipe domicile (mode démo). Repli : « XXX Arena ». */
+/** Vrai stade de l'équipe domicile (repli local). Sinon : « XXX Arena ». */
 export function demoVenueFor(
   homeShort?: string | null,
   homeName?: string | null,

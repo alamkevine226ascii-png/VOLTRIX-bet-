@@ -1,39 +1,43 @@
 "use client";
 
 /* ============================================================
-   VOLTRIX front — Accueil : matchs du jour (football + MMA)
-   Football : GET /api/matches → cartes par ligue + pronos moteur.
-   MMA : combats du jour (données démo déterministes) → cartes
-   par événement (UFC, PFL, ONE) + pronos de victoire.
-   Un sélecteur de sport en tête permet de basculer.
+   VOLTRIX app — Accueil : matchs de football ET combats MMA
+   sur la même page. Données 100 % réelles (ESPN, appelé
+   directement depuis le téléphone) :
+   - Football : scan progressif par vague de priorité + pronos
+     du moteur Poisson/Elo/Forme en arrière-plan ;
+   - MMA : combats du jour (UFC, PFL) + pronos express
+     voltrix-mma-v1, têtes des combattants, formes récentes.
+   En-tête : logo seul + sélecteur de date + ligues. Au défilement,
+   tout se replie et il ne reste que le logo flottant, sans fond.
    ============================================================ */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type UIEvent } from "react";
-import { CalendarDays, Crown, RefreshCw } from "lucide-react";
+import { CalendarDays, RefreshCw } from "lucide-react";
+import { timeLabel } from "@/lib/voltrix";
 import {
-  fetchMatches,
-  fetchPredictions,
-  getApiBase,
-  timeLabel,
-} from "@/lib/voltrix";
-import { demoMatchesFor, demoPredictions } from "@/lib/demo-data";
-import { demoMmaEvents, demoMmaPredictions } from "@/lib/mma-data";
+  loadFootballDay,
+  computeQuickPreds,
+  type DayProgress,
+} from "@/lib/foot/bridge";
+import {
+  loadMmaDay,
+  hydrateMmaHeadshots,
+  hydrateMmaForms,
+} from "@/lib/mma-bridge";
 import type { LightMatch, MatchesResponse, QuickPred } from "@/lib/voltrix-types";
 import type { MmaEventsResponse, MmaFight, MmaQuickPred } from "@/lib/mma-types";
 import { TeamBadge } from "./TeamBadge";
+import { FighterHead } from "./FighterHead";
 import {
   CardSkeleton,
-  DemoBadge,
   ErrorPanel,
   FormDots,
   LoadingPanel,
   confidenceStars,
 } from "./ui-bits";
 
-const PRED_CHUNK = 30;
-const PRED_MAX_CHUNKS = 3; // borne anti-charge : 90 matchs max par journée
-
-type Sport = "football" | "mma";
+const PRED_MAX = 24; // borne de pronos football calculés en arrière-plan
 
 function isoAddDays(iso: string, days: number): string {
   const d = new Date(`${iso}T12:00:00Z`);
@@ -66,7 +70,11 @@ function DateStrip({ value, onChange }: { value: string; onChange: (d: string) =
               active ? "bg-neon text-black" : "bg-ink-3 text-white hover:bg-[#383838]"
             }`}
           >
-            <span className={`text-[8px] font-bold uppercase tracking-wider ${active ? "text-black/60" : isToday ? "text-neon" : "text-white/50"}`}>
+            <span
+              className={`text-[8px] font-bold uppercase tracking-wider ${
+                active ? "text-black/60" : isToday ? "text-neon" : "text-white/50"
+              }`}
+            >
               {isToday ? "Auj." : dt.toLocaleDateString("fr-FR", { weekday: "short" })}
             </span>
             <span className="text-[15px] font-black leading-tight">{dt.getUTCDate()}</span>
@@ -99,14 +107,12 @@ function ProbsStrip({ pred }: { pred: QuickPred }) {
         </span>
       ))}
       <span className="ml-1 flex flex-col items-end gap-0.5">
-        <span className="text-[10px] leading-none tracking-[0.1em] text-black/80" title={`Confiance ${pred.confidence}/5`}>
+        <span
+          className="text-[10px] leading-none tracking-[0.1em] text-black/80"
+          title={`Confiance ${pred.confidence}/5`}
+        >
           {confidenceStars(pred.confidence)}
         </span>
-        {pred.valueBetsCount > 0 ? (
-          <span className="rounded-full bg-black px-1.5 py-[1px] text-[7.5px] font-black uppercase tracking-wider text-neon">
-            {pred.valueBetsCount} value
-          </span>
-        ) : null}
       </span>
     </div>
   );
@@ -114,6 +120,13 @@ function ProbsStrip({ pred }: { pred: QuickPred }) {
 
 /* ---------- Duo de probabilités compact (MMA : 2 issues) ---------- */
 function MmaProbsStrip({ pred, aShort, bShort }: { pred: MmaQuickPred; aShort: string; bShort: string }) {
+  if (!pred.available) {
+    return (
+      <span className="text-[9px] font-bold uppercase tracking-wider text-black/35">
+        Prono indisponible
+      </span>
+    );
+  }
   const items = [
     { k: aShort.slice(0, 3).toUpperCase(), v: pred.probs.a },
     { k: bShort.slice(0, 3).toUpperCase(), v: pred.probs.b },
@@ -132,15 +145,11 @@ function MmaProbsStrip({ pred, aShort, bShort }: { pred: MmaQuickPred; aShort: s
           <span className="text-[13px] font-black leading-none">{Math.round(it.v * 100)}%</span>
         </span>
       ))}
-      <span className="ml-1 flex flex-col items-end gap-0.5">
-        <span className="text-[10px] leading-none tracking-[0.1em] text-black/80" title={`Confiance ${pred.confidence}/5`}>
-          {confidenceStars(pred.confidence)}
-        </span>
-        {pred.valueBetsCount > 0 ? (
-          <span className="rounded-full bg-black px-1.5 py-[1px] text-[7.5px] font-black uppercase tracking-wider text-neon">
-            {pred.valueBetsCount} value
-          </span>
-        ) : null}
+      <span
+        className="ml-1 max-w-[72px] text-right text-[8px] font-black uppercase leading-tight tracking-wider text-black/45"
+        title={`Base : ${pred.basis}`}
+      >
+        {pred.level}
       </span>
     </div>
   );
@@ -245,22 +254,20 @@ function MatchCard({
   );
 }
 
-/* ---------- Carte combat (MMA) ---------- */
+/* ---------- Carte combat (MMA) — têtes des combattants ---------- */
 function FightCard({
   fight,
   pred,
-  orgShort,
   onOpen,
 }: {
   fight: MmaFight;
   pred?: MmaQuickPred;
-  orgShort: string;
   onOpen: () => void;
 }) {
   const live = fight.status === "in";
   const done = fight.status === "post";
-  const rec = (r: { wins: number; losses: number; draws: number }) =>
-    r.draws > 0 ? `${r.wins}-${r.losses}-${r.draws}` : `${r.wins}-${r.losses}`;
+  const rec = (r: { wins: number | null; losses: number | null; draws: number | null }) =>
+    r.wins == null || r.losses == null ? "—" : r.draws ? `${r.wins}-${r.losses}-${r.draws}` : `${r.wins}-${r.losses}`;
 
   return (
     <article
@@ -270,7 +277,7 @@ function FightCard({
       <div className="grid grid-cols-[1fr_auto_1fr] items-start gap-1">
         {/* combattant A */}
         <div className="flex flex-col items-center gap-2 pt-1">
-          <TeamBadge name={fight.fighterA.name} logo={null} size={56} />
+          <FighterHead name={fight.fighterA.name} headshotUrl={fight.fighterA.headshotUrl} size={56} />
           <div className="flex flex-col items-center gap-1">
             <span className="max-w-[96px] text-center text-[9px] font-extrabold leading-[1.25] tracking-wide text-black">
               {fight.fighterA.name.toUpperCase()}
@@ -308,7 +315,7 @@ function FightCard({
 
         {/* combattant B */}
         <div className="flex flex-col items-center gap-2 pt-1">
-          <TeamBadge name={fight.fighterB.name} logo={null} size={56} />
+          <FighterHead name={fight.fighterB.name} headshotUrl={fight.fighterB.headshotUrl} size={56} />
           <div className="flex flex-col items-center gap-1">
             <span className="max-w-[96px] text-center text-[9px] font-extrabold leading-[1.25] tracking-wide text-black">
               {fight.fighterB.name.toUpperCase()}
@@ -319,31 +326,17 @@ function FightCard({
         </div>
       </div>
 
-      {/* bandeau bas : catégorie + duo moteur / cotes */}
+      {/* bandeau bas : catégorie + duo moteur */}
       <div className="mt-3.5 flex items-center justify-between gap-2 rounded-2xl bg-panel-2 px-3 py-2">
-        <span className="flex shrink-0 items-center gap-1 rounded-full bg-white px-2.5 py-[3px] text-[8px] font-extrabold uppercase tracking-wider text-black shadow-sm">
-          {fight.titleFight ? <Crown size={9} strokeWidth={2.8} className="text-black" /> : null}
-          {fight.weightClassShort}
+        <span className="shrink-0 rounded-full bg-white px-2.5 py-[3px] text-[8px] font-extrabold uppercase tracking-wider text-black shadow-sm">
+          {fight.weightClassShort ?? fight.org}
         </span>
         {pred ? (
           <MmaProbsStrip pred={pred} aShort={fight.fighterA.shortName} bShort={fight.fighterB.shortName} />
-        ) : fight.hasOdds && fight.oddsA != null ? (
-          <div className="flex items-center gap-1">
-            {[
-              { k: fight.fighterA.shortName.slice(0, 3).toUpperCase(), v: fight.oddsA },
-              { k: fight.fighterB.shortName.slice(0, 3).toUpperCase(), v: fight.oddsB },
-            ].map((o) => (
-              <span key={o.k} className="flex min-w-[40px] flex-col items-center rounded-xl bg-white px-1.5 py-1 text-black/70">
-                <span className="text-[8px] font-black uppercase opacity-60">{o.k}</span>
-                <span className="text-[12px] font-black leading-none">{o.v?.toFixed(2)}</span>
-              </span>
-            ))}
-          </div>
         ) : (
-          <span className="text-[9px] font-bold uppercase tracking-wider text-black/35">Pas de cotes</span>
+          <span className="text-[9px] font-bold uppercase tracking-wider text-black/35">Analyse…</span>
         )}
       </div>
-      <p className="mt-1.5 truncate px-1 text-[8px] font-bold uppercase tracking-wider text-black/35">{orgShort}</p>
     </article>
   );
 }
@@ -352,334 +345,276 @@ function FightCard({
 export function HomeScreen({
   onOpenMatch,
   onOpenFight,
-  apiEpoch,
 }: {
   onOpenMatch: (matchId: string, leagueCode: string, date: string, light?: LightMatch) => void;
   onOpenFight: (fightId: string) => void;
-  apiEpoch: number;
 }) {
-  const [sport, setSport] = useState<Sport>("football");
   const [date, setDate] = useState(todayISO());
-  const [data, setData] = useState<MatchesResponse | null>(null);
+  const [footData, setFootData] = useState<MatchesResponse | null>(null);
   const [mmaData, setMmaData] = useState<MmaEventsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [preds, setPreds] = useState<Record<string, QuickPred>>({});
   const [mmaPreds, setMmaPreds] = useState<Record<string, MmaQuickPred>>({});
-  const [loadingPreds, setLoadingPreds] = useState(false);
-  const [activeLeague, setActiveLeague] = useState("all");
-  const [activeOrg, setActiveOrg] = useState("all");
-  const abortRef = useRef<number>(0);
+  const [predsBusy, setPredsBusy] = useState(false);
+  const [activeFilter, setActiveFilter] = useState("all");
+  const abortRef = useRef(0);
 
-  /* bandeau dates + filtres : se replie quand on défile vers le bas,
-     réapparaît dès qu'on remonte */
-  const [barsHidden, setBarsHidden] = useState(false);
-  const lastScrollY = useRef(0);
+  /* tirer-pour-rafraîchir (pattern natif mobile) : quand la liste est
+     en haut, tirer vers le bas révèle un indicateur puis recharge.
+     Les handlers sont définis après `load` (référence en closure). */
+  const [pull, setPull] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+  const pullStartY = useRef<number | null>(null);
+
+  /* en-tête repliable : en haut de page → logo + dates + ligues ;
+     au défilement → seul le logo flotte, sans aucun fond.
+     L'en-tête est en SURIMPENSION (hors flux) : son repli ne
+     change jamais la hauteur du contenu → aucun saut de défilement,
+     même en fin de page (correction du bug d'oscillation). */
+  const [headerCollapsed, setHeaderCollapsed] = useState(false);
   const mainRef = useRef<HTMLDivElement>(null);
 
   const handleScroll = useCallback((e: UIEvent<HTMLDivElement>) => {
     const y = e.currentTarget.scrollTop;
-    if (y < 8) setBarsHidden(false);
-    else if (y > lastScrollY.current + 6 && y > 70) setBarsHidden(true);
-    else if (y < lastScrollY.current - 6) setBarsHidden(false);
-    lastScrollY.current = y;
+    if (y < 10) setHeaderCollapsed(false);
+    else setHeaderCollapsed(true);
+  }, []);
+
+  const scrollToTop = useCallback(() => {
+    mainRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+    setHeaderCollapsed(false);
   }, []);
 
   const changeDate = useCallback((d: string) => {
     setDate(d);
-    setBarsHidden(false);
-    lastScrollY.current = 0;
     mainRef.current?.scrollTo({ top: 0 });
+    setHeaderCollapsed(false);
   }, []);
 
-  const changeSport = useCallback((s: Sport) => {
-    setSport(s);
-    setBarsHidden(false);
-    lastScrollY.current = 0;
-    mainRef.current?.scrollTo({ top: 0 });
-  }, []);
+  /* ---------- chargement de la journée (foot + MMA) ---------- */
+  const load = useCallback(async (d: string) => {
+    const run = ++abortRef.current;
+    setLoading(true);
+    setError(null);
+    setFootData(null);
+    setMmaData(null);
+    setPreds({});
+    setMmaPreds({});
 
-  const isLive = getApiBase().length > 0;
+    let footDone = false;
+    let mmaDone = false;
+    const maybeFinish = () => {
+      if (footDone && mmaDone && run === abortRef.current) setLoading(false);
+    };
 
-  const load = useCallback(
-    async (d: string, sp: Sport) => {
-      const run = ++abortRef.current;
-      setLoading(true);
-      setError(null);
-      setData(null);
-      setMmaData(null);
-      setPreds({});
-      setMmaPreds({});
-      try {
-        if (sp === "football") {
-          const res = isLive ? await fetchMatches(d) : demoMatchesFor(d);
-          if (run !== abortRef.current) return;
-          setData(res);
-        } else {
-          /* MMA : données déterministes (l'API VOLTRIX est football) */
-          const res = demoMmaEvents(d);
-          if (run !== abortRef.current) return;
-          setMmaData(res);
-        }
-      } catch (e) {
+    /* football : scan progressif par vague de priorité */
+    void loadFootballDay(d, (p: DayProgress) => {
+      if (run !== abortRef.current) return;
+      footDone = false;
+      setFootData({
+        date: d,
+        totalMatches: p.leagues.reduce((n, l) => n + l.matches.length, 0),
+        leagues: p.leagues,
+        scanMs: 0,
+      });
+    })
+      .then((res) => {
         if (run !== abortRef.current) return;
-        setError(e instanceof Error ? e.message : "Chargement impossible");
-      } finally {
-        if (run === abortRef.current) setLoading(false);
-      }
-    },
-    [isLive],
-  );
+        setFootData(res);
+        footDone = true;
+        maybeFinish();
+      })
+      .catch(() => {
+        if (run !== abortRef.current) return;
+        footDone = true;
+        maybeFinish();
+      });
+
+    /* MMA : scoreboard + détails, puis têtes + formes en enrichissement */
+    void loadMmaDay(d)
+      .then(async (res) => {
+        if (run !== abortRef.current) return;
+        setMmaData(res);
+        mmaDone = true;
+        maybeFinish();
+
+        const withHeads = await hydrateMmaHeadshots(res).catch(() => res);
+        if (run !== abortRef.current) return;
+        setMmaData(withHeads);
+
+        const { res: withForms, preds } = await hydrateMmaForms(withHeads).catch(
+          () => ({ res: withHeads, preds: {} as Record<string, MmaQuickPred> }),
+        );
+        if (run !== abortRef.current) return;
+        setMmaData(withForms);
+        setMmaPreds(preds);
+      })
+      .catch(() => {
+        if (run !== abortRef.current) return;
+        mmaDone = true;
+        maybeFinish();
+      });
+  }, []);
 
   useEffect(() => {
-    void load(date, sport);
-  }, [date, sport, apiEpoch, load]);
+    void load(date);
+  }, [date, load]);
 
-  /* Pronos football en lot (matchs à venir uniquement) */
+  /* handlers tirer-pour-rafraîchir — après `load` (closure saine) */
+  const onTouchStart = useCallback((e: React.TouchEvent) => {
+    if (mainRef.current && mainRef.current.scrollTop <= 0) pullStartY.current = e.touches[0].clientY;
+    else pullStartY.current = null;
+  }, []);
+  const onTouchMove = useCallback((e: React.TouchEvent) => {
+    if (pullStartY.current == null) return;
+    const dy = e.touches[0].clientY - pullStartY.current;
+    if (dy > 0 && mainRef.current && mainRef.current.scrollTop <= 0) {
+      setPull(Math.min(dy * 0.45, 80));
+    } else {
+      setPull(0);
+    }
+  }, []);
+  const onTouchEnd = useCallback(() => {
+    const trigger = pull >= 58;
+    pullStartY.current = null;
+    if (trigger) {
+      setRefreshing(true);
+      setPull(48);
+      void load(date).finally(() => {
+        setRefreshing(false);
+        setPull(0);
+      });
+    } else {
+      setPull(0);
+    }
+  }, [pull, date, load]);
+
+  /* ---------- pronos football en arrière-plan ---------- */
   useEffect(() => {
-    if (sport !== "football" || !data) return;
-    const upcoming = data.leagues.flatMap((l) =>
-      l.matches.filter((m) => m.status === "pre" && m.leagueCode && m.date),
-    );
+    if (!footData || footData.totalMatches === 0) return;
+    const upcoming = footData.leagues
+      .flatMap((l) => l.matches.filter((m) => m.status === "pre" && m.leagueCode && m.date))
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
     if (upcoming.length === 0) return;
     let cancelled = false;
 
-    const run = async () => {
-      setLoadingPreds(true);
-      const acc: Record<string, QuickPred> = {};
-      try {
-        if (!isLive) {
-          demoPredictions(upcoming.slice(0, PRED_CHUNK * PRED_MAX_CHUNKS)).forEach((p) => {
-            acc[p.matchId] = p;
-          });
-          if (!cancelled) setPreds({ ...acc });
-        } else {
-          for (let c = 0; c < PRED_MAX_CHUNKS; c++) {
-            const chunk = upcoming.slice(c * PRED_CHUNK, (c + 1) * PRED_CHUNK);
-            if (chunk.length === 0) break;
-            const payload = chunk.map((m) => ({
-              matchId: m.id,
-              leagueCode: m.leagueCode,
-              date: m.date,
-            }));
-            const res = await fetchPredictions(payload);
-            if (cancelled) return;
-            res.results.forEach((r) => {
-              if (r) acc[r.matchId] = r;
-            });
-            setPreds({ ...acc });
-          }
-        }
-      } catch {
-        /* les pronos échoués ne bloquent pas l'affichage des matchs */
-      } finally {
-        if (!cancelled) setLoadingPreds(false);
-      }
-    };
-    void run();
+    void (async () => {
+      setPredsBusy(true);
+      await computeQuickPreds(
+        upcoming.slice(0, PRED_MAX).map((m) => ({ id: m.id, leagueCode: m.leagueCode, date: m.date })),
+        (pred) => {
+          if (!cancelled) setPreds((p) => ({ ...p, [pred.matchId]: pred }));
+        },
+      );
+      if (!cancelled) setPredsBusy(false);
+    })();
+
     return () => {
       cancelled = true;
     };
-  }, [data, sport, isLive]);
+  }, [footData]);
 
-  /* Pronos MMA (combats à venir) */
-  useEffect(() => {
-    if (sport !== "mma" || !mmaData) return;
-    const upcoming = mmaData.events.flatMap((e) => e.fights.filter((f) => f.status === "pre"));
-    if (upcoming.length === 0) return;
-    const acc: Record<string, MmaQuickPred> = {};
-    demoMmaPredictions(upcoming).forEach((p) => {
-      acc[p.fightId] = p;
-    });
-    setMmaPreds({ ...acc });
-  }, [mmaData, sport]);
-
-  /* Listes dérivées — football */
+  /* ---------- filtres : ligues foot + organisations MMA ---------- */
   const leagueChips = useMemo(() => {
-    if (!data) return [];
-    return data.leagues.map((l) => ({ code: l.code, label: l.shortName || l.code, name: l.name }));
-  }, [data]);
+    if (!footData) return [];
+    return footData.leagues.map((l) => ({ code: l.code, label: l.shortName || l.code, name: l.name }));
+  }, [footData]);
 
-  const groups = useMemo(() => {
-    if (!data) return [];
-    if (activeLeague !== "all") {
-      const lg = data.leagues.find((l) => l.code === activeLeague);
-      return lg ? [{ code: lg.code, name: lg.name, shortName: lg.shortName, matches: lg.matches }] : [];
-    }
-    return data.leagues;
-  }, [data, activeLeague]);
-
-  /* Listes dérivées — MMA */
   const orgChips = useMemo(() => {
     if (!mmaData) return [];
-    return mmaData.events.map((e) => ({ code: e.org, label: e.org, name: e.eventName }));
+    const seen = new Set<string>();
+    return mmaData.events
+      .filter((e) => (seen.has(e.org) ? false : (seen.add(e.org), true)))
+      .map((e) => ({ code: `mma:${e.org}`, label: e.org, name: e.eventName }));
   }, [mmaData]);
+
+  const groups = useMemo(() => {
+    if (!footData) return [];
+    if (activeFilter !== "all" && !activeFilter.startsWith("mma:")) {
+      const lg = footData.leagues.find((l) => l.code === activeFilter);
+      return lg ? [lg] : [];
+    }
+    if (activeFilter.startsWith("mma:")) return [];
+    return footData.leagues;
+  }, [footData, activeFilter]);
 
   const eventGroups = useMemo(() => {
     if (!mmaData) return [];
-    if (activeOrg !== "all") {
-      const ev = mmaData.events.find((e) => e.org === activeOrg);
-      return ev ? [{ org: ev.org, orgShort: ev.orgShort, eventName: ev.eventName, fights: ev.fights }] : [];
+    if (activeFilter === "all" || activeFilter.startsWith("mma:") === false) {
+      if (activeFilter !== "all") return [];
     }
-    return mmaData.events.map((e) => ({ org: e.org, orgShort: e.orgShort, eventName: e.eventName, fights: e.fights }));
-  }, [mmaData, activeOrg]);
+    if (activeFilter.startsWith("mma:")) {
+      const org = activeFilter.slice(4);
+      return mmaData.events.filter((e) => e.org === org);
+    }
+    return mmaData.events;
+  }, [mmaData, activeFilter]);
 
   const openMatch = (m: LightMatch) => onOpenMatch(m.id, m.leagueCode, m.date, m);
-
   const dt = new Date(`${date}T12:00:00Z`);
+  const totalFoot = footData?.totalMatches ?? 0;
+  const totalMma = mmaData?.totalFights ?? 0;
 
   return (
-    <div className="flex h-full flex-col bg-ink">
-      {/* en-tête */}
-      <header className="flex items-center justify-between px-5 pt-6">
-        <div className="flex items-center gap-3">
-          <span className="flex h-11 w-11 items-center justify-center rounded-full bg-neon shadow-[0_4px_18px_rgba(198,242,17,0.35)]">
-            <svg width="24" height="24" viewBox="0 0 24 24" role="img" aria-label="Logo VOLTRIX">
-              <path d="M4 12 L8 5 H16 L20 12 L16 19 H8 Z" fill="none" stroke="#141414" strokeWidth="2.2" strokeLinejoin="round" />
-              <path d="M12 7.5 L15.5 12 L12 16.5 L8.5 12 Z" fill="#141414" />
-              <circle cx="12" cy="12" r="1.3" fill="#c6f211" />
-            </svg>
-          </span>
-          <div>
-            <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.22em] text-white/45">
-              {isLive ? "API connectée" : "Mode démo"}
-              {!isLive ? <DemoBadge /> : null}
-            </p>
-            <h1 className="font-display text-[30px] leading-none tracking-wide text-white">VOLTRIX</h1>
-          </div>
-        </div>
-        <button
-          onClick={() => void load(date, sport)}
-          className="flex h-9 w-9 items-center justify-center rounded-full bg-ink-3 text-white transition-colors hover:bg-neon hover:text-black"
-          aria-label="Rafraîchir"
-        >
-          <RefreshCw size={15} strokeWidth={2.2} className={loading ? "animate-spin" : ""} />
-        </button>
-      </header>
-
-      {/* sélecteur de sport */}
-      <div className="mt-3 px-5" role="tablist" aria-label="Sport">
-        <div className="flex gap-1 rounded-full bg-ink-3 p-1">
-          {([
-            { id: "football" as const, label: "⚽ Football" },
-            { id: "mma" as const, label: "🥊 MMA" },
-          ]).map((s) => (
-            <button
-              key={s.id}
-              onClick={() => changeSport(s.id)}
-              role="tab"
-              aria-selected={sport === s.id}
-              className={`flex-1 rounded-full px-3 py-2 text-[11px] font-black uppercase tracking-wide transition-colors duration-150 ease-out ${
-                sport === s.id ? "bg-neon text-black" : "text-white/55 hover:text-white"
-              }`}
-            >
-              {s.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* bandeau de dates + filtres — compact, se replie au défilement */}
-      <div
-        aria-hidden={barsHidden}
-        className={`grid transition-[grid-template-rows,opacity,transform,visibility] duration-300 ease-out ${
-          barsHidden
-            ? "invisible grid-rows-[0fr] -translate-y-2 opacity-0"
-            : "grid-rows-[1fr] translate-y-0 opacity-100"
-        } mt-3`}
+    <div className="relative h-full bg-ink">
+      {/* ============ CONTENU DÉFILANT (pleine hauteur, sous l'en-tête) ============ */}
+      <main
+        ref={mainRef}
+        onScroll={handleScroll}
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+        className="no-scrollbar absolute inset-0 overflow-y-auto overscroll-contain px-5 pb-28 pt-[176px]"
       >
-        <div className="overflow-hidden">
-          <DateStrip value={date} onChange={changeDate} />
-          {sport === "football" && leagueChips.length > 0 ? (
-            <div className="no-scrollbar mt-2 flex gap-1.5 overflow-x-auto px-5">
-              <button
-                onClick={() => setActiveLeague("all")}
-                aria-pressed={activeLeague === "all"}
-                className={`whitespace-nowrap rounded-full px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide transition-colors ${
-                  activeLeague === "all" ? "bg-neon text-black" : "bg-ink-3 text-white hover:bg-[#383838]"
-                }`}
-              >
-                Toutes · {data?.totalMatches ?? 0}
-              </button>
-              {leagueChips.map((l) => (
-                <button
-                  key={l.code}
-                  onClick={() => setActiveLeague(l.code)}
-                  aria-pressed={activeLeague === l.code}
-                  title={l.name}
-                  className={`whitespace-nowrap rounded-full px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide transition-colors ${
-                    activeLeague === l.code ? "bg-neon text-black" : "bg-ink-3 text-white hover:bg-[#383838]"
-                  }`}
-                >
-                  {l.label}
-                </button>
-              ))}
-            </div>
-          ) : null}
-          {sport === "mma" && orgChips.length > 0 ? (
-            <div className="no-scrollbar mt-2 flex gap-1.5 overflow-x-auto px-5">
-              <button
-                onClick={() => setActiveOrg("all")}
-                aria-pressed={activeOrg === "all"}
-                className={`whitespace-nowrap rounded-full px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide transition-colors ${
-                  activeOrg === "all" ? "bg-neon text-black" : "bg-ink-3 text-white hover:bg-[#383838]"
-                }`}
-              >
-                Tous · {mmaData?.totalFights ?? 0}
-              </button>
-              {orgChips.map((o) => (
-                <button
-                  key={o.code}
-                  onClick={() => setActiveOrg(o.code)}
-                  aria-pressed={activeOrg === o.code}
-                  title={o.name}
-                  className={`whitespace-nowrap rounded-full px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide transition-colors ${
-                    activeOrg === o.code ? "bg-neon text-black" : "bg-ink-3 text-white hover:bg-[#383838]"
-                  }`}
-                >
-                  {o.label}
-                </button>
-              ))}
-            </div>
-          ) : null}
+        {/* indicateur tirer-pour-rafraîchir */}
+        <div
+          aria-hidden={pull < 8 && !refreshing}
+          className={`pointer-events-none absolute inset-x-0 z-10 flex justify-center transition-opacity duration-150 ${
+            pull >= 8 || refreshing ? "opacity-100" : "opacity-0"
+          }`}
+          style={{ top: Math.max(8, pull - 34) }}
+        >
+          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-ink-2/90 ring-1 ring-white/10 backdrop-blur">
+            <RefreshCw
+              size={15}
+              strokeWidth={2.4}
+              className={`text-neon ${refreshing ? "animate-spin" : ""}`}
+              style={!refreshing ? { transform: `rotate(${Math.min(280, pull * 4)}deg)` } : undefined}
+            />
+          </span>
         </div>
-      </div>
 
-      {/* contenu */}
-      <main ref={mainRef} onScroll={handleScroll} className="no-scrollbar flex-1 space-y-5 overflow-y-auto px-5 pb-28 pt-4">
+        <div
+          style={{
+            transform: pull > 0 ? `translateY(${pull}px)` : undefined,
+            transition: pull > 0 ? "none" : "transform 0.25s ease-out",
+          }}
+        >
         <div className="flex items-center justify-between">
           <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-white/45">
             <CalendarDays size={12} strokeWidth={2.4} />
             {dt.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })}
           </p>
-          {loadingPreds ? (
-            <span className="text-[9.5px] font-bold uppercase tracking-widest text-neon">Moteur en analyse…</span>
+          {predsBusy ? (
+            <span className="text-[9.5px] font-bold uppercase tracking-widest text-neon">
+              Moteur en analyse…
+            </span>
           ) : null}
         </div>
 
         {loading ? (
-          <div className="space-y-5">
+          <div className="space-y-5 pt-2">
             <CardSkeleton />
             <CardSkeleton />
             <CardSkeleton />
           </div>
         ) : error ? (
-          <ErrorPanel
-            message={error}
-            onRetry={() => void load(date, sport)}
-            isDemo={!isLive}
-          />
-        ) : sport === "football" ? (
-          groups.length === 0 ? (
-            <div className="flex flex-col items-center gap-2 py-14 text-center">
-              <span className="text-[32px]">⚽</span>
-              <p className="text-[12px] font-semibold text-white/50">Aucun match synchronisé pour cette date.</p>
-              <p className="max-w-[260px] text-[10.5px] leading-relaxed text-white/35">
-                La base se remplit via la synchronisation ESPN (onglet Réglages → Réveiller la synchronisation).
-              </p>
-            </div>
-          ) : (
-            groups.map((lg) => (
+          <ErrorPanel message={error} onRetry={() => void load(date)} />
+        ) : (
+          <div className="space-y-5 pt-2">
+            {/* ---------- sections football ---------- */}
+            {groups.map((lg) => (
               <section key={lg.code} aria-label={lg.name}>
                 <div className="mb-2.5 flex items-center gap-2">
                   <span className="h-[3px] w-4 rounded-full bg-neon" />
@@ -698,45 +633,141 @@ export function HomeScreen({
                   ))}
                 </div>
               </section>
-            ))
-          )
-        ) : eventGroups.length === 0 ? (
-          <div className="flex flex-col items-center gap-2 py-14 text-center">
-            <span className="text-[32px]">🥊</span>
-            <p className="text-[12px] font-semibold text-white/50">Aucun combat programmé pour cette date.</p>
-            <p className="max-w-[260px] text-[10.5px] leading-relaxed text-white/35">
-              Les cartes MMA se remplissent dès qu'un événement est programmé ce jour-là.
+            ))}
+
+            {/* ---------- sections MMA ---------- */}
+            {eventGroups.map((ev) => (
+              <section key={`${ev.org}-${ev.eventName}`} aria-label={ev.eventName}>
+                <div className="mb-2.5 flex items-center gap-2">
+                  <span className="h-[3px] w-4 rounded-full bg-neon" />
+                  <h2 className="text-[11px] font-black uppercase tracking-[0.14em] text-white/70">
+                    {ev.eventName}
+                  </h2>
+                  <span className="text-[9.5px] font-bold text-white/30">{ev.fights.length}</span>
+                </div>
+                <div className="space-y-4">
+                  {ev.fights.map((f) => (
+                    <FightCard
+                      key={f.id}
+                      fight={f}
+                      pred={mmaPreds[f.id]}
+                      onOpen={() => onOpenFight(f.id)}
+                    />
+                  ))}
+                </div>
+              </section>
+            ))}
+
+            {/* ---------- vide ---------- */}
+            {groups.length === 0 && eventGroups.length === 0 ? (
+              <div className="flex flex-col items-center gap-2 py-14 text-center">
+                <span className="text-[32px]">🏟️</span>
+                <p className="text-[12px] font-semibold text-white/50">
+                  Aucun match ni combat programmé pour cette date.
+                </p>
+                <p className="max-w-[260px] text-[10.5px] leading-relaxed text-white/35">
+                  Les données arrivent directement d&apos;ESPN — change de date avec le sélecteur en haut.
+                </p>
+              </div>
+            ) : null}
+
+            {predsBusy && groups.length > 0 ? (
+              <LoadingPanel label="Le moteur VOLTRIX analyse les matchs à venir…" />
+            ) : null}
+
+            <p className="pt-2 text-center text-[8.5px] font-bold uppercase tracking-widest text-white/25">
+              Données ESPN · calculs 100 % locaux · tirez pour rafraîchir
             </p>
           </div>
-        ) : (
-          eventGroups.map((ev) => (
-            <section key={`${ev.org}-${ev.eventName}`} aria-label={ev.eventName}>
-              <div className="mb-2.5 flex items-center gap-2">
-                <span className="h-[3px] w-4 rounded-full bg-neon" />
-                <h2 className="text-[11px] font-black uppercase tracking-[0.14em] text-white/70">{ev.eventName}</h2>
-                <span className="text-[9.5px] font-bold text-white/30">{ev.fights.length}</span>
-              </div>
-              <div className="space-y-4">
-                {ev.fights.map((f) => (
-                  <FightCard
-                    key={f.id}
-                    fight={f}
-                    pred={mmaPreds[f.id]}
-                    orgShort={f.eventName}
-                    onOpen={() => onOpenFight(f.id)}
-                  />
+        )}
+      </div>
+      </main>
+
+      {/* ============ EN-TÊTE EN SURIMPENSION ============
+          Déplié (haut de page) : logo + sélecteur de date + ligues.
+          Replié (défilement) : seul le logo flotte — aucun fond,
+          aucune bande. Toucher le logo ramène en haut. */}
+      <header className="pointer-events-none absolute inset-x-0 top-0 z-40">
+        {/* logo — toujours visible, sans fond */}
+        <div className="pointer-events-auto flex items-start justify-between px-5 pt-6">
+          <button
+            onClick={scrollToTop}
+            aria-label="VOLTRIX — revenir en haut"
+            className="flex items-center gap-2.5 rounded-full"
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/logo.png"
+              alt="VOLTRIX"
+              className={`rounded-2xl object-contain drop-shadow-[0_4px_16px_rgba(198,242,17,0.25)] transition-all duration-300 ease-out ${
+                headerCollapsed ? "h-11 w-11" : "h-12 w-12"
+              }`}
+            />
+          </button>
+          <button
+            onClick={() => void load(date)}
+            aria-label="Rafraîchir"
+            className={`pointer-events-auto mt-0.5 flex h-9 w-9 items-center justify-center rounded-full bg-ink-3/90 text-white backdrop-blur transition-all duration-300 ease-out hover:bg-neon hover:text-black ${
+              headerCollapsed ? "pointer-events-none scale-75 opacity-0" : "opacity-100"
+            }`}
+          >
+            <RefreshCw size={15} strokeWidth={2.2} className={loading ? "animate-spin" : ""} />
+          </button>
+        </div>
+
+        {/* dates + ligues — se replient au défilement (hors flux : aucun saut) */}
+        <div
+          aria-hidden={headerCollapsed}
+          className={`pointer-events-auto grid transition-[grid-template-rows,opacity,transform] duration-300 ease-out ${
+            headerCollapsed
+              ? "invisible pointer-events-none grid-rows-[0fr] -translate-y-3 opacity-0"
+              : "grid-rows-[1fr] translate-y-0 opacity-100"
+          } mt-3`}
+        >
+          <div className="overflow-hidden">
+            <DateStrip value={date} onChange={changeDate} />
+            {leagueChips.length > 0 || orgChips.length > 0 ? (
+              <div className="no-scrollbar mt-2 flex gap-1.5 overflow-x-auto px-5 pb-1">
+                <button
+                  onClick={() => setActiveFilter("all")}
+                  aria-pressed={activeFilter === "all"}
+                  className={`whitespace-nowrap rounded-full px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide transition-colors ${
+                    activeFilter === "all" ? "bg-neon text-black" : "bg-ink-3 text-white hover:bg-[#383838]"
+                  }`}
+                >
+                  Tous · {totalFoot + totalMma}
+                </button>
+                {leagueChips.map((l) => (
+                  <button
+                    key={l.code}
+                    onClick={() => setActiveFilter(l.code)}
+                    aria-pressed={activeFilter === l.code}
+                    title={l.name}
+                    className={`whitespace-nowrap rounded-full px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide transition-colors ${
+                      activeFilter === l.code ? "bg-neon text-black" : "bg-ink-3 text-white hover:bg-[#383838]"
+                    }`}
+                  >
+                    {l.label}
+                  </button>
+                ))}
+                {orgChips.map((o) => (
+                  <button
+                    key={o.code}
+                    onClick={() => setActiveFilter(o.code)}
+                    aria-pressed={activeFilter === o.code}
+                    title={o.name}
+                    className={`whitespace-nowrap rounded-full px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide transition-colors ${
+                      activeFilter === o.code ? "bg-neon text-black" : "bg-ink-3 text-white hover:bg-[#383838]"
+                    }`}
+                  >
+                    🥊 {o.label}
+                  </button>
                 ))}
               </div>
-            </section>
-          ))
-        )}
-
-        {loadingPreds && sport === "football" && groups.length > 0 ? (
-          <div className="pt-1">
-            <LoadingPanel label="Le moteur VOLTRIX analyse les matchs à venir…" />
+            ) : null}
           </div>
-        ) : null}
-      </main>
+        </div>
+      </header>
     </div>
   );
 }
