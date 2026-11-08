@@ -14,6 +14,7 @@ import { Home, Settings } from "lucide-react";
 import { getApiBase } from "@/lib/voltrix";
 import { HomeScreen } from "./HomeScreen";
 import { MatchScreen } from "./MatchScreen";
+import { MmaFightScreen } from "./MmaFightScreen";
 import { SettingsScreen } from "./SettingsScreen";
 import type { LightMatch } from "@/lib/voltrix-types";
 
@@ -21,7 +22,8 @@ export type TabId = "home" | "settings";
 
 export type Screen =
   | { name: TabId }
-  | { name: "match"; matchId: string; leagueCode: string; date: string; light?: LightMatch };
+  | { name: "match"; matchId: string; leagueCode: string; date: string; light?: LightMatch }
+  | { name: "fight"; fightId: string };
 
 function LogoBadge() {
   return (
@@ -84,6 +86,13 @@ export function VoltrixApp() {
     [push],
   );
 
+  const openFight = useCallback(
+    (fightId: string) => {
+      push({ name: "fight", fightId });
+    },
+    [push],
+  );
+
   const showToast = useCallback((msg: string) => {
     setToast(msg);
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -100,7 +109,11 @@ export function VoltrixApp() {
   }, [stack.length, pop]);
 
   const screenKey =
-    current.name === "match" ? `match-${current.matchId}` : `tab-${current.name}`;
+    current.name === "match"
+      ? `match-${current.matchId}`
+      : current.name === "fight"
+        ? `fight-${current.fightId}`
+        : `tab-${current.name}`;
 
   const variants = {
     enter: (dir: number) => ({ x: dir > 0 ? "100%" : "-100%", opacity: 0.6 }),
@@ -135,7 +148,7 @@ export function VoltrixApp() {
             className="absolute inset-0"
           >
             {current.name === "home" ? (
-              <HomeScreen onOpenMatch={openMatch} apiEpoch={apiEpoch} />
+              <HomeScreen onOpenMatch={openMatch} onOpenFight={openFight} apiEpoch={apiEpoch} />
             ) : null}
 
             {current.name === "settings" ? (
@@ -155,6 +168,10 @@ export function VoltrixApp() {
                 light={current.light}
                 onBack={pop}
               />
+            ) : null}
+
+            {current.name === "fight" ? (
+              <MmaFightScreen fightId={current.fightId} onBack={pop} />
             ) : null}
           </motion.div>
         </AnimatePresence>
@@ -179,8 +196,8 @@ export function VoltrixApp() {
         {/* barre d'onglets — capsule flottante arrondie façon iOS 27 :
             verre sombre, contenu qui défile derrière, pastille active
             animée (layoutId) qui glisse entre les onglets ;
-            masquée sur l'écran détail match */}
-        {current.name !== "match" ? (
+            masquée sur les écrans détail (match / combat) */}
+        {current.name !== "match" && current.name !== "fight" ? (
           <nav
             className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center"
             style={{ paddingBottom: "max(env(safe-area-inset-bottom), 14px)" }}
