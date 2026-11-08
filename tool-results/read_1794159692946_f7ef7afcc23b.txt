@@ -1,0 +1,722 @@
+     1→/* ============================================================
+     2→   VOLTRIX front — Données de DÉMONSTRATION
+     3→   Repli lorsque aucune URL d'API n'est configurée (ou injoignable).
+     4→   Formes STRICTEMENT identiques aux DTO de l'API VOLTRIX afin que
+     5→   chaque écran soit fidèle au rendu réel. Généré de façon
+     6→   déterministe (stable entre deux rendus).
+     7→   ============================================================ */
+     8→
+     9→import type {
+    10→  LightMatch,
+    11→  LightTeam,
+    12→  MatchDetailDTO,
+    13→  MatchesResponse,
+    14→  PerformanceDTO,
+    15→  QuickPred,
+    16→  SyncStatusResponse,
+    17→  WeekMatchRow,
+    18→  WeekResponse,
+    19→  LineupsResponse,
+    20→} from "./voltrix-types";
+    21→import { demoVenueFor } from "./stadiums";
+    22→
+    23→/* ---------- PRNG déterministe ---------- */
+    24→function seedFrom(s: string): () => number {
+    25→  let h = 2166136261;
+    26→  for (let i = 0; i < s.length; i++) {
+    27→    h ^= s.charCodeAt(i);
+    28→    h = Math.imul(h, 16777619);
+    29→  }
+    30→  return () => {
+    31→    h ^= h << 13;
+    32→    h ^= h >>> 17;
+    33→    h ^= h << 5;
+    34→    return ((h >>> 0) % 10_000) / 10_000;
+    35→  };
+    36→}
+    37→
+    38→const pick = <T,>(rng: () => number, arr: T[]): T => arr[Math.floor(rng() * arr.length)];
+    39→const between = (rng: () => number, lo: number, hi: number): number => lo + rng() * (hi - lo);
+    40→const round2 = (x: number): number => Math.round(x * 100) / 100;
+    41→const round3 = (x: number): number => Math.round(x * 1000) / 1000;
+    42→
+    43→/* ---------- Équipes démo ---------- */
+    44→interface DemoTeam {
+    45→  name: string;
+    46→  short: string;
+    47→  elo: number;
+    48→}
+    49→const TEAMS: Record<string, DemoTeam[]> = {
+    50→  "eng.1": [
+    51→    { name: "Arsenal", short: "ARS", elo: 1796 },
+    52→    { name: "Manchester City", short: "MCI", elo: 1938 },
+    53→    { name: "Liverpool", short: "LIV", elo: 1892 },
+    54→    { name: "Chelsea", short: "CHE", elo: 1760 },
+    55→    { name: "Tottenham", short: "TOT", elo: 1721 },
+    56→    { name: "Newcastle", short: "NEW", elo: 1704 },
+    57→  ],
+    58→  "esp.1": [
+    59→    { name: "Real Madrid", short: "RMA", elo: 1901 },
+    60→    { name: "FC Barcelone", short: "BAR", elo: 1877 },
+    61→    { name: "Atlético Madrid", short: "ATM", elo: 1812 },
+    62→    { name: "Séville", short: "SEV", elo: 1718 },
+    63→    { name: "Betis", short: "BET", elo: 1690 },
+    64→    { name: "Villarreal", short: "VIL", elo: 1702 },
+    65→  ],
+    66→  "ita.1": [
+    67→    { name: "Inter", short: "INT", elo: 1844 },
+    68→    { name: "Juventus", short: "JUV", elo: 1801 },
+    69→    { name: "AC Milan", short: "MIL", elo: 1788 },
+    70→    { name: "Naples", short: "NAP", elo: 1822 },
+    71→    { name: "AS Roma", short: "ROM", elo: 1755 },
+    72→    { name: "Lazio", short: "LAZ", elo: 1739 },
+    73→  ],
+    74→  "ger.1": [
+    75→    { name: "Bayern Munich", short: "BAY", elo: 1912 },
+    76→    { name: "Borussia Dortmund", short: "BVB", elo: 1803 },
+    77→    { name: "RB Leipzig", short: "RBL", elo: 1795 },
+    78→    { name: "Bayer Leverkusen", short: "B04", elo: 1830 },
+    79→    { name: "Stuttgart", short: "VFB", elo: 1742 },
+    80→    { name: "Francfort", short: "SGE", elo: 1728 },
+    81→  ],
+    82→  "fra.1": [
+    83→    { name: "Paris SG", short: "PSG", elo: 1888 },
+    84→    { name: "Marseille", short: "OM", elo: 1748 },
+    85→    { name: "Monaco", short: "ASM", elo: 1764 },
+    86→    { name: "Lyon", short: "OL", elo: 1731 },
+    87→    { name: "Lille", short: "LOSC", elo: 1740 },
+    88→    { name: "Nice", short: "OGCN", elo: 1712 },
+    89→  ],
+    90→  "uefa.champions": [
+    91→    { name: "Real Madrid", short: "RMA", elo: 1901 },
+    92→    { name: "Bayern Munich", short: "BAY", elo: 1912 },
+    93→    { name: "Paris SG", short: "PSG", elo: 1888 },
+    94→    { name: "Inter", short: "INT", elo: 1844 },
+    95→    { name: "Arsenal", short: "ARS", elo: 1796 },
+    96→    { name: "Manchester City", short: "MCI", elo: 1938 },
+    97→  ],
+    98→};
+    99→
+   100→const LEAGUE_META: Record<string, { name: string; shortName: string; region: string }> = {
+   101→  "eng.1": { name: "Premier League", shortName: "PL", region: "europe" },
+   102→  "esp.1": { name: "LaLiga", shortName: "LIG", region: "europe" },
+   103→  "ita.1": { name: "Serie A", shortName: "SEA", region: "europe" },
+   104→  "ger.1": { name: "Bundesliga", shortName: "BUN", region: "europe" },
+   105→  "fra.1": { name: "Ligue 1", shortName: "L1", region: "europe" },
+   106→  "uefa.champions": { name: "Ligue des Champions", shortName: "UCL", region: "europe" },
+   107→};
+   108→
+   109→const DEMO_LEAGUES = ["eng.1", "esp.1", "ita.1", "ger.1", "fra.1", "uefa.champions"];
+   110→
+   111→export function todayISO(): string {
+   112→  return new Date().toISOString().slice(0, 10);
+   113→}
+   114→
+   115→function isoAddDays(iso: string, days: number): string {
+   116→  const d = new Date(`${iso}T12:00:00Z`);
+   117→  d.setUTCDate(d.getUTCDate() + days);
+   118→  return d.toISOString().slice(0, 10);
+   119→}
+   120→
+   121→/* ---------- /api/matches (démo) ---------- */
+   122→
+   123→export function demoMatches(date: string): MatchesResponse {
+   124→  const rng = seedFrom(`matches-${date}`);
+   125→  const leagues: MatchesResponse["leagues"] = [];
+   126→  let total = 0;
+   127→
+   128→  for (const code of DEMO_LEAGUES) {
+   129→    const meta = LEAGUE_META[code];
+   130→    const teams = TEAMS[code];
+   131→    const n = 1 + Math.floor(rng() * 2); // 1-2 matchs par ligue
+   132→    const matches: LightMatch[] = [];
+   133→    for (let i = 0; i < n; i++) {
+   134→      const h = teams[(i * 2) % teams.length];
+   135→      const a = teams[(i * 2 + 1) % teams.length];
+   136→      const hour = 13 + Math.floor(rng() * 9);
+   137→      const minute = pick(rng, [0, 15, 30, 45]);
+   138→      const kickoff = new Date(`${date}T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:00Z`);
+   139→      const now = Date.now();
+   140→      const ms = kickoff.getTime();
+   141→      const status: LightMatch["status"] = ms > now + 30 * 60_000 ? "pre" : ms > now - 2 * 3600_000 ? "in" : "post";
+   142→      const hs = status === "pre" ? null : Math.floor(rng() * 4);
+   143→      const as = status === "pre" ? null : Math.floor(rng() * 3);
+   144→      const mlH = round2(between(rng, 1.35, 3.4));
+   145→      const mlD = round2(between(rng, 3.1, 4.2));
+   146→      const mlA = round2(between(rng, 1.8, 4.6));
+   147→      matches.push({
+   148→        id: `demo-${date}-${code}-${i}`,
+   149→        leagueCode: code,
+   150→        leagueName: meta.name,
+   151→        leagueShort: meta.shortName,
+   152→        region: meta.region,
+   153→        date: kickoff.toISOString(),
+   154→        status,
+   155→        statusDetail: status === "in" ? `${Math.floor(between(rng, 5, 85))}'` : status === "post" ? "FT" : "",
+   156→        home: {
+   157→          id: `h-${h.short}`,
+   158→          name: h.name,
+   159→          shortName: h.short,
+   160→          logo: null,
+   161→          score: hs,
+   162→          form: "WDWWL".slice(0, 3 + Math.floor(rng() * 3)),
+   163→          record: null,
+   164→        },
+   165→        away: {
+   166→          id: `a-${a.short}`,
+   167→          name: a.name,
+   168→          shortName: a.short,
+   169→          logo: null,
+   170→          score: as,
+   171→          form: "WDLWD".slice(0, 3 + Math.floor(rng() * 3)),
+   172→          record: null,
+   173→        },
+   174→        hasOdds: rng() > 0.25,
+   175→        oddsProvider: rng() > 0.5 ? "DraftKings" : null,
+   176→        ouLine: 2.5,
+   177→        mlHome: mlH,
+   178→        mlDraw: mlD,
+   179→        mlAway: mlA,
+   180→        venue: demoVenueFor(h.short, h.name),
+   181→      });
+   182→      total++;
+   183→    }
+   184→    leagues.push({ code, name: meta.name, shortName: meta.shortName, region: meta.region, matches });
+   185→  }
+   186→
+   187→  return { date, totalMatches: total, leagues, scanMs: 42, catalogueSize: 140 };
+   188→}
+   189→
+   190→/* ---------- POST /api/predictions (démo) ---------- */
+   191→
+   192→export function demoPredictions(matches: LightMatch[]): QuickPred[] {
+   193→  return matches.map((m) => {
+   194→    const rng = seedFrom(`pred-${m.id}`);
+   195→    let ph = between(rng, 0.22, 0.62);
+   196→    let pd = between(rng, 0.18, 0.3);
+   197→    let pa = 1 - ph - pd;
+   198→    if (pa < 0.08) {
+   199→      pa = 0.12;
+   200→      ph = Math.max(0.1, 1 - pd - pa);
+   201→    }
+   202→    const s = ph + pd + pa;
+   203→    ph /= s;
+   204→    pd /= s;
+   205→    pa /= s;
+   206→    const conf = 1 + Math.floor(rng() * 5);
+   207→    const over = between(rng, 0.38, 0.68);
+   208→    const yes = between(rng, 0.4, 0.7);
+   209→    const lambdaH = round2(between(rng, 0.9, 2.1));
+   210→    const lambdaA = round2(between(rng, 0.7, 1.8));
+   211→    const best = ph > pa ? (ph > pd ? { market: "1X2", pick: `1 - ${m.home.name}`, prob: ph } : { market: "1X2", pick: "Match nul", prob: pd }) : pa > pd ? { market: "1X2", pick: `2 - ${m.away.name}`, prob: pa } : { market: "1X2", pick: "Match nul", prob: pd };
+   212→    return {
+   213→      matchId: m.id,
+   214→      leagueCode: m.leagueCode,
+   215→      leagueName: m.leagueName,
+   216→      status: m.status,
+   217→      probs: { home: round3(ph), draw: round3(pd), away: round3(pa) },
+   218→      lambda: { home: lambdaH, away: lambdaA, total: round2(lambdaH + lambdaA) },
+   219→      confidence: conf,
+   220→      confidenceLabel: ["Faible", "Limitée", "Moyenne", "Bonne", "Élevée"][conf - 1],
+   221→      recommendedBets: [
+   222→        { market: best.market, pick: best.pick, prob: round3(best.prob), note: "Meilleure probabilité du moteur" },
+   223→        { market: "O/U 2.5", pick: over >= 0.5 ? "Plus de 2.5" : "Moins de 2.5", prob: round3(Math.max(over, 1 - over)), note: "Distribution Poisson calibrée" },
+   224→        { market: "BTTS", pick: yes >= 0.5 ? "Oui" : "Non", prob: round3(Math.max(yes, 1 - yes)), note: "Les deux équipes marquent" },
+   225→      ],
+   226→      overUnder: [1.5, 2.5, 3.5].map((line) => {
+   227→        const o = line === 1.5 ? Math.min(0.95, over + 0.22) : line === 2.5 ? over : Math.max(0.08, over - 0.26);
+   228→        return { line, over: round3(o), under: round3(1 - o) };
+   229→      }),
+   230→      btts: { yes: round3(yes), no: round3(1 - yes) },
+   231→      topScores: [
+   232→        { score: "1-1", prob: round3(between(rng, 0.09, 0.14)) },
+   233→        { score: "2-1", prob: round3(between(rng, 0.07, 0.12)) },
+   234→        { score: "1-0", prob: round3(between(rng, 0.07, 0.11)) },
+   235→        { score: "2-0", prob: round3(between(rng, 0.06, 0.1)) },
+   236→        { score: "0-1", prob: round3(between(rng, 0.05, 0.09)) },
+   237→      ],
+   238→      valueBetsCount: Math.floor(rng() * 3),
+   239→      ouOdds: m.hasOdds ? { line: 2.5, over: round2(between(rng, 1.7, 2.1)), under: round2(between(rng, 1.7, 2.1)) } : null,
+   240→    };
+   241→  });
+   242→}
+   243→
+   244→/* ---------- GET /api/match/[id] (démo) ---------- */
+   245→
+   246→export function demoMatchDetail(matchId: string): MatchDetailDTO {
+   247→  const rng = seedFrom(`detail-${matchId}`);
+   248→  const m = findDemoMatch(matchId);
+   249→  const FALLBACK_HOME: LightTeam = { id: "h-ARS", name: "Arsenal", shortName: "ARS", logo: null, score: null, form: "WWDLW", record: null };
+   250→  const FALLBACK_AWAY: LightTeam = { id: "a-CHE", name: "Chelsea", shortName: "CHE", logo: null, score: null, form: "WDWWL", record: null };
+   251→  const h = m?.home ?? FALLBACK_HOME;
+   252→  const a = m?.away ?? FALLBACK_AWAY;
+   253→  let ph = between(rng, 0.25, 0.6);
+   254→  const pd = between(rng, 0.2, 0.29);
+   255→  let pa = 1 - ph - pd;
+   256→  if (pa < 0.1) {
+   257→    pa = 0.14;
+   258→    ph = 1 - pd - pa;
+   259→  }
+   260→  const poisson = { home: round3(ph - 0.03), draw: round3(pd + 0.02), away: round3(pa + 0.01) };
+   261→  const elo = { home: round3(ph + 0.04), draw: round3(pd - 0.02), away: round3(pa - 0.02) };
+   262→  const form = { home: round3(ph - 0.02), draw: round3(pd), away: round3(pa + 0.02) };
+   263→  const probs = { home: round3(ph), draw: round3(pd), away: round3(pa) };
+   264→  const over = between(rng, 0.4, 0.66);
+   265→  const yes = between(rng, 0.42, 0.68);
+   266→  const conf = 2 + Math.floor(rng() * 4);
+   267→  const lambdaH = round2(between(rng, 1.0, 2.2));
+   268→  const lambdaA = round2(between(rng, 0.8, 1.9));
+   269→
+   270→  const team = (t: typeof h, eloScore: number, rank: number): MatchDetailDTO["home"] => ({
+   271→    id: t.id,
+   272→    name: t.name,
+   273→    logo: null,
+   274→    elo: eloScore,
+   275→    form: [1, 2, 3, 4, 5].map((i) => ({
+   276→      result: pick(rng, ["W", "W", "D", "L"] as const),
+   277→      opponent: pick(rng, ["Everton", "Fulham", "Brentford", "Brighton", "West Ham"]),
+   278→      score: `${Math.floor(rng() * 4)}-${Math.floor(rng() * 3)}`,
+   279→      home: rng() > 0.5,
+   280→      date: isoAddDays(todayISO(), -7 * i),
+   281→    })),
+   282→    formScore: round2(between(rng, 0.4, 0.9)),
+   283→    goalsForPerMatch: round2(between(rng, 1.2, 2.4)),
+   284→    goalsAgainstPerMatch: round2(between(rng, 0.6, 1.5)),
+   285→    goalsForHome: round2(between(rng, 1.4, 2.6)),
+   286→    goalsAgainstHome: round2(between(rng, 0.5, 1.3)),
+   287→    goalsForAway: round2(between(rng, 1.0, 2.2)),
+   288→    goalsAgainstAway: round2(between(rng, 0.7, 1.6)),
+   289→    cleanSheetsPct: Math.round(between(rng, 15, 55)),
+   290→    failedToScorePct: Math.round(between(rng, 8, 35)),
+   291→    fatigueDaysSinceLast: Math.round(between(rng, 2, 8)),
+   292→    matchesLast14Days: Math.round(between(rng, 2, 6)),
+   293→    injuriesCount: Math.round(between(rng, 0, 5)),
+   294→    injuriesKey: Math.round(between(rng, 0, 3)),
+   295→    rank,
+   296→    points: Math.round(between(rng, 20, 62)),
+   297→    gamesPlayed: 20 + Math.floor(rng() * 8),
+   298→  });
+   299→
+   300→  const best = probs.home > probs.away ? { market: "1X2", pick: `1 - ${h.name}`, prob: probs.home } : { market: "1X2", pick: `2 - ${a.name}`, prob: probs.away };
+   301→
+   302→  return {
+   303→    matchId,
+   304→    leagueCode: m?.leagueCode ?? "eng.1",
+   305→    leagueName: m?.leagueName ?? "Premier League",
+   306→    matchDate: m?.date ?? `${todayISO()}T20:00:00Z`,
+   307→    status: m?.status ?? "pre",
+   308→    statusDetail: m?.statusDetail ?? "",
+   309→    homeScore: m?.home.score ?? null,
+   310→    awayScore: m?.away.score ?? null,
+   311→    venue: demoVenueFor(h.shortName, h.name),
+   312→    odds: m?.hasOdds
+   313→      ? {
+   314→          provider: "DraftKings",
+   315→          hasOdds: true,
+   316→          moneyline: {
+   317→            home: { open: round2(between(rng, 1.4, 1.9)), close: m.mlHome },
+   318→            draw: { open: round2(between(rng, 3.4, 4)), close: m.mlDraw },
+   319→            away: { open: round2(between(rng, 2, 2.6)), close: m.mlAway },
+   320→          },
+   321→          overUnderLine: 2.5,
+   322→          total: {
+   323→            over: { line: 2.5, openOdds: round2(between(rng, 1.8, 2.05)), closeOdds: round2(between(rng, 1.75, 2.0)) },
+   324→            under: { line: 2.5, openOdds: round2(between(rng, 1.75, 2.0)), closeOdds: round2(between(rng, 1.8, 2.05)) },
+   325→          },
+   326→        }
+   327→      : null,
+   328→    home: team(h, 1780 + Math.round(between(rng, -60, 90)), 1 + Math.floor(rng() * 8)),
+   329→    away: team(a, 1760 + Math.round(between(rng, -60, 90)), 1 + Math.floor(rng() * 8)),
+   330→    prediction: {
+   331→      probs,
+   332→      poisson,
+   333→      elo,
+   334→      form,
+   335→      overUnder: [1.5, 2.5, 3.5].map((line) => {
+   336→        const o = line === 1.5 ? Math.min(0.94, over + 0.21) : line === 2.5 ? over : Math.max(0.09, over - 0.25);
+   337→        return { line, over: round3(o), under: round3(1 - o) };
+   338→      }),
+   339→      btts: { yes: round3(yes), no: round3(1 - yes) },
+   340→      raw: {
+   341→        overUnder: [{ line: 2.5, over: round3(over + 0.04), under: round3(1 - over - 0.04) }],
+   342→        btts: { yes: round3(yes + 0.03), no: round3(1 - yes - 0.03) },
+   343→      },
+   344→      topScores: [
+   345→        { score: "1-1", prob: round3(between(rng, 0.1, 0.14)) },
+   346→        { score: "2-1", prob: round3(between(rng, 0.08, 0.12)) },
+   347→        { score: "1-0", prob: round3(between(rng, 0.08, 0.11)) },
+   348→        { score: "2-0", prob: round3(between(rng, 0.06, 0.1)) },
+   349→        { score: "0-1", prob: round3(between(rng, 0.05, 0.09)) },
+   350→      ],
+   351→      firstGoalTiming: [
+   352→        { window: "0-15", label: "Avant la 16e", prob: round3(between(rng, 0.2, 0.32)) },
+   353→        { window: "16-30", label: "Entre la 16e et 30e", prob: round3(between(rng, 0.18, 0.26)) },
+   354→        { window: "31-45", label: "Entre la 31e et 45e", prob: round3(between(rng, 0.15, 0.24)) },
+   355→        { window: "46-60", label: "Entre la 46e et 60e", prob: round3(between(rng, 0.12, 0.2)) },
+   356→        { window: "61-75", label: "Entre la 61e et 75e", prob: round3(between(rng, 0.1, 0.18)) },
+   357→        { window: "76-90", label: "Après la 75e", prob: round3(between(rng, 0.1, 0.2)) },
+   358→        { window: "NO_GOAL", label: "Aucun but", prob: round3(between(rng, 0.04, 0.1)) },
+   359→      ],
+   360→      firstToScore: { home: round3(between(rng, 0.38, 0.55)), away: round3(between(rng, 0.28, 0.44)), noGoal: round3(between(rng, 0.04, 0.1)) },
+   361→      lambda: { home: lambdaH, away: lambdaA, total: round2(lambdaH + lambdaA) },
+   362→      confidence: conf,
+   363→      confidenceLabel: ["Faible", "Limitée", "Moyenne", "Bonne", "Élevée"][conf - 1],
+   364→      valueBets: Array.from({ length: 1 + Math.floor(rng() * 2) }, (_, i) => {
+   365→        const mp = between(rng, 0.45, 0.72);
+   366→        const odds = round2(between(rng, 1.6, 2.6));
+   367→        return {
+   368→          market: i === 0 ? "1X2" : i === 1 ? "O/U 2.5" : "BTTS",
+   369→          pick: i === 0 ? (probs.home > probs.away ? `1 - ${h.name}` : `2 - ${a.name}`) : i === 1 ? "Plus de 2.5" : "Oui",
+   370→          modelProb: round3(mp),
+   371→          odds,
+   372→          edge: round3(odds * mp - 1),
+   373→          kelly: round3(Math.max(0, (odds * mp - 1) / (odds - 1))),
+   374→        };
+   375→      }),
+   376→      oddsMovement: rng() > 0.5 ? "Cote domicile en baisse (-0.08) — marché qui se rapproche du modèle" : null,
+   377→      recommendedBets: [
+   378→        { market: best.market, pick: best.pick, prob: best.prob, note: "Meilleure probabilité du moteur (blend Poisson/Elo/Forme)" },
+   379→        { market: "O/U 2.5", pick: over >= 0.5 ? "Plus de 2.5" : "Moins de 2.5", prob: round3(Math.max(over, 1 - over)), note: "λ total " + round2(lambdaH + lambdaA) + " buts attendus" },
+   380→        { market: "BTTS", pick: yes >= 0.5 ? "Oui" : "Non", prob: round3(Math.max(yes, 1 - yes)), note: "Les deux équipes marquent" },
+   381→      ],
+   382→    },
+   383→    h2h: [1, 2, 3, 4, 5].map((i) => {
+   384→      const hs = Math.floor(rng() * 4);
+   385→      const as = Math.floor(rng() * 3);
+   386→      return {
+   387→        date: isoAddDays(todayISO(), -90 * i),
+   388→        homeTeam: i % 2 === 0 ? h.name : a.name,
+   389→        awayTeam: i % 2 === 0 ? a.name : h.name,
+   390→        score: `${hs}-${as}`,
+   391→        winner: hs > as ? "home" : hs < as ? "away" : "draw",
+   392→      };
+   393→    }),
+   394→    h2hSummary: { homeWins: 2, draws: 1, awayWins: 2, total: 5 },
+   395→    context: {
+   396→      isDerby: rng() > 0.7,
+   397→      derbyLabel: rng() > 0.7 ? "Derby local" : null,
+   398→      stakesHome: "Lutte pour le top 4 — victoire = +3 pts sur le 5e",
+   399→      stakesAway: "Milieu de tableau, jouera l'Europe via la coupe",
+   400→      weather: {
+   401→        description: pick(rng, ["Partiellement nuageux", "Pluie fine", "Dégagé", "Couvert"]),
+   402→        tempC: Math.round(between(rng, 4, 22)),
+   403→        windKmh: Math.round(between(rng, 5, 38)),
+   404→        precipitationMm: round2(between(rng, 0, 4)),
+   405→        impact: pick(rng, ["Neutre", "Légèrement défavorable aux buts", "Vent pénalisant les longs ballons"]),
+   406→      },
+   407→      fatigueNoteHome: "3 matchs sur 14 jours — fatigue modérée",
+   408→      fatigueNoteAway: "5 jours de repos — frais",
+   409→      injuriesNoteHome: "2 absents (milieu défensif, latéral gauche)",
+   410→      injuriesNoteAway: "Aucune absence notable",
+   411→    },
+   412→  };
+   413→}
+   414→
+   415→/* ---------- GET /api/performance (démo) ---------- */
+   416→
+   417→export function demoPerformance(): PerformanceDTO {
+   418→  const rng = seedFrom("perf");
+   419→  const mk = (total: number, rate: number) => ({ total, wins: Math.round(total * rate), winRate: round3(rate) });
+   420→  return {
+   421→    totalPredictions: 4820,
+   422→    pendingCount: 214,
+   423→    newlyResolved: 12,
+   424→    totalResolved: 4606,
+   425→    wins: 2431,
+   426→    winRate: 0.5276,
+   427→    roi: 0.048,
+   428→    staked: 31420,
+   429→    returned: 32928.4,
+   430→    economic: { settledWithOdds: 3104, staked: 31040, returned: 32529.8, roi: 0.0479 },
+   431→    sample: { settled: 4606, withOdds: 3104, source: "full-history" },
+   432→    byMarket: {
+   433→      "1X2": mk(1846, 0.55),
+   434→      "O/U 2.5": mk(1512, 0.53),
+   435→      BTTS: mk(1248, 0.49),
+   436→    },
+   437→    byConfidence: {
+   438→      "1": mk(312, 0.41),
+   439→      "2": mk(688, 0.46),
+   440→      "3": mk(1204, 0.5),
+   441→      "4": mk(1478, 0.55),
+   442→      "5": mk(924, 0.62),
+   443→    },
+   444→    byLeague: {
+   445→      "Premier League": mk(984, 0.54),
+   446→      LaLiga: mk(812, 0.52),
+   447→      "Serie A": mk(756, 0.53),
+   448→      Bundesliga: mk(702, 0.51),
+   449→      "Ligue 1": mk(648, 0.5),
+   450→    },
+   451→    byVersion: {
+   452→      "v2.1": mk(3120, 0.53),
+   453→      "v2.2": mk(1486, 0.55),
+   454→    },
+   455→    calibration: {
+   456→      brierScore: 0.198,
+   457→      sample: 4606,
+   458→      buckets: [
+   459→        { label: "0–50 %", count: 1840, avgProb: 0.38, actualRate: 0.36 },
+   460→        { label: "50–60 %", count: 916, avgProb: 0.55, actualRate: 0.54 },
+   461→        { label: "60–70 %", count: 704, avgProb: 0.65, actualRate: 0.66 },
+   462→        { label: "70–80 %", count: 512, avgProb: 0.74, actualRate: 0.76 },
+   463→        { label: "80–90 %", count: 384, avgProb: 0.84, actualRate: 0.83 },
+   464→        { label: "90–100 %", count: 250, avgProb: 0.92, actualRate: 0.9 },
+   465→      ],
+   466→    },
+   467→    history: Array.from({ length: 18 }, (_, i) => {
+   468→      const resolved = i > 3;
+   469→      const res = resolved ? pick(rng, ["WIN", "WIN", "LOSE", "LOSE", "LOSE", "VOID"] as const) : null;
+   470→      const lg = pick(rng, ["Premier League", "LaLiga", "Serie A", "Bundesliga", "Ligue 1"]);
+   471→      const ht = pick(rng, ["Arsenal", "Real Madrid", "Inter", "Bayern", "Paris SG", "Liverpool", "Naples", "Barcelone"]);
+   472→      let at = pick(rng, ["Chelsea", "Séville", "Juventus", "Dortmund", "Marseille", "Newcastle", "Milan", "Betis"]);
+   473→      if (at === ht) at = "Lyon";
+   474→      const market = pick(rng, ["1X2", "O/U 2.5", "BTTS"]);
+   475→      const pickTxt = market === "1X2" ? `1 - ${ht}` : market === "O/U 2.5" ? "Plus de 2.5" : "Oui";
+   476→      return {
+   477→        id: `p-${i}`,
+   478→        matchDate: isoAddDays(todayISO(), -i - 1) + "T20:00:00Z",
+   479→        leagueName: lg,
+   480→        homeTeam: ht,
+   481→        awayTeam: at,
+   482→        market,
+   483→        pick: pickTxt,
+   484→        probability: round3(between(rng, 0.42, 0.78)),
+   485→        odds: round2(between(rng, 1.55, 2.4)),
+   486→        confidence: 2 + Math.floor(rng() * 4),
+   487→        resolved,
+   488→        result: res,
+   489→      };
+   490→    }),
+   491→  };
+   492→}
+   493→
+   494→/* ---------- GET /api/forecasts/week (démo) ---------- */
+   495→
+   496→export function demoWeek(start: string): WeekResponse {
+   497→  const rng = seedFrom(`week-${start}`);
+   498→  const codes = DEMO_LEAGUES.slice(0, 5);
+   499→  const rows: WeekMatchRow[] = [];
+   500→  let dayN = 0;
+   501→  for (const code of codes) {
+   502→    const teams = TEAMS[code];
+   503→    for (let i = 0; i < 2; i++) {
+   504→      const h = teams[(i * 2) % teams.length];
+   505→      const a = teams[(i * 2 + 1) % teams.length];
+   506→      const d = isoAddDays(start, dayN % 7);
+   507→      dayN++;
+   508→      const kickoff = new Date(`${d}T${18 + (i * 2)}:00:00Z`);
+   509→      const past = kickoff.getTime() < Date.now();
+   510→      const ph = between(rng, 0.28, 0.62);
+   511→      const pd = between(rng, 0.19, 0.28);
+   512→      const pa = Math.max(0.1, 1 - ph - pd);
+   513→      const s = ph + pd + pa;
+   514→      const hs = past ? Math.floor(rng() * 4) : null;
+   515→      const as = past ? Math.floor(rng() * 3) : null;
+   516→      const pick1 = ph >= pa && ph >= pd ? "1" : pa >= pd ? "2" : "X";
+   517→      const over = between(rng, 0.42, 0.62);
+   518→      const yes = between(rng, 0.44, 0.64);
+   519→      const correct = rng() > 0.45;
+   520→      const grade = (good: boolean) => (past ? (rng() > 0.08 ? (good ? "CORRECT" : "INCORRECT") : "VOID") : null);
+   521→      rows.push({
+   522→        matchId: `demo-${d}-${code}-${i}`,
+   523→        league: code,
+   524→        leagueName: LEAGUE_META[code].name,
+   525→        kickoff: kickoff.toISOString(),
+   526→        homeTeamId: `h-${h.short}`,
+   527→        homeTeam: h.name,
+   528→        homeLogo: null,
+   529→        awayTeamId: `a-${a.short}`,
+   530→        awayTeam: a.name,
+   531→        awayLogo: null,
+   532→        effectiveStatus: past ? "FINAL" : "SCHEDULED",
+   533→        statusLabel: past ? "TERMINÉ" : "À VENIR",
+   534→        result: past ? { status: "FINAL", homeScore: hs, awayScore: as } : null,
+   535→        snapshot: {
+   536→          version: 1 + Math.floor(rng() * 2),
+   537→          p1x2Home: round3((ph / s)),
+   538→          p1x2Draw: round3(pd / s),
+   539→          p1x2Away: round3(pa / s),
+   540→          pick1x2: pick1,
+   541→          pick1x2Label: pick1 === "1" ? `1 - ${h.name}` : pick1 === "2" ? `2 - ${a.name}` : "Match nul",
+   542→          confidence: 1 + Math.floor(rng() * 5),
+   543→          pOver25: round3(over),
+   544→          pUnder25: round3(1 - over),
+   545→          pickOu25: over >= 0.5 ? "OVER" : "UNDER",
+   546→          pBttsYes: round3(yes),
+   547→          pBttsNo: round3(1 - yes),
+   548→          pickBtts: yes >= 0.5 ? "YES" : "NO",
+   549→          predictionTime: new Date(kickoff.getTime() - 20 * 3600_000).toISOString(),
+   550→          modelVersion: "v2.2",
+   551→          odds1x2Home: round2(between(rng, 1.5, 2.8)),
+   552→          odds1x2Draw: round2(between(rng, 3.2, 4)),
+   553→          odds1x2Away: round2(between(rng, 2.2, 4.4)),
+   554→        },
+   555→        evaluation: past
+   556→          ? { grade1x2: grade(correct), gradeOu25: grade(!correct), gradeBtts: grade(correct) }
+   557→          : null,
+   558→        predictionPending: !past,
+   559→        predictionOutOfRange: false,
+   560→      });
+   561→    }
+   562→  }
+   563→  const n1 = rows.filter((r) => r.evaluation?.grade1x2 === "CORRECT").length;
+   564→  const nT = rows.filter((r) => r.evaluation && r.evaluation.grade1x2 && r.evaluation.grade1x2 !== "VOID").length;
+   565→  return {
+   566→    week: {
+   567→      start,
+   568→      end: isoAddDays(start, 6),
+   569→      label: `Semaine du ${start}`,
+   570→      isCurrent: true,
+   571→      isPast: false,
+   572→      prev: isoAddDays(start, -7),
+   573→      next: isoAddDays(start, 7),
+   574→    },
+   575→    matches: rows,
+   576→    stats: {
+   577→      matchesAnalyzed: rows.length,
+   578→      matchesFinished: rows.filter((r) => r.result).length,
+   579→      matchesPending: rows.filter((r) => !r.result).length,
+   580→      matchesVoid: 1,
+   581→      globalAccuracy: nT ? round3(n1 / nT) : null,
+   582→      globalCorrect: n1,
+   583→      globalEvaluable: nT,
+   584→      m1x2: { n: nT, correct: n1, incorrect: nT - n1, void: 1, pending: rows.filter((r) => !r.evaluation).length, accuracy: nT ? round3(n1 / nT) : null },
+   585→      ou25: { n: nT, correct: Math.round(nT * 0.52), incorrect: nT - Math.round(nT * 0.52), void: 0, pending: 0, accuracy: 0.52 },
+   586→      btts: { n: nT, correct: Math.round(nT * 0.48), incorrect: nT - Math.round(nT * 0.48), void: 0, pending: 0, accuracy: 0.48 },
+   587→      calibration1x2: [
+   588→        { label: "0–50 %", n: 4, predicted: 0.42, actual: 0.4 },
+   589→        { label: "50–60 %", n: 3, predicted: 0.55, actual: 0.57 },
+   590→        { label: "60–70 %", n: 2, predicted: 0.65, actual: 0.62 },
+   591→      ],
+   592→    },
+   593→  };
+   594→}
+   595→
+   596→/* ---------- GET /api/match/[id]/lineups (démo) ---------- */
+   597→
+   598→const POS_ORDER = ["G", "D", "M", "F"] as const;
+   599→
+   600→export function demoLineups(matchId: string): LineupsResponse {
+   601→  const rng = seedFrom(`lineups-${matchId}`);
+   602→  const m = findDemoMatch(matchId);
+   603→  const mkTeam = (side: "home" | "away") => {
+   604→    const t = side === "home" ? m?.home : m?.away;
+   605→    const names = [
+   606→      "Ramsdale", "White", "Saliba", "Gabriel", "Timber",
+   607→      "Rice", "Ødegaard", "Havertz", "Saka", "Martinelli", "Jesus",
+   608→    ];
+   609→    const benchNames = ["Trossard", "Nketiah", "Jorginho", "Kiwior", "Zinchenko"];
+   610→    const starters = names.map((n, i) => ({
+   611→      athleteId: `demo-${side}-${i}`,
+   612→      name: n,
+   613→      shortName: n,
+   614→      jersey: String([1, 4, 2, 6, 12, 41, 8, 29, 7, 11, 9][i]),
+   615→      position: POS_ORDER[i < 1 ? 0 : i < 5 ? 1 : i < 8 ? 2 : 3],
+   616→      positionDetail: null,
+   617→      starter: true,
+   618→      formationPlace: i + 1,
+   619→      age: 21 + Math.floor(rng() * 14),
+   620→      heightCm: 168 + Math.floor(rng() * 25),
+   621→      weightKg: 64 + Math.floor(rng() * 26),
+   622→      nationality: pick(rng, ["Angleterre", "Brésil", "France", "Norvège", "Ghana"]),
+   623→      espnHeadshot: null,
+   624→      tm: rng() > 0.2 ? { valueEur: Math.round(between(rng, 2, 110)) * 1_000_000, contractUntil: "2028", foot: pick(rng, ["Droit", "Gauche"]), photoUrl: null, approx: false } : null,
+   625→    }));
+   626→    const bench = benchNames.map((n, i) => ({
+   627→      athleteId: `demo-${side}-b${i}`,
+   628→      name: n,
+   629→      shortName: n,
+   630→      jersey: String([27, 20, 23, 15, 35][i]),
+   631→      position: POS_ORDER[Math.floor(rng() * 4)],
+   632→      positionDetail: null,
+   633→      starter: false,
+   634→      formationPlace: null,
+   635→      age: 20 + Math.floor(rng() * 15),
+   636→      heightCm: 170 + Math.floor(rng() * 20),
+   637→      weightKg: 66 + Math.floor(rng() * 22),
+   638→      nationality: pick(rng, ["Angleterre", "Pays-Bas", "Espagne", "Japon"]),
+   639→      espnHeadshot: null,
+   640→      tm: rng() > 0.5 ? { valueEur: Math.round(between(rng, 5, 60)) * 1_000_000, contractUntil: "2027", foot: "Droit", photoUrl: null, approx: false } : null,
+   641→    }));
+   642→    return {
+   643→      teamId: t?.id ?? `${side}-demo`,
+   644→      name: t?.name ?? (side === "home" ? "Arsenal" : "Chelsea"),
+   645→      shortName: t?.shortName ?? (side === "home" ? "ARS" : "CHE"),
+   646→      logo: null,
+   647→      formation: { text: "4-3-3", source: "deduced" as const },
+   648→      lineupsPublished: false,
+   649→      coach: side === "home" ? "Entraîneur domicile" : "Entraîneur extérieur",
+   650→      starters,
+   651→      bench,
+   652→      squad: [...starters, ...bench],
+   653→      squadValueEur: Math.round(between(rng, 400, 1200)) * 1_000_000,
+   654→      profile: { rank: side === "home" ? 2 : 6, gamesPlayed: 24, goalsForPerMatch: round2(between(rng, 1.4, 2.4)), goalsAgainstPerMatch: round2(between(rng, 0.7, 1.4)) },
+   655→    };
+   656→  };
+   657→  return {
+   658→    matchId,
+   659→    leagueCode: m?.leagueCode ?? "eng.1",
+   660→    seasonYear: 2026,
+   661→    venue: m ? demoVenueFor(m.home.shortName, m.home.name) : { name: "Emirates Stadium", city: null, country: null },
+   662→    attendance: 60_278,
+   663→    weather: { description: "Dégagé", tempC: 11 },
+   664→    home: mkTeam("home"),
+   665→    away: mkTeam("away"),
+   666→  };
+   667→}
+   668→
+   669→/* ---------- GET /api/sync/status (démo) ---------- */
+   670→
+   671→export function demoSyncStatus(): SyncStatusResponse {
+   672→  return {
+   673→    ok: true,
+   674→    db: { connected: true, latencyMs: 38 },
+   675→    counts: {
+   676→      matches: 4412,
+   677→      teams: 1870,
+   678→      competitions: 142,
+   679→      oddsSnapshots: 89_204,
+   680→      predictionSnapshots: 3104,
+   681→      predictionMarkets: 21_728,
+   682→      predictionOutcomes: 96_512,
+   683→      forecastSnapshots: 2540,
+   684→      predictions: 4820,
+   685→    },
+   686→    espnCalls: { total: 1420, client: 96, sync: 1324 },
+   687→    lastSync: {
+   688→      phase: "done",
+   689→      startedAt: new Date(Date.now() - 41 * 60_000).toISOString(),
+   690→      finishedAt: new Date(Date.now() - 39 * 60_000).toISOString(),
+   691→    },
+   692→    lastForecastJob: {
+   693→      phase: "done",
+   694→      startedAt: new Date(Date.now() - 38 * 60_000).toISOString(),
+   695→      finishedAt: new Date(Date.now() - 35 * 60_000).toISOString(),
+   696→    },
+   697→  };
+   698→}
+   699→
+   700→/* ---------- Utilitaires démo ---------- */
+   701→
+   702→const demoCache = new Map<string, MatchesResponse>();
+   703→
+   704→export function demoMatchesFor(date: string): MatchesResponse {
+   705→  if (!demoCache.has(date)) demoCache.set(date, demoMatches(date));
+   706→  return demoCache.get(date)!;
+   707→}
+   708→
+   709→export function findDemoMatch(matchId: string): LightMatch | undefined {
+   710→  for (const code of DEMO_LEAGUES) {
+   711→    for (let off = -2; off <= 3; off++) {
+   712→      const d = isoAddDays(todayISO(), off);
+   713→      const res = demoMatchesFor(d);
+   714→      for (const lg of res.leagues) {
+   715→        const m = lg.matches.find((x) => x.id === matchId);
+   716→        if (m) return m;
+   717→      }
+   718→    }
+   719→  }
+   720→  return undefined;
+   721→}
+   722→
