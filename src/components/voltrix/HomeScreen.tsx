@@ -8,7 +8,7 @@
    confiance, value bets (lots ≤ 30, statut pre uniquement).
    ============================================================ */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type UIEvent } from "react";
 import { CalendarDays, RefreshCw } from "lucide-react";
 import {
   fetchMatches,
@@ -42,14 +42,14 @@ function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-/* ---------- Bandeau de dates (7 jours) ---------- */
+/* ---------- Bandeau de dates (7 jours, compact) ---------- */
 function DateStrip({ value, onChange }: { value: string; onChange: (d: string) => void }) {
   const days = useMemo(() => {
     const t = todayISO();
     return [-2, -1, 0, 1, 2, 3, 4].map((off) => isoAddDays(t, off));
   }, []);
   return (
-    <div className="no-scrollbar flex gap-2 overflow-x-auto px-5 pb-1">
+    <div className="no-scrollbar flex gap-1.5 overflow-x-auto px-5">
       {days.map((d) => {
         const active = d === value;
         const dt = new Date(`${d}T12:00:00Z`);
@@ -59,17 +59,14 @@ function DateStrip({ value, onChange }: { value: string; onChange: (d: string) =
             key={d}
             onClick={() => onChange(d)}
             aria-pressed={active}
-            className={`flex w-[62px] shrink-0 flex-col items-center rounded-2xl px-2 py-2 transition-colors ${
+            className={`flex w-[46px] shrink-0 flex-col items-center rounded-xl px-1 py-1.5 transition-colors ${
               active ? "bg-neon text-black" : "bg-ink-3 text-white hover:bg-[#383838]"
             }`}
           >
-            <span className={`text-[9px] font-bold uppercase tracking-wider ${active ? "text-black/60" : "text-white/50"}`}>
-              {dt.toLocaleDateString("fr-FR", { weekday: "short" })}
+            <span className={`text-[8px] font-bold uppercase tracking-wider ${active ? "text-black/60" : isToday ? "text-neon" : "text-white/50"}`}>
+              {isToday ? "Auj." : dt.toLocaleDateString("fr-FR", { weekday: "short" })}
             </span>
-            <span className="text-[17px] font-black leading-tight">{dt.getUTCDate()}</span>
-            <span className={`text-[8px] font-bold uppercase ${active ? "text-black/60" : isToday ? "text-neon" : "text-white/35"}`}>
-              {isToday ? "Auj." : dt.toLocaleDateString("fr-FR", { month: "short" })}
-            </span>
+            <span className="text-[15px] font-black leading-tight">{dt.getUTCDate()}</span>
           </button>
         );
       })}
@@ -241,6 +238,27 @@ export function HomeScreen({
   const [activeLeague, setActiveLeague] = useState("all");
   const abortRef = useRef<number>(0);
 
+  /* bandeau dates + ligues : se replie quand on défile vers le bas,
+     réapparaît dès qu'on remonte */
+  const [barsHidden, setBarsHidden] = useState(false);
+  const lastScrollY = useRef(0);
+  const mainRef = useRef<HTMLDivElement>(null);
+
+  const handleScroll = useCallback((e: UIEvent<HTMLDivElement>) => {
+    const y = e.currentTarget.scrollTop;
+    if (y < 8) setBarsHidden(false);
+    else if (y > lastScrollY.current + 6 && y > 70) setBarsHidden(true);
+    else if (y < lastScrollY.current - 6) setBarsHidden(false);
+    lastScrollY.current = y;
+  }, []);
+
+  const changeDate = useCallback((d: string) => {
+    setDate(d);
+    setBarsHidden(false);
+    lastScrollY.current = 0;
+    mainRef.current?.scrollTo({ top: 0 });
+  }, []);
+
   const isLive = getApiBase().length > 0;
 
   const load = useCallback(
@@ -390,41 +408,48 @@ export function HomeScreen({
         </button>
       </header>
 
-      {/* bandeau de dates */}
-      <div className="mt-4">
-        <DateStrip value={date} onChange={setDate} />
+      {/* bandeau de dates + ligues — compact, se replie au défilement */}
+      <div
+        aria-hidden={barsHidden}
+        className={`grid transition-[grid-template-rows,opacity,transform,visibility] duration-300 ease-out ${
+          barsHidden
+            ? "invisible grid-rows-[0fr] -translate-y-2 opacity-0"
+            : "grid-rows-[1fr] translate-y-0 opacity-100"
+        } mt-3`}
+      >
+        <div className="overflow-hidden">
+          <DateStrip value={date} onChange={changeDate} />
+          {leagueChips.length > 0 ? (
+            <div className="no-scrollbar mt-2 flex gap-1.5 overflow-x-auto px-5">
+              <button
+                onClick={() => setActiveLeague("all")}
+                aria-pressed={activeLeague === "all"}
+                className={`whitespace-nowrap rounded-full px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide transition-colors ${
+                  activeLeague === "all" ? "bg-neon text-black" : "bg-ink-3 text-white hover:bg-[#383838]"
+                }`}
+              >
+                Toutes · {data?.totalMatches ?? 0}
+              </button>
+              {leagueChips.map((l) => (
+                <button
+                  key={l.code}
+                  onClick={() => setActiveLeague(l.code)}
+                  aria-pressed={activeLeague === l.code}
+                  title={l.name}
+                  className={`whitespace-nowrap rounded-full px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide transition-colors ${
+                    activeLeague === l.code ? "bg-neon text-black" : "bg-ink-3 text-white hover:bg-[#383838]"
+                  }`}
+                >
+                  {l.label}
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
       </div>
 
-      {/* chips ligues */}
-      {leagueChips.length > 0 ? (
-        <div className="no-scrollbar mt-3 flex gap-2 overflow-x-auto px-5 pb-1">
-          <button
-            onClick={() => setActiveLeague("all")}
-            aria-pressed={activeLeague === "all"}
-            className={`whitespace-nowrap rounded-full px-4 py-2 text-[11px] font-bold uppercase tracking-wide transition-colors ${
-              activeLeague === "all" ? "bg-neon text-black" : "bg-ink-3 text-white hover:bg-[#383838]"
-            }`}
-          >
-            Toutes · {data?.totalMatches ?? 0}
-          </button>
-          {leagueChips.map((l) => (
-            <button
-              key={l.code}
-              onClick={() => setActiveLeague(l.code)}
-              aria-pressed={activeLeague === l.code}
-              title={l.name}
-              className={`whitespace-nowrap rounded-full px-4 py-2 text-[11px] font-bold uppercase tracking-wide transition-colors ${
-                activeLeague === l.code ? "bg-neon text-black" : "bg-ink-3 text-white hover:bg-[#383838]"
-              }`}
-            >
-              {l.label}
-            </button>
-          ))}
-        </div>
-      ) : null}
-
       {/* contenu */}
-      <main className="no-scrollbar flex-1 space-y-5 overflow-y-auto px-5 pb-28 pt-4">
+      <main ref={mainRef} onScroll={handleScroll} className="no-scrollbar flex-1 space-y-5 overflow-y-auto px-5 pb-28 pt-4">
         <div className="flex items-center justify-between">
           <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-white/45">
             <CalendarDays size={12} strokeWidth={2.4} />

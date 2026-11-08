@@ -1,22 +1,31 @@
 "use client";
 
 /* ============================================================
-   VOLTRIX front — Détail match
-   GET /api/match/{id}?league=&date= → MatchDetailDTO complet :
-   probabilités calibrées (blend), composantes Poisson/Elo/Forme,
-   échelle O/U, BTTS, value bets (edge/Kelly), scores exacts,
-   premier but, H2H base, contexte (derby, enjeux, météo, blessures).
-   Onglet Compos : GET /api/match/{id}/lineups.
+   VOLTRIX front — Détail match (lecture simplifiée)
+   Héro illustré (stade) → prono moteur en une carte claire :
+   pick, probabilité, confiance, barre 1X2 segmentée et phrase
+   de synthèse. Puis onglets : Synthèse / Marchés / H2H /
+   Contexte / Compos. Le détail du calcul (Poisson, Elo, forme,
+   λ) est replié derrière « Détail du calcul » pour ne pas
+   surcharger la première lecture.
    ============================================================ */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { ChevronLeft, Loader2, RefreshCw, Ticket, TrendingUp, Umbrella } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronLeft,
+  Loader2,
+  MapPin,
+  RefreshCw,
+  Ticket,
+  TrendingUp,
+  Umbrella,
+} from "lucide-react";
 import {
   fetchLineups,
   fetchMatchDetail,
   getApiBase,
-  moneyFmt,
   oddsFmt,
   pct,
   timeLabel,
@@ -31,12 +40,11 @@ import type {
 import type { LightMatch } from "@/lib/voltrix-types";
 import { TeamBadge } from "./TeamBadge";
 import {
-  CalibrationRow,
-  ConfidenceChip,
   DemoBadge,
   EdgeChip,
   ErrorPanel,
   FormDots,
+  KpiTile,
   LoadingPanel,
   ProbBar,
   SectionTitle,
@@ -45,63 +53,20 @@ import {
 } from "./ui-bits";
 import type { SelectionDraft } from "./VoltrixApp";
 
-type TabId = "analyse" | "marches" | "h2h" | "contexte" | "compos";
+type TabId = "synthese" | "marches" | "h2h" | "contexte" | "compos";
 
 const TABS: Array<{ id: TabId; label: string }> = [
-  { id: "analyse", label: "Analyse" },
+  { id: "synthese", label: "Synthèse" },
   { id: "marches", label: "Marchés" },
   { id: "h2h", label: "H2H" },
   { id: "contexte", label: "Contexte" },
   { id: "compos", label: "Compos" },
 ];
 
-/* ---------- Pilule de probabilité (1X2) ---------- */
-function ProbPill({
-  value,
-  label,
-  odds,
-  featured,
-  selected,
-  onSelect,
-}: {
-  value: number;
-  label: string;
-  odds?: number | null;
-  featured: boolean;
-  selected: boolean;
-  onSelect: () => void;
-}) {
-  const height = Math.round(56 + value * 44);
-  return (
-    <button
-      onClick={onSelect}
-      aria-pressed={selected}
-      style={{ height }}
-      className={`flex w-[88px] flex-col items-center justify-center rounded-[22px] transition-all duration-200 ${
-        selected
-          ? "bg-black text-neon ring-2 ring-black shadow-[0_12px_24px_rgba(0,0,0,0.3)] scale-[1.05]"
-          : featured
-            ? "bg-white text-black ring-1 ring-black/15 shadow-[0_8px_18px_rgba(0,0,0,0.22)]"
-            : "bg-ink-3 text-white"
-      }`}
-    >
-      <span className="text-[20px] font-black leading-none">{Math.round(value * 100)}%</span>
-      <span className={`mt-1 max-w-[80px] truncate text-[8.5px] font-bold uppercase tracking-widest ${selected ? "text-white/60" : featured ? "text-black/55" : "text-white/50"}`}>
-        {label}
-      </span>
-      {odds != null ? (
-        <span className={`mt-0.5 text-[9.5px] font-bold ${selected ? "text-neon" : featured ? "text-black/60" : "text-white/45"}`}>
-          {odds.toFixed(2)}
-        </span>
-      ) : null}
-    </button>
-  );
-}
-
 /* ---------- Bloc composante moteur ---------- */
 function ComponentRow({ name, probs, note }: { name: string; probs: { home: number; draw: number; away: number }; note?: string }) {
   return (
-    <div className="rounded-2xl bg-ink-3 px-3.5 py-3">
+    <div className="rounded-2xl bg-black/30 px-3.5 py-3">
       <div className="flex items-center justify-between">
         <span className="text-[10px] font-black uppercase tracking-widest text-white/70">{name}</span>
         {note ? <span className="text-[9px] font-semibold text-white/35">{note}</span> : null}
@@ -127,7 +92,6 @@ function Pitch({ team }: { team: TeamLineupsDTO }) {
   return (
     <div className="rounded-3xl bg-pitch p-3 ring-1 ring-white/10">
       <div className="relative flex aspect-[3/4] w-full flex-col justify-between rounded-2xl border-2 border-pitch-line bg-[linear-gradient(rgba(255,255,255,0.045)_1px,transparent_1px)] bg-[length:100%_12.5%]">
-        {/* lignes du terrain */}
         <div className="absolute inset-x-0 top-1/2 h-[2px] bg-pitch-line" />
         <div className="absolute left-1/2 top-1/2 h-14 w-14 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-pitch-line" />
         <div className="absolute inset-x-[22%] top-0 h-10 border-x-2 border-b-2 border-pitch-line" />
@@ -175,8 +139,7 @@ export function MatchScreen({
   const [detail, setDetail] = useState<MatchDetailDTO | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<TabId>("analyse");
-  const [selected, setSelected] = useState<"home" | "draw" | "away" | null>(null);
+  const [tab, setTab] = useState<TabId>("synthese");
   const [lineups, setLineups] = useState<Awaited<ReturnType<typeof loadLineups>>>(null);
   const [lineupsLoading, setLineupsLoading] = useState(false);
   const isLive = getApiBase().length > 0;
@@ -220,7 +183,6 @@ export function MatchScreen({
     return () => {
       cancelled = true;
     };
-     
   }, [tab]);
 
   /* Onglet Compos : équipe affichée */
@@ -229,14 +191,56 @@ export function MatchScreen({
   const pred = detail?.prediction;
   const bestPick = useMemo(() => pred?.recommendedBets[0] ?? null, [pred]);
 
-  const probsToPills = useMemo(() => {
+  const live = detail?.status === "in" || light?.status === "in";
+  const hasScore = detail && detail.homeScore != null && detail.awayScore != null;
+
+  const homeName = detail?.home.name ?? light?.home.name ?? "?";
+  const awayName = detail?.away.name ?? light?.away.name ?? "?";
+  const homeShort = (light?.home.shortName ?? detail?.home.name ?? "Domicile").slice(0, 10);
+  const awayShort = (light?.away.shortName ?? detail?.away.name ?? "Extérieur").slice(0, 10);
+
+  /* Segments 1X2 pour la barre unique */
+  const segments = useMemo(() => {
     if (!pred) return [];
     return [
-      { id: "home" as const, value: pred.probs.home, label: (light?.home.shortName ?? detail?.home.name ?? "Domicile").slice(0, 10), odds: light?.mlHome ?? detail?.odds?.moneyline.home.close ?? null, featured: pred.probs.home >= Math.max(pred.probs.draw, pred.probs.away) },
-      { id: "draw" as const, value: pred.probs.draw, label: "NUL", odds: light?.mlDraw ?? detail?.odds?.moneyline.draw.close ?? null, featured: pred.probs.home < Math.max(pred.probs.draw, pred.probs.away) && pred.probs.draw >= pred.probs.away },
-      { id: "away" as const, value: pred.probs.away, label: (light?.away.shortName ?? detail?.away.name ?? "Extérieur").slice(0, 10), odds: light?.mlAway ?? detail?.odds?.moneyline.away.close ?? null, featured: pred.probs.away > Math.max(pred.probs.draw, pred.probs.home) },
+      {
+        id: "home" as const,
+        value: pred.probs.home,
+        label: homeShort,
+        odds: light?.mlHome ?? detail?.odds?.moneyline.home.close ?? null,
+      },
+      {
+        id: "draw" as const,
+        value: pred.probs.draw,
+        label: "Nul",
+        odds: light?.mlDraw ?? detail?.odds?.moneyline.draw.close ?? null,
+      },
+      {
+        id: "away" as const,
+        value: pred.probs.away,
+        label: awayShort,
+        odds: light?.mlAway ?? detail?.odds?.moneyline.away.close ?? null,
+      },
     ];
-  }, [pred, light, detail]);
+  }, [pred, light, detail, homeShort, awayShort]);
+
+  /* Phrase de synthèse en français clair */
+  const summary = useMemo(() => {
+    if (!pred || !detail) return null;
+    const fav = pred.probs.home >= pred.probs.away
+      ? { name: detail.home.name, p: pred.probs.home }
+      : { name: detail.away.name, p: pred.probs.away };
+    const top = pred.topScores[0];
+    const parts = [
+      `Favori : ${fav.name} (${pct(fav.p)})`,
+      `${pred.lambda.total.toFixed(1)} buts attendus`,
+      top ? `score le plus probable ${top.score}` : null,
+    ];
+    if (pred.valueBets.length > 0) {
+      parts.push(`${pred.valueBets.length} value bet${pred.valueBets.length > 1 ? "s" : ""} détectée${pred.valueBets.length > 1 ? "s" : ""}`);
+    }
+    return parts.filter(Boolean).join(" · ");
+  }, [pred, detail]);
 
   const openTicketFor = (id: "home" | "draw" | "away") => {
     if (!detail || !pred) return;
@@ -279,10 +283,7 @@ export function MatchScreen({
     });
   };
 
-  const live = detail?.status === "in" || light?.status === "in";
-  const hasScore = detail && detail.homeScore != null && detail.awayScore != null;
-
-  const teamBlock = (t: TeamAnalysisDTO, side: "home" | "away") => (
+  const teamBlock = (t: TeamAnalysisDTO) => (
     <div className="rounded-2xl bg-ink-3 p-3.5">
       <div className="flex items-center gap-2.5">
         <TeamBadge name={t.name} logo={t.logo} size={38} />
@@ -314,120 +315,161 @@ export function MatchScreen({
         <span className="text-[8.5px] font-bold uppercase tracking-widest text-white/35">Forme</span>
         <FormDots form={t.form.map((f) => f.result).join("")} />
       </div>
-      {side === "home" ? null : null}
     </div>
   );
 
   return (
     <div className="flex h-full flex-col bg-ink">
-      {/* barre supérieure */}
-      <header className="flex items-center justify-between px-5 pt-6">
-        <button
-          onClick={onBack}
-          className="flex h-9 w-9 items-center justify-center rounded-full bg-ink-3 text-white transition-colors hover:bg-neon hover:text-black"
-          aria-label="Retour"
-        >
-          <ChevronLeft size={18} strokeWidth={2.4} />
-        </button>
-        <div className="flex items-center gap-2">
-          <span className="max-w-[180px] truncate text-[10px] font-black uppercase tracking-widest text-white/55">
-            {detail?.leagueName ?? light?.leagueName ?? leagueCode}
-          </span>
-          {live ? (
-            <span className="flex items-center gap-1 rounded-full bg-neon px-2.5 py-1 text-[9px] font-black uppercase text-black">
-              <span className="live-dot h-1.5 w-1.5 rounded-full bg-black" />
-              Live
-            </span>
-          ) : (
-            <span className="rounded-full bg-ink-3 px-2.5 py-1 text-[9px] font-black uppercase tracking-wide text-white/70">
-              {detail?.status === "post" ? "Terminé" : "À venir"}
-            </span>
-          )}
+      {/* ============ HÉRO : image du stade + voile sombre ============ */}
+      <div className="relative shrink-0">
+        <div className="absolute inset-0 overflow-hidden" aria-hidden="true">
+          <img
+            src="/hero-match.jpg"
+            alt=""
+            className="h-full w-full object-cover object-center"
+          />
+          <div className="absolute inset-0 bg-gradient-to-b from-ink/75 via-ink/40 to-ink" />
         </div>
-        <button
-          onClick={() => void load()}
-          className="flex h-9 w-9 items-center justify-center rounded-full bg-ink-3 text-white transition-colors hover:bg-neon hover:text-black"
-          aria-label="Réanalyser"
-        >
-          <RefreshCw size={15} strokeWidth={2.2} className={loading ? "animate-spin" : ""} />
-        </button>
-      </header>
 
-      {/* en-tête score */}
-      <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-center px-6">
-        <div className="flex flex-col items-center gap-2">
-          <TeamBadge name={detail?.home.name ?? light?.home.name ?? "?"} logo={light?.home.logo ?? detail?.home.logo ?? null} size={58} />
-          <span className="max-w-[104px] text-center text-[8.5px] font-extrabold leading-[1.3] tracking-wide text-white">
-            {(detail?.home.name ?? light?.home.name ?? "").toUpperCase()}
-          </span>
+        {/* barre supérieure */}
+        <header className="relative flex items-center justify-between px-5 pt-6">
+          <button
+            onClick={onBack}
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-ink-3/90 text-white backdrop-blur transition-colors hover:bg-neon hover:text-black"
+            aria-label="Retour"
+          >
+            <ChevronLeft size={18} strokeWidth={2.4} />
+          </button>
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="max-w-[150px] truncate text-[10px] font-black uppercase tracking-widest text-white/80">
+              {detail?.leagueName ?? light?.leagueName ?? leagueCode}
+            </span>
+            {live ? (
+              <span className="flex items-center gap-1 rounded-full bg-neon px-2.5 py-1 text-[9px] font-black uppercase text-black">
+                <span className="live-dot h-1.5 w-1.5 rounded-full bg-black" />
+                Live
+              </span>
+            ) : (
+              <span className="rounded-full bg-ink-3/90 px-2.5 py-1 text-[9px] font-black uppercase tracking-wide text-white/70 backdrop-blur">
+                {detail?.status === "post" ? "Terminé" : "À venir"}
+              </span>
+            )}
+          </div>
+          <button
+            onClick={() => void load()}
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-ink-3/90 text-white backdrop-blur transition-colors hover:bg-neon hover:text-black"
+            aria-label="Réanalyser"
+          >
+            <RefreshCw size={15} strokeWidth={2.2} className={loading ? "animate-spin" : ""} />
+          </button>
+        </header>
+
+        {/* équipes + score */}
+        <div className="relative mt-2 grid grid-cols-[1fr_auto_1fr] items-center px-6 pb-4 pt-1">
+          <div className="flex flex-col items-center gap-1.5">
+            <TeamBadge name={homeName} logo={light?.home.logo ?? detail?.home.logo ?? null} size={56} />
+            <span className="max-w-[104px] text-center text-[8.5px] font-extrabold leading-[1.3] tracking-wide text-white">
+              {homeName.toUpperCase()}
+            </span>
+          </div>
+          <div className="mx-3 min-w-[88px] px-1 text-center">
+            {hasScore ? (
+              <>
+                <span className="font-display text-[36px] leading-none tracking-wide text-white">
+                  {detail!.homeScore}:{detail!.awayScore}
+                </span>
+                <span className="mt-1 block text-[8.5px] font-semibold uppercase tracking-widest text-white/50">
+                  {detail?.statusDetail || "FT"}
+                </span>
+              </>
+            ) : (
+              <>
+                <span className="font-display text-[28px] leading-none tracking-wide text-white">
+                  {detail ? timeLabel(detail.matchDate) : light ? timeLabel(light.date) : "--:--"}
+                </span>
+                <span className="mt-1 block text-[8.5px] font-semibold uppercase tracking-widest text-white/50">
+                  Coup d&apos;envoi
+                </span>
+              </>
+            )}
+          </div>
+          <div className="flex flex-col items-center gap-1.5">
+            <TeamBadge name={awayName} logo={light?.away.logo ?? detail?.away.logo ?? null} size={56} />
+            <span className="max-w-[104px] text-center text-[8.5px] font-extrabold leading-[1.3] tracking-wide text-white">
+              {awayName.toUpperCase()}
+            </span>
+          </div>
         </div>
-        <div className="mx-3 px-2 text-center">
-          <span className="font-display text-[40px] leading-none tracking-wide text-white">
-            {hasScore ? `${detail!.homeScore}:${detail!.awayScore}` : "VS"}
-          </span>
-          <span className="mt-1.5 block text-[8.5px] font-semibold uppercase tracking-widest text-white/40">
-            {detail ? timeLabel(detail.matchDate) : light ? timeLabel(light.date) : ""} {detail?.statusDetail ? `· ${detail.statusDetail}` : ""}
-          </span>
-        </div>
-        <div className="flex flex-col items-center gap-2">
-          <TeamBadge name={detail?.away.name ?? light?.away.name ?? "?"} logo={light?.away.logo ?? detail?.away.logo ?? null} size={58} />
-          <span className="max-w-[104px] text-center text-[8.5px] font-extrabold leading-[1.3] tracking-wide text-white">
-            {(detail?.away.name ?? light?.away.name ?? "").toUpperCase()}
+
+        {/* lieu */}
+        <div className="relative flex justify-center pb-3">
+          <span className="inline-flex max-w-[85%] items-center gap-1.5 rounded-full bg-ink-3/80 px-3 py-1 text-[9px] font-bold uppercase tracking-wide text-white/70 backdrop-blur">
+            <MapPin size={10} strokeWidth={2.4} className="shrink-0 text-neon" />
+            <span className="truncate">
+              {detail?.venue.name ?? light?.venue.name ?? "Stade"}
+              {detail?.venue.city ? ` · ${detail.venue.city}` : ""}
+            </span>
           </span>
         </div>
       </div>
 
-      {/* contenu */}
+      {/* ============ CONTENU ============ */}
       {loading ? (
         <LoadingPanel label="Le moteur VOLTRIX analyse le match…" />
       ) : error || !detail || !pred ? (
         <ErrorPanel message={error ?? "Analyse indisponible"} onRetry={() => void load()} isDemo={!isLive} />
       ) : (
-        <main className="no-scrollbar mt-4 flex-1 overflow-y-auto px-5 pb-32">
-          {/* panneau lime : prono du moteur */}
-          <div className="rounded-t-[30px] bg-neon px-5 pb-5 pt-4 text-black">
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <p className="text-[9px] font-black uppercase tracking-[0.2em] text-black/50">Prono du moteur</p>
-                <p className="mt-0.5 font-display text-[24px] leading-tight tracking-wide text-black">
-                  {bestPick ? bestPick.pick.toUpperCase() : "—"}
-                </p>
-                {bestPick ? (
-                  <p className="text-[10px] font-bold text-black/60">
-                    {pct(bestPick.prob)} {bestPick.market}
-                  </p>
-                ) : null}
-              </div>
-              <div className="flex flex-col items-end gap-1.5">
-                <span className="rounded-full bg-black px-2.5 py-1 text-[9px] font-black uppercase tracking-wider text-neon">
-                  λ {pred.lambda.total.toFixed(2)} buts
-                </span>
-                <span className="rounded-full bg-black/85 px-2.5 py-1 text-[9px] font-black uppercase tracking-wider text-white">
-                  {confidenceStars(pred.confidence)} {pred.confidenceLabel}
-                </span>
-              </div>
+        <main className="no-scrollbar flex-1 overflow-y-auto px-5 pb-32">
+          {/* ---------- PRONO DU MOTEUR : une carte, une hiérarchie ---------- */}
+          <section className="rounded-[26px] bg-neon px-5 pb-4 pt-4 text-black">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[9px] font-black uppercase tracking-[0.2em] text-black/50">Prono du moteur</p>
+              <span className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-wider text-black/70">
+                <span title={`Confiance ${pred.confidence}/5`}>{confidenceStars(pred.confidence)}</span>
+                {pred.confidenceLabel}
+              </span>
             </div>
 
-            {/* pilules 1X2 sélectionnables */}
-            <div className="mt-4 flex items-end justify-center gap-3">
-              {probsToPills.map((p) => (
-                <ProbPill
-                  key={p.id}
-                  value={p.value}
-                  label={p.label}
-                  odds={p.odds}
-                  featured={p.featured}
-                  selected={selected === p.id}
-                  onSelect={() => {
-                    setSelected(p.id);
-                    openTicketFor(p.id);
-                  }}
-                />
-              ))}
-            </div>
-          </div>
+            <p className="mt-1 font-display text-[25px] leading-tight tracking-wide text-black">
+              {bestPick ? bestPick.pick.toUpperCase() : "—"}
+            </p>
+            <p className="mt-0.5 text-[10.5px] font-bold text-black/60">
+              {bestPick ? `${bestPick.market} · probabilité ${pct(bestPick.prob)}` : ""}
+            </p>
 
-          {/* onglets */}
+            {/* barre 1X2 segmentée : largeur = probabilité, tap = ticket */}
+            <div
+              className="mt-3.5 flex h-[46px] overflow-hidden rounded-2xl bg-black/15"
+              role="group"
+              aria-label="Probabilités 1X2 — appuyez pour créer un ticket"
+            >
+              {segments.map((s, i) => {
+                const best = s.value >= Math.max(...segments.map((x) => x.value));
+                return (
+                  <button
+                    key={s.id}
+                    onClick={() => openTicketFor(s.id)}
+                    aria-label={`${s.label} ${Math.round(s.value * 100)} %${s.odds != null ? `, cote ${s.odds.toFixed(2)}` : ""} — créer un ticket`}
+                    className={`flex min-w-0 flex-col items-center justify-center gap-[3px] border-black/10 px-1 transition-transform active:scale-95 ${
+                      i > 0 ? "border-l" : ""
+                    } ${best ? "bg-black text-neon" : "text-black/75"}`}
+                    style={{ flexGrow: Math.max(0.09, s.value) }}
+                  >
+                    <span className="w-full truncate text-center text-[8px] font-bold uppercase tracking-wider opacity-70">
+                      {s.odds != null ? `${s.label} ${s.odds.toFixed(2)}` : s.label}
+                    </span>
+                    <span className="text-[14px] font-black leading-none">{Math.round(s.value * 100)}%</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {summary ? (
+              <p className="mt-2.5 text-[10px] font-semibold leading-relaxed text-black/65">{summary}</p>
+            ) : null}
+          </section>
+
+          {/* ---------- onglets ---------- */}
           <div className="no-scrollbar sticky top-0 z-20 -mx-5 mt-4 flex gap-1.5 overflow-x-auto bg-ink/95 px-5 py-2 backdrop-blur">
             {TABS.map((t) => (
               <button
@@ -444,29 +486,20 @@ export function MatchScreen({
           </div>
 
           <motion.div key={tab} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22 }}>
-            {/* ---------------- ANALYSE ---------------- */}
-            {tab === "analyse" ? (
+            {/* ---------------- SYNTHÈSE ---------------- */}
+            {tab === "synthese" ? (
               <div>
-                <SectionTitle>Composantes du moteur</SectionTitle>
-                <div className="space-y-2.5">
-                  <ComponentRow name="VOLTRIX (final)" probs={pred.probs} note="calibré" />
-                  <ComponentRow name="Poisson" probs={pred.poisson} note="buts attendus" />
-                  <ComponentRow name="Elo" probs={pred.elo} note="force relative" />
-                  <ComponentRow name="Forme" probs={pred.form} note="5 derniers" />
-                </div>
-
-                <SectionTitle>Buts attendus (λ)</SectionTitle>
+                <SectionTitle>En bref</SectionTitle>
                 <div className="grid grid-cols-3 gap-2">
-                  {[
-                    { k: detail.home.name, v: pred.lambda.home },
-                    { k: "Total", v: pred.lambda.total },
-                    { k: detail.away.name, v: pred.lambda.away },
-                  ].map((x) => (
-                    <div key={x.k} className="rounded-2xl bg-ink-3 px-2 py-2.5 text-center">
-                      <p className="truncate text-[8.5px] font-bold uppercase tracking-wider text-white/40">{x.k}</p>
-                      <p className="mt-1 text-[17px] font-black text-neon">{x.v.toFixed(2)}</p>
-                    </div>
-                  ))}
+                  <KpiTile
+                    label="Favori"
+                    value={`${(pred.probs.home >= pred.probs.away ? homeShort : awayShort).slice(0, 6)} ${pct(Math.max(pred.probs.home, pred.probs.away))}`}
+                  />
+                  <KpiTile label="Buts attendus" value={pred.lambda.total.toFixed(1)} tone="neon" />
+                  <KpiTile
+                    label="Score clé"
+                    value={pred.topScores[0]?.score ?? "—"}
+                  />
                 </div>
 
                 <SectionTitle>Scores exacts les plus probables</SectionTitle>
@@ -506,12 +539,83 @@ export function MatchScreen({
                     ))}
                   </div>
                 </div>
+
+                {/* détail du calcul : replié par défaut */}
+                <details className="group mt-6 rounded-2xl bg-ink-3">
+                  <summary className="flex cursor-pointer select-none list-none items-center justify-between px-4 py-3 [&::-webkit-details-marker]:hidden">
+                    <span className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.14em] text-white/70">
+                      <span className="h-[3px] w-3.5 rounded-full bg-neon" aria-hidden="true" />
+                      Détail du calcul
+                    </span>
+                    <ChevronDown size={15} strokeWidth={2.6} className="shrink-0 text-white/50 transition-transform duration-200 group-open:rotate-180" />
+                  </summary>
+                  <div className="space-y-2.5 px-3 pb-3">
+                    <ComponentRow name="VOLTRIX (final)" probs={pred.probs} note="calibré" />
+                    <ComponentRow name="Poisson" probs={pred.poisson} note="buts attendus" />
+                    <ComponentRow name="Elo" probs={pred.elo} note="force relative" />
+                    <ComponentRow name="Forme" probs={pred.form} note="5 derniers" />
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { k: detail.home.name, v: pred.lambda.home },
+                        { k: "Total", v: pred.lambda.total },
+                        { k: detail.away.name, v: pred.lambda.away },
+                      ].map((x) => (
+                        <div key={x.k} className="rounded-2xl bg-black/30 px-2 py-2.5 text-center">
+                          <p className="truncate text-[8.5px] font-bold uppercase tracking-wider text-white/40">{x.k}</p>
+                          <p className="mt-1 text-[17px] font-black text-neon">λ {x.v.toFixed(2)}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </details>
               </div>
             ) : null}
 
-            {/* ---------------- MARCHÉS ---------------- */}
+            {/* ---------------- MARCHÉS (value bets d'abord) ---------------- */}
             {tab === "marches" ? (
               <div>
+                <SectionTitle
+                  right={
+                    pred.valueBets.length ? (
+                      <span className="rounded-full bg-neon px-2 py-0.5 text-[8.5px] font-black uppercase text-black">
+                        {pred.valueBets.length} value
+                      </span>
+                    ) : undefined
+                  }
+                >
+                  Value bets (edge / Kelly)
+                </SectionTitle>
+                {pred.valueBets.length === 0 ? (
+                  <p className="rounded-2xl bg-ink-3 px-4 py-3 text-[10.5px] font-semibold text-white/45">
+                    Aucune value bet détectée — le marché est aligné avec le modèle.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {pred.valueBets.map((vb, i) => (
+                      <button
+                        key={i}
+                        onClick={() => openTicketMarket(vb.market, vb.pick, vb.modelProb, vb.odds)}
+                        className="w-full rounded-2xl bg-ink-3 px-3.5 py-3 text-left transition-transform active:scale-[0.98]"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="min-w-0">
+                            <span className="block truncate text-[12px] font-black text-white">{vb.pick}</span>
+                            <span className="text-[9px] font-bold uppercase tracking-wider text-white/40">
+                              {vb.market} · modèle {pct(vb.modelProb)} · cote {oddsFmt(vb.odds)}
+                            </span>
+                          </span>
+                          <span className="flex shrink-0 items-center gap-1.5">
+                            <EdgeChip edge={vb.edge} />
+                            <span className="rounded-full bg-black/60 px-2 py-0.5 text-[9px] font-black text-white/70">
+                              K {Math.round(vb.kelly * 100)}%
+                            </span>
+                          </span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
                 <SectionTitle>Plus/Moins — échelle du moteur</SectionTitle>
                 <div className="space-y-2">
                   {pred.overUnder.map((ou) => {
@@ -554,40 +658,6 @@ export function MatchScreen({
                   </p>
                 ) : null}
 
-                <SectionTitle right={pred.valueBets.length ? <span className="rounded-full bg-neon px-2 py-0.5 text-[8.5px] font-black uppercase text-black">{pred.valueBets.length} value</span> : undefined}>
-                  Value bets (edge / Kelly)
-                </SectionTitle>
-                {pred.valueBets.length === 0 ? (
-                  <p className="rounded-2xl bg-ink-3 px-4 py-3 text-[10.5px] font-semibold text-white/45">
-                    Aucune value bet détectée — le marché est aligné avec le modèle.
-                  </p>
-                ) : (
-                  <div className="space-y-2">
-                    {pred.valueBets.map((vb, i) => (
-                      <button
-                        key={i}
-                        onClick={() => openTicketMarket(vb.market, vb.pick, vb.modelProb, vb.odds)}
-                        className="w-full rounded-2xl bg-ink-3 px-3.5 py-3 text-left transition-transform active:scale-[0.98]"
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="min-w-0">
-                            <span className="block truncate text-[12px] font-black text-white">{vb.pick}</span>
-                            <span className="text-[9px] font-bold uppercase tracking-wider text-white/40">
-                              {vb.market} · modèle {pct(vb.modelProb)} · cote {oddsFmt(vb.odds)}
-                            </span>
-                          </span>
-                          <span className="flex shrink-0 items-center gap-1.5">
-                            <EdgeChip edge={vb.edge} />
-                            <span className="rounded-full bg-black/60 px-2 py-0.5 text-[9px] font-black text-white/70">
-                              K {Math.round(vb.kelly * 100)}%
-                            </span>
-                          </span>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-
                 {pred.oddsMovement ? (
                   <div className="mt-4 flex items-start gap-2 rounded-2xl bg-black/50 px-3.5 py-3 ring-1 ring-white/10">
                     <TrendingUp size={14} className="mt-0.5 shrink-0 text-neon" />
@@ -606,7 +676,7 @@ export function MatchScreen({
             {/* ---------------- H2H ---------------- */}
             {tab === "h2h" ? (
               <div>
-                <SectionTitle>Confrontations (base Neon)</SectionTitle>
+                <SectionTitle>Confrontations</SectionTitle>
                 <div className="mb-3 grid grid-cols-3 gap-2">
                   {[
                     { k: detail.home.name, v: detail.h2hSummary.homeWins, tone: "bg-neon text-black" },
@@ -668,7 +738,7 @@ export function MatchScreen({
 
                 {detail.context.weather ? (
                   <>
-                    <SectionTitle>Météo (Open-Meteo)</SectionTitle>
+                    <SectionTitle>Météo</SectionTitle>
                     <div className="flex items-center gap-3 rounded-2xl bg-ink-3 px-3.5 py-3">
                       <Umbrella size={18} className="shrink-0 text-neon" />
                       <div className="min-w-0 flex-1">
@@ -697,16 +767,31 @@ export function MatchScreen({
 
                 <SectionTitle>Profils équipes</SectionTitle>
                 <div className="grid gap-2.5">
-                  {teamBlock(detail.home, "home")}
-                  {teamBlock(detail.away, "away")}
+                  {teamBlock(detail.home)}
+                  {teamBlock(detail.away)}
                 </div>
 
+                {/* carte stade illustrée */}
                 <SectionTitle>Stade</SectionTitle>
-                <p className="rounded-2xl bg-ink-3 px-3.5 py-3 text-[11px] font-semibold text-white/75">
-                  {detail.venue.name ?? "Stade inconnu"}
-                  {detail.venue.city ? ` · ${detail.venue.city}` : ""}
-                  {detail.venue.country ? `, ${detail.venue.country}` : ""}
-                </p>
+                <div className="overflow-hidden rounded-2xl bg-ink-3">
+                  <div className="relative h-24">
+                    <img
+                      src="/stadium-night.jpg"
+                      alt="Ambiance de stade la nuit"
+                      className="h-full w-full object-cover"
+                      loading="lazy"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-ink-3 via-ink-3/30 to-transparent" />
+                  </div>
+                  <div className="px-3.5 pb-3 pt-1">
+                    <p className="text-[11.5px] font-black text-white">
+                      {detail.venue.name ?? "Stade inconnu"}
+                    </p>
+                    <p className="mt-0.5 text-[9.5px] font-semibold text-white/45">
+                      {[detail.venue.city, detail.venue.country].filter(Boolean).join(", ") || "Lieu non communiqué"}
+                    </p>
+                  </div>
+                </div>
               </div>
             ) : null}
 

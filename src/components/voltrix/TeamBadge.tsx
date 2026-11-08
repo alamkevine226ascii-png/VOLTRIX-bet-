@@ -2,11 +2,13 @@
 
 /* ============================================================
    VOLTRIX front — Écusson d'équipe
-   Logo ESPN si fourni, sinon médaillon à initiales sur fond
-   déterministe (couleur stable par nom d'équipe).
+   1. Logo fourni par l'API (URL ESPN distante)
+   2. Sinon logo local résolu par nom (public/logos/)
+   3. Sinon médaillon à initiales sur fond déterministe.
    ============================================================ */
 
 import { useState } from "react";
+import { resolveTeamLogo } from "@/lib/team-logos";
 
 function hashHue(name: string): number {
   let h = 0;
@@ -32,8 +34,11 @@ export function TeamBadge({
   size?: number;
   className?: string;
 }) {
-  const [failed, setFailed] = useState(false);
+  /* mémorise le logo en échec : si l'équipe change, on retente */
+  const [failedFor, setFailedFor] = useState<string | null>(null);
   const hue = hashHue(name);
+  const src = logo ?? resolveTeamLogo(name);
+  const failed = failedFor === src;
   const style: React.CSSProperties = {
     width: size,
     height: size,
@@ -41,17 +46,16 @@ export function TeamBadge({
     fontSize: Math.max(10, Math.round(size * 0.3)),
   };
 
-  if (logo && !failed) {
+  if (src && !failed) {
     return (
-      // logos ESPN distants — <img> simple, tailles dynamiques
-       
+      // logo API distant ou logo local public/logos/
       <img
-        src={logo}
-        alt={`Logo ${name}`}
+        src={src}
+        alt={`Écusson ${name}`}
         width={size}
         height={size}
         loading="lazy"
-        onError={() => setFailed(true)}
+        onError={() => setFailedFor(src)}
         className={`shrink-0 rounded-full bg-white object-contain p-[3px] ring-1 ring-white/25 ${className}`}
         style={{ width: size, height: size }}
       />

@@ -162,11 +162,14 @@ export function CalibrationRow({ label, predicted, actual, count }: { label: str
   );
 }
 
-/* ---------- Titre de section ---------- */
+/* ---------- Titre de section (sobre, cohérent avec l'accueil) ---------- */
 export function SectionTitle({ children, right }: { children: ReactNode; right?: ReactNode }) {
   return (
-    <div className="mb-2.5 mt-5 flex items-center justify-between">
-      <h2 className="font-display text-[17px] tracking-wide text-white">{children}</h2>
+    <div className="mb-2.5 mt-5 flex items-center justify-between gap-2">
+      <h2 className="flex min-w-0 items-center gap-2 text-[11px] font-black uppercase tracking-[0.14em] text-white/70">
+        <span className="h-[3px] w-3.5 shrink-0 rounded-full bg-neon" aria-hidden="true" />
+        <span className="truncate">{children}</span>
+      </h2>
       {right}
     </div>
   );
