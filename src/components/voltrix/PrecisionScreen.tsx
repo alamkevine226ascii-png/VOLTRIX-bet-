@@ -33,14 +33,14 @@ function CategoryBars({ rows, title }: { rows: Array<{ label: string; total: num
       <SectionTitle>{title}</SectionTitle>
       <div className="space-y-2">
         {rows.map((r) => (
-          <div key={r.label} className="rounded-2xl bg-ink-3 px-3.5 py-2.5">
+          <div key={r.label} className="rounded-xl bg-ink-2 px-3.5 py-2.5">
             <div className="flex items-baseline justify-between">
-              <span className="truncate text-[10.5px] font-bold text-white/75">{r.label}</span>
-              <span className="ml-2 shrink-0 text-[11px] font-black text-white">
-                {pct(r.winRate)} <span className="text-[9px] font-bold text-white/35">({r.wins}/{r.total})</span>
+              <span className="truncate text-[12px] text-white/75">{r.label}</span>
+              <span className="ml-2 shrink-0 text-[13px] font-semibold text-white">
+                {pct(r.winRate)} <span className="text-[11px] text-white/35">({r.wins}/{r.total})</span>
               </span>
             </div>
-            <div className="mt-1.5 h-[6px] overflow-hidden rounded-full bg-black/50">
+            <div className="mt-1.5 h-[5px] overflow-hidden rounded-full bg-white/10">
               <motion.div
                 initial={{ width: 0 }}
                 animate={{ width: `${(r.winRate / max) * 100}%` }}
@@ -84,14 +84,14 @@ export function PrecisionScreen({ apiEpoch }: { apiEpoch: number }) {
       {/* en-tête */}
       <header className="flex items-center justify-between px-5 pt-6">
         <div>
-          <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.22em] text-white/45">
+          <p className="flex items-center gap-1.5 text-[13px] text-white/45">
             Performance mesurée {isLive ? null : <DemoBadge />}
           </p>
-          <h1 className="font-display text-[30px] leading-none tracking-wide text-white">PRÉCISION</h1>
+          <h1 className="mt-0.5 text-[32px] font-bold leading-none tracking-[-0.022em] text-white">Précision</h1>
         </div>
         <button
           onClick={() => void load()}
-          className="flex h-9 w-9 items-center justify-center rounded-full bg-ink-3 text-white transition-colors hover:bg-neon hover:text-black"
+          className="flex h-[34px] w-[34px] items-center justify-center rounded-full bg-white/8 text-white transition-transform duration-150 ease-out active:scale-95"
           aria-label="Rafraîchir"
         >
           <RefreshCw size={15} strokeWidth={2.2} className={loading ? "animate-spin" : ""} />
@@ -106,7 +106,7 @@ export function PrecisionScreen({ apiEpoch }: { apiEpoch: number }) {
         ) : !data ? null : (
           <>
             {/* anneau + ROI */}
-            <div className="rounded-[26px] bg-ink-2 p-5 ring-1 ring-white/5">
+            <div className="rounded-[20px] bg-ink-2 p-5">
               <div className="flex items-center gap-5">
                 <div className="relative shrink-0">
                   <svg width="112" height="112" className="-rotate-90">
@@ -125,8 +125,8 @@ export function PrecisionScreen({ apiEpoch }: { apiEpoch: number }) {
                     />
                   </svg>
                   <div className="absolute inset-0 flex flex-col items-center justify-center">
-                    <span className="font-display text-[26px] leading-none text-white">{pct(data.winRate, 1)}</span>
-                    <span className="text-[8px] font-bold uppercase tracking-widest text-white/40">réussite</span>
+                    <span className="text-[26px] font-bold leading-none tracking-[-0.02em] text-white">{pct(data.winRate, 1)}</span>
+                    <span className="mt-1 text-[10px] font-medium uppercase tracking-[0.06em] text-white/40">réussite</span>
                   </div>
                 </div>
                 <div className="grid flex-1 grid-cols-2 gap-2">
@@ -146,22 +146,22 @@ export function PrecisionScreen({ apiEpoch }: { apiEpoch: number }) {
                 <KpiTile label="En cours" value={String(data.pendingCount)} tone="neon" />
               </div>
               {data.sample ? (
-                <p className="mt-3 text-center text-[8.5px] font-semibold uppercase tracking-wider text-white/30">
+                <p className="mt-3 text-center text-[10px] text-white/30">
                   Économie : {data.economic?.settledWithOdds ?? 0} sélections avec cote réelle (mise fixe 10 €)
                 </p>
               ) : null}
             </div>
 
             {/* calibration */}
-            <SectionTitle right={<span className="rounded-full bg-ink-3 px-2 py-0.5 text-[8.5px] font-black uppercase text-white/50">Brier {data.calibration.brierScore.toFixed(3)}</span>}>
+            <SectionTitle right={<span className="rounded-md bg-white/8 px-2 py-0.5 text-[10px] text-white/50">Brier {data.calibration.brierScore.toFixed(3)}</span>}>
               Calibration
             </SectionTitle>
-            <div className="space-y-2 rounded-2xl bg-ink-2 p-3.5 ring-1 ring-white/5">
+            <div className="space-y-2 rounded-2xl bg-ink-2 p-3.5">
               <div className="flex items-center justify-end gap-3 pb-1">
-                <span className="flex items-center gap-1 text-[8px] font-bold uppercase tracking-wider text-white/40">
+                <span className="flex items-center gap-1 text-[10px] text-white/45">
                   <span className="h-[6px] w-3 rounded-full bg-neon" /> Prédit
                 </span>
-                <span className="flex items-center gap-1 text-[8px] font-bold uppercase tracking-wider text-white/40">
+                <span className="flex items-center gap-1 text-[10px] text-white/45">
                   <span className="h-[6px] w-3 rounded-full bg-white/70" /> Réel
                 </span>
               </div>
@@ -195,28 +195,28 @@ export function PrecisionScreen({ apiEpoch }: { apiEpoch: number }) {
             ) : null}
 
             {/* historique */}
-            <SectionTitle right={<span className="text-[9px] font-bold uppercase tracking-wider text-white/30">{data.history.length} derniers</span>}>
+            <SectionTitle right={<span className="text-[11px] text-white/35">{data.history.length} derniers</span>}>
               Historique
             </SectionTitle>
             <div className="space-y-1.5">
               {data.history.map((h) => (
-                <div key={h.id} className="rounded-2xl bg-ink-3 px-3.5 py-2.5">
+                <div key={h.id} className="rounded-xl bg-ink-2 px-3.5 py-2.5">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="truncate text-[11px] font-bold text-white">
+                      <p className="truncate text-[12px] text-white">
                         {h.homeTeam} – {h.awayTeam}
                       </p>
-                      <p className="truncate text-[9px] font-semibold text-white/40">
+                      <p className="truncate text-[11px] text-white/40">
                         {h.leagueName} · {new Date(h.matchDate).toLocaleDateString("fr-FR", { day: "2-digit", month: "short" })} · {h.market}
                       </p>
                     </div>
                     <ResultBadge result={h.resolved ? h.result : null} />
                   </div>
                   <div className="mt-1.5 flex items-center justify-between">
-                    <span className="truncate text-[10px] font-black text-neon">{h.pick}</span>
-                    <span className="flex shrink-0 items-center gap-2 text-[9px] font-bold text-white/45">
+                    <span className="truncate text-[11px] font-semibold text-neon">{h.pick}</span>
+                    <span className="flex shrink-0 items-center gap-2 text-[11px] text-white/45">
                       <span>{pct(h.probability)}</span>
-                      <span className="rounded bg-black/40 px-1.5 py-0.5">{oddsFmt(h.odds)}</span>
+                      <span className="rounded bg-white/10 px-1.5 py-0.5">{oddsFmt(h.odds)}</span>
                       <span title={`Confiance ${h.confidence}/5`}>{confidenceStars(h.confidence)}</span>
                     </span>
                   </div>
@@ -224,7 +224,7 @@ export function PrecisionScreen({ apiEpoch }: { apiEpoch: number }) {
               ))}
             </div>
 
-            <p className="mt-5 text-center text-[8.5px] leading-relaxed text-white/25">
+            <p className="mt-5 text-center text-[10px] leading-relaxed text-white/30">
               ROI sur cotes capturées à la prédiction (anti look-ahead) — les sélections sans cote réelle
               comptent en précision mais pas en économique.
             </p>

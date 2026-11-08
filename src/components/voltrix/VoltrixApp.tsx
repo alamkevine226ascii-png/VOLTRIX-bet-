@@ -10,7 +10,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Sparkles, Zap } from "lucide-react";
+import { CheckCircle2 } from "lucide-react";
 import { CalendarRange, Home, Settings, Target, Wallet } from "lucide-react";
 import { getApiBase } from "@/lib/voltrix";
 import { HomeScreen } from "./HomeScreen";
@@ -53,8 +53,8 @@ const TABS: Array<{ id: TabId; icon: typeof Home; label: string }> = [
 
 function LogoBadge() {
   return (
-    <span className="flex h-11 w-11 items-center justify-center rounded-full bg-neon shadow-[0_4px_18px_rgba(198,242,17,0.35)]">
-      <svg width="24" height="24" viewBox="0 0 24 24" role="img" aria-label="Logo VOLTRIX">
+    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-neon">
+      <svg width="20" height="20" viewBox="0 0 24 24" role="img" aria-label="Logo VOLTRIX">
         <path
           d="M4 12 L8 5 H16 L20 12 L16 19 H8 Z"
           fill="none"
@@ -148,18 +148,18 @@ export function VoltrixApp() {
   const isLive = getApiBase().length > 0;
 
   return (
-    <div className="relative flex min-h-dvh w-full items-center justify-center overflow-hidden bg-canvas sm:p-6">
+    <div className="relative flex min-h-dvh w-full items-center justify-center overflow-hidden bg-black sm:p-6">
       <div
         className="pointer-events-none absolute inset-0"
         style={{
           background:
-            "radial-gradient(1100px 700px at 50% 38%, rgba(255,255,255,0.16), transparent 65%)",
+            "radial-gradient(1100px 700px at 50% 32%, rgba(198,242,17,0.07), transparent 60%), radial-gradient(900px 600px at 50% 100%, rgba(255,255,255,0.05), transparent 65%)",
         }}
         aria-hidden="true"
       />
 
       {/* cadre téléphone — plein écran sur mobile, maquette cadrée sur desktop */}
-      <div className="relative h-dvh w-full max-w-none overflow-hidden bg-ink sm:h-[844px] sm:max-w-[400px] sm:rounded-[46px] sm:shadow-[0_40px_90px_rgba(0,0,0,0.45),0_0_0_11px_#101010,0_0_0_13px_#2c2c2c]">
+      <div className="relative h-dvh w-full max-w-none overflow-hidden bg-black sm:h-[844px] sm:max-w-[400px] sm:rounded-[46px] sm:shadow-[0_40px_90px_rgba(0,0,0,0.55),0_0_0_11px_#1a1a1c,0_0_0_13px_#3a3a3c]">
         <AnimatePresence initial={false} custom={direction} mode="popLayout">
           <motion.div
             key={screenKey}
@@ -211,19 +211,19 @@ export function VoltrixApp() {
           </motion.div>
         </AnimatePresence>
 
-        {/* toast applicatif */}
+        {/* toast — notification iOS : pilule translucide en haut */}
         <AnimatePresence>
           {toast ? (
             <motion.div
-              initial={{ y: -60, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ y: -60, opacity: 0 }}
-              transition={{ type: "spring", damping: 22 }}
-              className="absolute left-1/2 top-4 z-[70] flex max-w-[85%] -translate-x-1/2 items-center gap-2 rounded-full bg-neon px-4 py-2.5 shadow-[0_10px_26px_rgba(0,0,0,0.4)]"
+              initial={{ y: -70, opacity: 0, scale: 0.96 }}
+              animate={{ y: 0, opacity: 1, scale: 1 }}
+              exit={{ y: -70, opacity: 0, scale: 0.96 }}
+              transition={{ type: "spring", stiffness: 420, damping: 32 }}
+              className="material-bar absolute left-1/2 top-3 z-[70] flex max-w-[88%] -translate-x-1/2 items-center gap-2 rounded-full px-4 py-2.5 shadow-[0_8px_24px_rgba(0,0,0,0.4)]"
               role="status"
             >
-              <Sparkles size={14} className="shrink-0 text-black" />
-              <span className="text-[11.5px] font-bold text-black">{toast}</span>
+              <CheckCircle2 size={16} className="shrink-0 text-neon" />
+              <span className="text-[13px] font-semibold text-white">{toast}</span>
             </motion.div>
           ) : null}
         </AnimatePresence>
@@ -239,40 +239,34 @@ export function VoltrixApp() {
           />
         ) : null}
 
-        {/* barre d'onglets — masquée sur l'écran détail match */}
+        {/* barre d'onglets iOS — matériau translucide, le contenu
+            défile derrière ; masquée sur l'écran détail match */}
         {current.name !== "match" ? (
           <nav
-            className="absolute inset-x-4 bottom-4 z-30 flex items-center justify-between rounded-full bg-ink-2 px-3 py-2.5 shadow-[0_14px_30px_rgba(0,0,0,0.5)]"
+            className="material-bar absolute inset-x-0 bottom-0 z-30 border-t border-white/8"
+            style={{ paddingBottom: "max(env(safe-area-inset-bottom), 6px)" }}
             aria-label="Navigation principale"
           >
-            {TABS.map((t) => {
-              const Icon = t.icon;
-              const active = t.id === tab;
-              const isMiddle = t.id === "precision";
-              return (
-                <button
-                  key={t.id}
-                  onClick={() => goTab(t.id)}
-                  aria-label={t.label}
-                  aria-current={active}
-                  className={`flex items-center justify-center rounded-full transition-[color,background-color,box-shadow] duration-150 ease-out ${
-                    isMiddle ? "h-12 w-12" : "h-11 w-11"
-                  } ${
-                    active
-                      ? "bg-neon text-black shadow-[0_6px_16px_rgba(198,242,17,0.4)]"
-                      : "bg-ink-3 text-white/70 hover:text-white"
-                  }`}
-                >
-                  {isMiddle && active ? (
-                    <span className="flex items-center gap-1">
-                      <Zap size={19} strokeWidth={2.4} />
-                    </span>
-                  ) : (
-                    <Icon size={19} strokeWidth={2.2} />
-                  )}
-                </button>
-              );
-            })}
+            <div className="flex items-stretch px-1 pt-1.5">
+              {TABS.map((t) => {
+                const Icon = t.icon;
+                const active = t.id === tab;
+                return (
+                  <button
+                    key={t.id}
+                    onClick={() => goTab(t.id)}
+                    aria-label={t.label}
+                    aria-current={active}
+                    className={`flex flex-1 flex-col items-center gap-[3px] rounded-lg py-1.5 transition-colors duration-150 ease-out ${
+                      active ? "text-neon" : "text-white/40"
+                    }`}
+                  >
+                    <Icon size={22} strokeWidth={active ? 2.3 : 1.9} />
+                    <span className={`text-[10px] ${active ? "font-semibold" : "font-medium"}`}>{t.label}</span>
+                  </button>
+                );
+              })}
+            </div>
           </nav>
         ) : null}
       </div>

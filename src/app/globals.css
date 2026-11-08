@@ -121,18 +121,30 @@
   }
 }
 
-/* ===== Football app design tokens ===== */
+/* ===== Design tokens — Apple HIG (dark mode) =====
+   Palette iOS : fond noir pur, surfaces élevées #1C1C1E/#2C2C2E,
+   accent vert volt (identité VOLTRIX, façon Apple Fitness),
+   couleurs système pour la sémantique (gain/perte/alerte). */
 @theme {
   --color-neon: #c6f211;
   --color-neon-dim: #b3e008;
-  --color-ink: #141414;
-  --color-ink-2: #1e1e1e;
-  --color-ink-3: #2a2a2a;
-  --color-panel: #f2f0ea;
-  --color-panel-2: #e6e2d6;
-  --color-canvas: #8cb305;
-  --color-pitch: #131b0b;
-  --color-pitch-line: #2a3320;
+  /* Système iOS — le fond des écrans devient noir pur */
+  --color-ink: #000000;
+  /* Surface élevée (cartes, sections groupées) */
+  --color-ink-2: #1c1c1e;
+  /* Surface tertiaire (chips, pistes, cases internes) */
+  --color-ink-3: #2c2c2e;
+  --color-panel: #1c1c1e;
+  --color-panel-2: #2c2c2e;
+  --color-canvas: #000000;
+  --color-pitch: #0f1a08;
+  --color-pitch-line: #243019;
+  /* Couleurs système Apple */
+  --color-ios-green: #30d158;
+  --color-ios-red: #ff453a;
+  --color-ios-orange: #ff9f0a;
+  --color-ios-yellow: #ffd60a;
+  --color-ios-blue: #0a84fe;
   /* Courbe ease-out forte (emilkowalski/skills) : tout élément qui
      entre ou réagit au toucher démarre vite puis s'installe —
      jamais l'inverse. S'applique à toutes les transitions Tailwind
@@ -140,8 +152,27 @@
   --default-transition-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
 }
 
+/* Typographie Apple : SF Pro sur les appareils Apple, police
+   système ailleurs. Le grand titre se resserre légèrement
+   (tracking négatif — règle WWDC « The Details of UI Typography »). */
+html,
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text",
+    "SF Pro Display", "Segoe UI", Roboto, "Helvetica Neue", Arial,
+    sans-serif;
+}
+
 .font-display {
-  font-family: var(--font-display), var(--font-body), sans-serif;
+  font-family: inherit;
+  letter-spacing: -0.022em;
+}
+
+/* Barre flottante translucide (tab bar iOS, header compact) :
+   le contenu défile DERRIÈRE le matériau, il ne le coupe pas. */
+.material-bar {
+  background: rgba(20, 20, 22, 0.78);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
 }
 
 /* ===== Base mobile-native (emilkowalski/skills — mobile-native) =====

@@ -1,15 +1,16 @@
 "use client";
 
 /* ============================================================
-   VOLTRIX front — Accueil : matchs du jour
-   GET /api/matches?date=…  → cartes par ligue (logos ESPN, score
-   live, forme, cotes 1X2)
-   POST /api/predictions    → triplet de probabilités moteur,
-   confiance, value bets (lots ≤ 30, statut pre uniquement).
+   VOLTRIX front — Accueil (design Apple Sports)
+   Grand titre iOS qui se condense en barre translucide au
+   défilement, bandeau de dates façon App Calendrier, cartes
+   match en lignes équipe (logo · nom · forme · score) comme
+   l'app Apple Sports, bandeau prono discret sous séparateur.
+   GET /api/matches?date=… · POST /api/predictions.
    ============================================================ */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type UIEvent } from "react";
-import { CalendarDays, RefreshCw } from "lucide-react";
+import { CalendarDays, ChevronLeft, RefreshCw } from "lucide-react";
 import {
   fetchMatches,
   fetchPredictions,
@@ -25,7 +26,6 @@ import {
   ErrorPanel,
   FormDots,
   LoadingPanel,
-  confidenceStars,
 } from "./ui-bits";
 import type { SelectionDraft } from "./VoltrixApp";
 
@@ -42,14 +42,14 @@ function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-/* ---------- Bandeau de dates (7 jours, compact) ---------- */
+/* ---------- Bandeau de dates (7 jours, style iOS) ---------- */
 function DateStrip({ value, onChange }: { value: string; onChange: (d: string) => void }) {
   const days = useMemo(() => {
     const t = todayISO();
     return [-2, -1, 0, 1, 2, 3, 4].map((off) => isoAddDays(t, off));
   }, []);
   return (
-    <div className="no-scrollbar flex gap-1.5 overflow-x-auto px-5">
+    <div className="no-scrollbar flex gap-2 overflow-x-auto px-5">
       {days.map((d) => {
         const active = d === value;
         const dt = new Date(`${d}T12:00:00Z`);
@@ -59,14 +59,16 @@ function DateStrip({ value, onChange }: { value: string; onChange: (d: string) =
             key={d}
             onClick={() => onChange(d)}
             aria-pressed={active}
-            className={`flex w-[46px] shrink-0 flex-col items-center rounded-xl px-1 py-1.5 transition-colors ${
-              active ? "bg-neon text-black" : "bg-ink-3 text-white hover:bg-[#383838]"
+            className={`flex w-[48px] shrink-0 flex-col items-center gap-[1px] rounded-[14px] px-1 py-2 transition-colors duration-150 ease-out ${
+              active ? "bg-neon" : "bg-ink-2"
             }`}
           >
-            <span className={`text-[8px] font-bold uppercase tracking-wider ${active ? "text-black/60" : isToday ? "text-neon" : "text-white/50"}`}>
-              {isToday ? "Auj." : dt.toLocaleDateString("fr-FR", { weekday: "short" })}
+            <span className={`text-[11px] font-medium ${active ? "text-black/55" : "text-white/45"}`}>
+              {isToday ? "Auj." : dt.toLocaleDateString("fr-FR", { weekday: "short" }).replace(".", "")}
             </span>
-            <span className="text-[15px] font-black leading-tight">{dt.getUTCDate()}</span>
+            <span className={`text-[18px] font-semibold leading-none tracking-[-0.01em] ${active ? "text-black" : "text-white"}`}>
+              {dt.getUTCDate()}
+            </span>
           </button>
         );
       })}
@@ -87,24 +89,58 @@ function ProbsStrip({ pred }: { pred: QuickPred }) {
       {items.map((it) => (
         <span
           key={it.k}
-          className={`flex min-w-[44px] flex-col items-center rounded-xl px-1.5 py-1 ${
-            it === best ? "bg-black text-neon" : "bg-black/5 text-black/60"
+          className={`flex min-w-[42px] items-center justify-center gap-1 rounded-lg px-1.5 py-[5px] ${
+            it === best ? "bg-neon text-black" : "bg-white/8 text-white/55"
           }`}
         >
-          <span className="text-[8px] font-black uppercase tracking-wider opacity-60">{it.k}</span>
-          <span className="text-[13px] font-black leading-none">{Math.round(it.v * 100)}%</span>
+          <span className="text-[11px] font-semibold">{it.k}</span>
+          <span className="text-[12px] font-bold leading-none tabular-nums">{Math.round(it.v * 100)}%</span>
         </span>
       ))}
-      <span className="ml-1 flex flex-col items-end gap-0.5">
-        <span className="text-[10px] leading-none tracking-[0.1em] text-black/80" title={`Confiance ${pred.confidence}/5`}>
-          {confidenceStars(pred.confidence)}
+      <span className="ml-0.5 flex flex-col items-end gap-0.5">
+        <span className="text-[10px] leading-none tracking-[0.06em] text-[#ffd60a]" title={`Confiance ${pred.confidence}/5`}>
+          {"★".repeat(Math.max(0, Math.min(5, Math.round(pred.confidence))))}
         </span>
         {pred.valueBetsCount > 0 ? (
-          <span className="rounded-full bg-black px-1.5 py-[1px] text-[7.5px] font-black uppercase tracking-wider text-neon">
+          <span className="rounded bg-neon/15 px-1.5 py-[1px] text-[9px] font-semibold text-neon">
             {pred.valueBetsCount} value
           </span>
         ) : null}
       </span>
+    </div>
+  );
+}
+
+/* ---------- Ligne équipe (style Apple Sports) ---------- */
+function TeamRow({
+  name,
+  logo,
+  form,
+  score,
+  live,
+  dimmed,
+}: {
+  name: string;
+  logo?: string | null;
+  form: string | null;
+  score: number | null;
+  live: boolean;
+  dimmed: boolean;
+}) {
+  return (
+    <div className="flex items-center gap-2.5">
+      <TeamBadge name={name} logo={logo} size={26} />
+      <span className={`min-w-0 flex-1 truncate text-[15px] font-semibold ${dimmed ? "text-white/50" : "text-white"}`}>{name}</span>
+      {form && form.length > 0 ? <FormDots form={form} /> : null}
+      {score != null ? (
+        <span
+          className={`w-7 text-right text-[17px] font-bold leading-none tabular-nums ${
+            live ? "text-neon" : dimmed ? "text-white/45" : "text-white"
+          }`}
+        >
+          {score}
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -126,95 +162,77 @@ function MatchCard({
   const live = match.status === "in";
   const done = match.status === "post";
   const hasScore = match.home.score != null && match.away.score != null;
+  const homeWon = hasScore && (match.home.score ?? 0) > (match.away.score ?? 0);
+  const awayWon = hasScore && (match.away.score ?? 0) > (match.home.score ?? 0);
 
   return (
     <article
       onClick={onOpen}
-      className={`cursor-pointer rounded-[24px] bg-panel p-4 pb-3.5 shadow-[0_10px_24px_rgba(0,0,0,0.35)] transition-transform duration-150 ease-out active:scale-[0.97] sm:hover:scale-[1.015] ${done ? "opacity-80" : ""}`}
+      className={`cursor-pointer rounded-2xl bg-ink-2 p-4 transition-transform duration-150 ease-out active:scale-[0.98] ${done ? "opacity-90" : ""}`}
     >
-      <div className="grid grid-cols-[1fr_auto_1fr] items-start gap-1">
-        {/* domicile */}
-        <div className="flex flex-col items-center gap-2 pt-1">
-          <TeamBadge name={match.home.name} logo={match.home.logo} size={56} />
-          <div className="flex flex-col items-center gap-1">
-            <span className="max-w-[96px] text-center text-[9px] font-extrabold leading-[1.25] tracking-wide text-black">
-              {match.home.name.toUpperCase()}
-            </span>
-            <FormDots form={match.home.form} align="left" />
-          </div>
-        </div>
-
-        {/* centre */}
-        <div className="flex w-[104px] flex-col items-center">
-          {hasScore ? (
-            <span className="font-display text-[30px] leading-none tracking-wide text-black">
-              {match.home.score}:{match.away.score}
-            </span>
-          ) : (
-            <span className="flex h-11 w-11 items-center justify-center rounded-full bg-black font-display text-[14px] tracking-wide text-white shadow-[0_6px_14px_rgba(0,0,0,0.4)]">
-              VS
-            </span>
-          )}
-          {hasScore ? (
-            <span className="mt-1.5 text-[10px] font-bold uppercase tracking-wide text-black/45">
-              {match.statusDetail || "FT"}
-            </span>
-          ) : (
-            <span className="mt-2.5 text-[20px] font-black leading-none text-black">{timeLabel(match.date)}</span>
-          )}
-          {live ? (
-            <span className="mt-1.5 flex items-center gap-1 rounded-full bg-neon px-2 py-[3px] text-[8px] font-black uppercase text-black">
-              <span className="live-dot h-1.5 w-1.5 rounded-full bg-black" />
-              Live
-            </span>
-          ) : null}
-        </div>
-
-        {/* extérieur */}
-        <div className="flex flex-col items-center gap-2 pt-1">
-          <TeamBadge name={match.away.name} logo={match.away.logo} size={56} />
-          <div className="flex flex-col items-center gap-1">
-            <span className="max-w-[96px] text-center text-[9px] font-extrabold leading-[1.25] tracking-wide text-black">
-              {match.away.name.toUpperCase()}
-            </span>
-            <FormDots form={match.away.form} />
-          </div>
-        </div>
+      {/* ligue + heure / statut */}
+      <div className="flex items-center justify-between gap-2">
+        <span className="min-w-0 truncate text-[12px] font-medium text-white/45">{leagueShort}</span>
+        {live ? (
+          <span className="flex shrink-0 items-center gap-1.5 text-[12px] font-semibold text-neon">
+            <span className="live-dot h-[6px] w-[6px] rounded-full bg-neon" />
+            {match.statusDetail || "En direct"}
+          </span>
+        ) : hasScore ? (
+          <span className="shrink-0 text-[12px] font-medium text-white/45">{match.statusDetail || "Terminé"}</span>
+        ) : (
+          <span className="shrink-0 text-[12px] font-semibold text-white/70">{timeLabel(match.date)}</span>
+        )}
       </div>
 
-      {/* bandeau bas : ligue + triplet moteur / cotes */}
-      <div className="mt-3.5 flex items-center justify-between gap-2 rounded-2xl bg-panel-2 px-3 py-2">
-        <span className="shrink-0 rounded-full bg-white px-2.5 py-[3px] text-[8px] font-extrabold uppercase tracking-wider text-black shadow-sm">
-          {leagueShort}
-        </span>
-        {pred ? (
+      {/* équipes */}
+      <div className="mt-2 space-y-1.5">
+        <TeamRow
+          name={match.home.name}
+          logo={match.home.logo}
+          form={match.home.form}
+          score={hasScore ? match.home.score : null}
+          live={live}
+          dimmed={done && !homeWon && !live}
+        />
+        <TeamRow
+          name={match.away.name}
+          logo={match.away.logo}
+          form={match.away.form}
+          score={hasScore ? match.away.score : null}
+          live={live}
+          dimmed={done && !awayWon && !live}
+        />
+      </div>
+
+      {/* prono moteur : discret, sous un séparateur cheveux */}
+      {pred ? (
+        <div className="mt-3 border-t border-white/8 pt-2.5">
           <button
             onClick={(e) => {
               e.stopPropagation();
               onQuickTicket();
             }}
-            className="transition-transform active:scale-95"
+            className="transition-transform duration-150 ease-out active:scale-95"
             aria-label="Sélection rapide du prono moteur"
           >
             <ProbsStrip pred={pred} />
           </button>
-        ) : match.hasOdds && match.mlHome != null ? (
-          <div className="flex items-center gap-1">
-            {[
-              { k: "1", v: match.mlHome },
-              { k: "X", v: match.mlDraw },
-              { k: "2", v: match.mlAway },
-            ].map((o) => (
-              <span key={o.k} className="flex min-w-[40px] flex-col items-center rounded-xl bg-white px-1.5 py-1 text-black/70">
-                <span className="text-[8px] font-black uppercase opacity-60">{o.k}</span>
-                <span className="text-[12px] font-black leading-none">{o.v?.toFixed(2)}</span>
-              </span>
-            ))}
-          </div>
-        ) : (
-          <span className="text-[9px] font-bold uppercase tracking-wider text-black/35">Pas de cotes</span>
-        )}
-      </div>
+        </div>
+      ) : match.hasOdds && match.mlHome != null ? (
+        <div className="mt-3 flex items-center gap-1.5 border-t border-white/8 pt-2.5">
+          {[
+            { k: "1", v: match.mlHome },
+            { k: "X", v: match.mlDraw },
+            { k: "2", v: match.mlAway },
+          ].map((o) => (
+            <span key={o.k} className="flex min-w-[42px] items-center justify-center gap-1 rounded-lg bg-white/8 px-1.5 py-[5px] text-white/60">
+              <span className="text-[11px] font-semibold">{o.k}</span>
+              <span className="text-[12px] font-bold leading-none">{o.v?.toFixed(2)}</span>
+            </span>
+          ))}
+        </div>
+      ) : null}
     </article>
   );
 }
@@ -238,8 +256,7 @@ export function HomeScreen({
   const [activeLeague, setActiveLeague] = useState("all");
   const abortRef = useRef<number>(0);
 
-  /* bandeau dates + ligues : se replie quand on défile vers le bas,
-     réapparaît dès qu'on remonte */
+  /* grand titre → barre compacte translucide quand on défile vers le bas */
   const [barsHidden, setBarsHidden] = useState(false);
   const lastScrollY = useRef(0);
   const mainRef = useRef<HTMLDivElement>(null);
@@ -378,57 +395,72 @@ export function HomeScreen({
   };
 
   const dt = new Date(`${date}T12:00:00Z`);
+  const dateShort = dt.toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" }).replace(/\./g, "");
 
   return (
-    <div className="flex h-full flex-col bg-ink">
-      {/* en-tête */}
-      <header className="flex items-center justify-between px-5 pt-6">
-        <div className="flex items-center gap-3">
-          <span className="flex h-11 w-11 items-center justify-center rounded-full bg-neon shadow-[0_4px_18px_rgba(198,242,17,0.35)]">
-            <svg width="24" height="24" viewBox="0 0 24 24" role="img" aria-label="Logo VOLTRIX">
-              <path d="M4 12 L8 5 H16 L20 12 L16 19 H8 Z" fill="none" stroke="#141414" strokeWidth="2.2" strokeLinejoin="round" />
-              <path d="M12 7.5 L15.5 12 L12 16.5 L8.5 12 Z" fill="#141414" />
-              <circle cx="12" cy="12" r="1.3" fill="#c6f211" />
-            </svg>
-          </span>
-          <div>
-            <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.22em] text-white/45">
+    <div className="flex h-full flex-col bg-black">
+      {/* ===== barre compacte translucide — n'apparaît qu'en défilement ===== */}
+      <div
+        aria-hidden={!barsHidden}
+        className={`material-bar absolute inset-x-0 top-0 z-30 border-b border-white/8 transition-transform duration-300 ease-out ${
+          barsHidden ? "translate-y-0" : "-translate-y-full"
+        }`}
+      >
+        <div className="flex h-[52px] items-center justify-between px-5">
+          <button
+            onClick={() => {
+              setBarsHidden(false);
+              mainRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+            }}
+            aria-label="Revenir en haut"
+            className="flex items-center gap-1.5"
+          >
+            <ChevronLeft size={15} strokeWidth={2.4} className="rotate-[-90deg] text-white/40" />
+            <span className="text-[17px] font-semibold tracking-[-0.01em] text-white">VOLTRIX</span>
+          </button>
+          <span className="text-[13px] text-white/50">{dateShort}</span>
+        </div>
+      </div>
+
+      {/* ===== en-tête : grand titre iOS ===== */}
+      <header className="px-5 pt-6">
+        <div className="flex items-start justify-between">
+          <div className="min-w-0">
+            <p className="flex items-center gap-1.5 text-[13px] text-white/45">
               {isLive ? "API connectée" : "Mode démo"}
               {!isLive ? <DemoBadge /> : null}
             </p>
-            <h1 className="font-display text-[30px] leading-none tracking-wide text-white">VOLTRIX</h1>
+            <h1 className="mt-0.5 text-[32px] font-bold leading-none tracking-[-0.022em] text-white">VOLTRIX</h1>
           </div>
+          <button
+            onClick={() => void load(date)}
+            className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full bg-white/8 text-white transition-transform duration-150 ease-out active:scale-95"
+            aria-label="Rafraîchir"
+          >
+            <RefreshCw size={16} strokeWidth={2.2} className={loading ? "animate-spin" : ""} />
+          </button>
         </div>
-        <button
-          onClick={() => void load(date)}
-          className="flex h-9 w-9 items-center justify-center rounded-full bg-ink-3 text-white transition-colors hover:bg-neon hover:text-black"
-          aria-label="Rafraîchir"
-        >
-          <RefreshCw size={15} strokeWidth={2.2} className={loading ? "animate-spin" : ""} />
-        </button>
       </header>
 
-      {/* bandeau de dates + ligues — compact, se replie au défilement */}
+      {/* ===== bandeau de dates + ligues — se condense au défilement ===== */}
       <div
         aria-hidden={barsHidden}
-        className={`grid transition-[grid-template-rows,opacity,transform,visibility] duration-300 ease-out ${
-          barsHidden
-            ? "invisible grid-rows-[0fr] -translate-y-2 opacity-0"
-            : "grid-rows-[1fr] translate-y-0 opacity-100"
-        } mt-3`}
+        className={`grid transition-[grid-template-rows,opacity] duration-300 ease-out ${
+          barsHidden ? "invisible grid-rows-[0fr] opacity-0" : "grid-rows-[1fr] opacity-100"
+        } mt-4`}
       >
         <div className="overflow-hidden">
           <DateStrip value={date} onChange={changeDate} />
           {leagueChips.length > 0 ? (
-            <div className="no-scrollbar mt-2 flex gap-1.5 overflow-x-auto px-5">
+            <div className="no-scrollbar mt-2.5 flex gap-2 overflow-x-auto px-5">
               <button
                 onClick={() => setActiveLeague("all")}
                 aria-pressed={activeLeague === "all"}
-                className={`whitespace-nowrap rounded-full px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide transition-colors ${
-                  activeLeague === "all" ? "bg-neon text-black" : "bg-ink-3 text-white hover:bg-[#383838]"
+                className={`whitespace-nowrap rounded-full px-3.5 py-[7px] text-[13px] font-semibold transition-colors duration-150 ease-out ${
+                  activeLeague === "all" ? "bg-white text-black" : "bg-ink-2 text-white/70"
                 }`}
               >
-                Toutes · {data?.totalMatches ?? 0}
+                Toutes
               </button>
               {leagueChips.map((l) => (
                 <button
@@ -436,8 +468,8 @@ export function HomeScreen({
                   onClick={() => setActiveLeague(l.code)}
                   aria-pressed={activeLeague === l.code}
                   title={l.name}
-                  className={`whitespace-nowrap rounded-full px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide transition-colors ${
-                    activeLeague === l.code ? "bg-neon text-black" : "bg-ink-3 text-white hover:bg-[#383838]"
+                  className={`whitespace-nowrap rounded-full px-3.5 py-[7px] text-[13px] font-semibold transition-colors duration-150 ease-out ${
+                    activeLeague === l.code ? "bg-white text-black" : "bg-ink-2 text-white/70"
                   }`}
                 >
                   {l.label}
@@ -448,20 +480,18 @@ export function HomeScreen({
         </div>
       </div>
 
-      {/* contenu */}
-      <main ref={mainRef} onScroll={handleScroll} className="no-scrollbar flex-1 space-y-5 overflow-y-auto px-5 pb-28 pt-4">
+      {/* ===== contenu ===== */}
+      <main ref={mainRef} onScroll={handleScroll} className="no-scrollbar flex-1 space-y-5 overflow-y-auto px-5 pb-24 pt-4">
         <div className="flex items-center justify-between">
-          <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-white/45">
-            <CalendarDays size={12} strokeWidth={2.4} />
+          <p className="flex items-center gap-1.5 text-[13px] font-medium text-white/45">
+            <CalendarDays size={13} strokeWidth={2.2} />
             {dt.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })}
           </p>
-          {loadingPreds ? (
-            <span className="text-[9.5px] font-bold uppercase tracking-widest text-neon">Moteur en analyse…</span>
-          ) : null}
+          {loadingPreds ? <span className="text-[12px] text-neon">Analyse…</span> : null}
         </div>
 
         {loading ? (
-          <div className="space-y-5">
+          <div className="space-y-3">
             <CardSkeleton />
             <CardSkeleton />
             <CardSkeleton />
@@ -475,20 +505,19 @@ export function HomeScreen({
         ) : groups.length === 0 ? (
           <div className="flex flex-col items-center gap-2 py-14 text-center">
             <span className="text-[32px]">⚽</span>
-            <p className="text-[12px] font-semibold text-white/50">Aucun match synchronisé pour cette date.</p>
-            <p className="max-w-[260px] text-[10.5px] leading-relaxed text-white/35">
+            <p className="text-[14px] font-semibold text-white/60">Aucun match synchronisé pour cette date.</p>
+            <p className="max-w-[260px] text-[12px] leading-relaxed text-white/40">
               La base se remplit via la synchronisation ESPN (onglet Réglages → Réveiller la synchronisation).
             </p>
           </div>
         ) : (
           groups.map((lg) => (
             <section key={lg.code} aria-label={lg.name}>
-              <div className="mb-2.5 flex items-center gap-2">
-                <span className="h-[3px] w-4 rounded-full bg-neon" />
-                <h2 className="text-[11px] font-black uppercase tracking-[0.14em] text-white/70">{lg.name}</h2>
-                <span className="text-[9.5px] font-bold text-white/30">{lg.matches.length}</span>
+              <div className="mb-2.5 flex items-center justify-between px-0.5">
+                <h2 className="min-w-0 truncate text-[13px] font-normal uppercase tracking-[0.08em] text-white/45">{lg.name}</h2>
+                <span className="shrink-0 pl-2 text-[12px] text-white/30">{lg.matches.length}</span>
               </div>
-              <div className="space-y-4">
+              <div className="space-y-3">
                 {lg.matches.map((m) => (
                   <MatchCard
                     key={m.id}

@@ -88,23 +88,24 @@ export function TicketSheet({
             initial={{ y: "110%" }}
             animate={{ y: 0 }}
             exit={{ y: "110%" }}
-            transition={{ type: "spring", damping: 28, stiffness: 300 }}
-            className="absolute inset-x-0 bottom-0 z-50 rounded-t-[32px] bg-ink-2 px-5 pb-7 pt-3 shadow-[0_-20px_50px_rgba(0,0,0,0.5)]"
+            transition={{ type: "spring", stiffness: 380, damping: 38 }}
+            className="absolute inset-x-0 bottom-0 z-50 rounded-t-[34px] bg-ink-2 px-5 pb-8 pt-2.5 shadow-[0_-16px_40px_rgba(0,0,0,0.5)]"
           >
-            <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-white/20" />
+            {/* poignée iOS */}
+            <div className="mx-auto mb-4 h-[5px] w-9 rounded-full bg-white/25" />
 
             {!placed ? (
               <>
                 <div className="mb-4 flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <h2 className="font-display text-[22px] tracking-wide text-white">TICKET</h2>
-                    <p className="truncate text-[10px] font-semibold uppercase tracking-widest text-white/45">
+                    <h2 className="text-[22px] font-bold tracking-[-0.015em] text-white">Ticket</h2>
+                    <p className="truncate text-[12px] text-white/45">
                       {draft.homeName} vs {draft.awayName}
                     </p>
                   </div>
                   <button
                     onClick={onClose}
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-ink-3 text-white/70 transition-colors hover:bg-neon hover:text-black"
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/10 text-white/70 transition-transform duration-150 ease-out active:scale-95"
                     aria-label="Fermer"
                   >
                     <X size={15} strokeWidth={2.4} />
@@ -112,43 +113,43 @@ export function TicketSheet({
                 </div>
 
                 {/* sélection */}
-                <div className="flex items-center gap-3 rounded-[20px] bg-panel p-3.5 text-black">
+                <div className="flex items-center gap-3 rounded-2xl bg-ink-3 p-3.5">
                   <div className="flex shrink-0 -space-x-2">
                     <TeamBadge name={draft.homeName} logo={draft.homeLogo} size={30} />
                     <TeamBadge name={draft.awayName} logo={draft.awayLogo} size={30} />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-[13px] font-black">{draft.pick}</p>
-                    <p className="text-[9px] font-bold uppercase tracking-wider text-black/50">
+                    <p className="truncate text-[14px] font-semibold text-white">{draft.pick}</p>
+                    <p className="text-[11px] text-white/45">
                       {draft.market} · proba moteur {pct(draft.prob)}
                     </p>
                   </div>
                   <div className="shrink-0 text-right">
-                    <p className="text-[17px] font-black leading-none">{draft.odds != null ? draft.odds.toFixed(2) : "—"}</p>
-                    <p className="text-[8px] font-bold uppercase tracking-wider text-black/45">cote</p>
+                    <p className="text-[17px] font-bold leading-none text-white">{draft.odds != null ? draft.odds.toFixed(2) : "—"}</p>
+                    <p className="mt-0.5 text-[10px] text-white/40">cote</p>
                   </div>
                 </div>
 
                 {/* mise */}
                 <div className="mt-5 flex items-center justify-between">
-                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/45">Mise</p>
+                  <p className="text-[13px] font-medium text-white/55">Mise</p>
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => setStake((s) => Math.max(1, s - 5))}
-                      className="flex h-8 w-8 items-center justify-center rounded-full bg-ink-3 text-white transition-colors hover:bg-neon hover:text-black"
+                      className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-white transition-transform duration-150 ease-out active:scale-95"
                       aria-label="Diminuer la mise"
                     >
-                      <Minus size={14} strokeWidth={2.6} />
+                      <Minus size={14} strokeWidth={2.4} />
                     </button>
-                    <span className="min-w-[76px] rounded-full bg-ink-3 px-4 py-1.5 text-center text-[15px] font-black text-white">
+                    <span className="min-w-[76px] rounded-full bg-ink-3 px-4 py-1.5 text-center text-[15px] font-semibold text-white">
                       {stake} €
                     </span>
                     <button
                       onClick={() => setStake((s) => Math.min(500, s + 5))}
-                      className="flex h-8 w-8 items-center justify-center rounded-full bg-ink-3 text-white transition-colors hover:bg-neon hover:text-black"
+                      className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-white transition-transform duration-150 ease-out active:scale-95"
                       aria-label="Augmenter la mise"
                     >
-                      <Plus size={14} strokeWidth={2.6} />
+                      <Plus size={14} strokeWidth={2.4} />
                     </button>
                   </div>
                 </div>
@@ -158,8 +159,8 @@ export function TicketSheet({
                     <button
                       key={s}
                       onClick={() => setStake(s)}
-                      className={`flex-1 rounded-full py-1.5 text-[11px] font-bold transition-colors ${
-                        stake === s ? "bg-neon text-black" : "bg-ink-3 text-white/70 hover:text-white"
+                      className={`flex-1 rounded-[10px] py-1.5 text-[13px] font-semibold transition-colors duration-150 ease-out ${
+                        stake === s ? "bg-neon text-black" : "bg-white/8 text-white/70"
                       }`}
                     >
                       {s} €
@@ -168,21 +169,21 @@ export function TicketSheet({
                 </div>
 
                 {/* gain potentiel */}
-                <div className="mt-4 flex items-center justify-between rounded-2xl bg-black/40 px-4 py-3 ring-1 ring-white/10">
-                  <span className="text-[10.5px] font-bold uppercase tracking-widest text-white/50">Gain potentiel</span>
-                  <span className="text-[18px] font-black text-neon">
+                <div className="mt-4 flex items-center justify-between rounded-2xl bg-ink-3 px-4 py-3">
+                  <span className="text-[12px] font-medium text-white/50">Gain potentiel</span>
+                  <span className="text-[18px] font-bold text-neon">
                     {returns != null ? `${returns} €` : "— (pas de cote)"}
                   </span>
                 </div>
 
                 <button
                   onClick={place}
-                  className="mt-4 flex h-[52px] w-full items-center justify-center gap-2 rounded-full bg-neon text-[15px] font-black uppercase tracking-wide text-black transition-transform hover:scale-[1.015] active:scale-[0.98]"
+                  className="mt-4 flex h-[50px] w-full items-center justify-center gap-2 rounded-[14px] bg-neon text-[15px] font-semibold text-black transition-transform duration-150 ease-out active:scale-[0.98]"
                 >
-                  <Ticket size={17} strokeWidth={2.6} />
-                  Placer · {stake} €
+                  <Ticket size={17} strokeWidth={2.4} />
+                  Placer le ticket · {stake} €
                 </button>
-                <p className="mt-2 text-center text-[8.5px] font-semibold uppercase tracking-widest text-white/30">
+                <p className="mt-2 text-center text-[11px] text-white/35">
                   Simulation — aucun pari réel n&apos;est placé
                 </p>
               </>
@@ -191,16 +192,16 @@ export function TicketSheet({
                 <motion.span
                   initial={{ scale: 0.4, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}
-                  transition={{ type: "spring", damping: 12 }}
+                  transition={{ type: "spring", stiffness: 400, damping: 22 }}
                   className="flex h-16 w-16 items-center justify-center rounded-full bg-neon text-black"
                 >
                   <Check size={30} strokeWidth={3} />
                 </motion.span>
-                <h3 className="mt-4 font-display text-[24px] tracking-wide text-white">ENREGISTRÉ</h3>
-                <p className="mt-1 text-[11.5px] font-semibold text-white/55">
+                <h3 className="mt-4 text-[22px] font-bold tracking-[-0.015em] text-white">Enregistré</h3>
+                <p className="mt-1 text-[13px] text-white/55">
                   {draft.pick} · {stake} € → {returns != null ? `${returns} €` : "suivi sans cote"}
                 </p>
-                <p className="mt-3 rounded-full bg-ink-3 px-3.5 py-1.5 text-[9.5px] font-bold uppercase tracking-widest text-neon">
+                <p className="mt-3 rounded-full bg-white/8 px-3.5 py-1.5 text-[12px] font-semibold text-neon">
                   Suivi dans le Portefeuille
                 </p>
               </div>

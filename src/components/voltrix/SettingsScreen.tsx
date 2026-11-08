@@ -112,10 +112,10 @@ export function SettingsScreen({
         <div className="flex items-center gap-3">
           {headerSlot}
           <div>
-            <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.22em] text-white/45">
+            <p className="flex items-center gap-1.5 text-[13px] text-white/45">
               {isLive ? "API connectée" : "Mode démo"} {!isLive ? <DemoBadge /> : null}
             </p>
-            <h1 className="font-display text-[30px] leading-none tracking-wide text-white">RÉGLAGES</h1>
+            <h1 className="mt-0.5 text-[32px] font-bold leading-none tracking-[-0.022em] text-white">Réglages</h1>
           </div>
         </div>
       </header>
@@ -123,11 +123,11 @@ export function SettingsScreen({
       <main className="no-scrollbar mt-5 flex-1 overflow-y-auto px-5 pb-28">
         {/* connexion */}
         <SectionTitle>Connexion à l&apos;API VOLTRIX</SectionTitle>
-        <div className="rounded-[26px] bg-ink-2 p-4 ring-1 ring-white/5">
-          <label htmlFor="api-base" className="text-[9px] font-black uppercase tracking-widest text-white/45">
+        <div className="rounded-[20px] bg-ink-2 p-4">
+          <label htmlFor="api-base" className="text-[11px] font-medium text-white/45">
             URL du déploiement
           </label>
-          <div className="mt-2 flex items-center gap-2 rounded-full bg-ink-3 px-4 py-3">
+          <div className="mt-2 flex items-center gap-2 rounded-[10px] bg-ink-3 px-4 py-3">
             <Plug size={15} className="shrink-0 text-neon" />
             <input
               id="api-base"
@@ -137,10 +137,10 @@ export function SettingsScreen({
               inputMode="url"
               autoComplete="off"
               spellCheck={false}
-              className="w-full min-w-0 bg-transparent text-[12px] font-bold text-white placeholder:text-white/25 focus:outline-none"
+              className="w-full min-w-0 bg-transparent text-[13px] text-white placeholder:text-white/25 focus:outline-none"
             />
           </div>
-          <p className="mt-2 text-[9.5px] leading-relaxed text-white/40">
+          <p className="mt-2 text-[11px] leading-relaxed text-white/40">
             L&apos;URL publique de ton déploiement VOLTRIX (Vercel, Railway…). Toutes les requêtes passent par
             un proxy serveur — aucun réglage CORS à faire côté backend.
           </p>
@@ -149,15 +149,15 @@ export function SettingsScreen({
             <button
               onClick={() => void testAndSave()}
               disabled={testing}
-              className="flex flex-1 items-center justify-center gap-1.5 rounded-full bg-neon px-3 py-2.5 text-[10px] font-black uppercase tracking-wider text-black transition-transform active:scale-95 disabled:opacity-60"
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-[10px] bg-neon px-3 py-2.5 text-[12px] font-semibold text-black transition-transform duration-150 ease-out active:scale-95 disabled:opacity-60"
             >
-              {testing ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} strokeWidth={3} />}
+              {testing ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} strokeWidth={2.8} />}
               {testing ? "Test en cours…" : "Enregistrer & tester"}
             </button>
             {isLive ? (
               <button
                 onClick={disconnect}
-                className="rounded-full bg-ink-3 px-4 py-2.5 text-[10px] font-black uppercase tracking-wider text-white/60 transition-colors hover:text-white"
+                className="rounded-[10px] bg-white/8 px-4 py-2.5 text-[12px] font-semibold text-white/60"
               >
                 Déconnecter
               </button>
@@ -165,9 +165,9 @@ export function SettingsScreen({
           </div>
 
           {identityError ? (
-            <div className="mt-3 rounded-2xl bg-[#ff5d5d]/15 px-3.5 py-3 ring-1 ring-[#ff5d5d]/30">
-              <p className="text-[10.5px] font-bold text-[#ffb1b1]">{identityError}</p>
-              <p className="mt-1 text-[9.5px] leading-relaxed text-white/45">
+            <div className="mt-3 rounded-2xl bg-[#ff453a]/12 px-3.5 py-3 ring-1 ring-[#ff453a]/30">
+              <p className="text-[11px] font-semibold text-[#ffa1a1]">{identityError}</p>
+              <p className="mt-1 text-[11px] leading-relaxed text-white/45">
                 Vérifie que le déploiement est en ligne et que l&apos;URL est exacte (sans /api final).
               </p>
             </div>
@@ -179,10 +179,10 @@ export function SettingsScreen({
               animate={{ opacity: 1, y: 0 }}
               className="mt-3 rounded-2xl bg-neon/10 px-3.5 py-3 ring-1 ring-neon/40"
             >
-              <p className="text-[11px] font-black text-neon">
+              <p className="text-[12px] font-semibold text-neon">
                 {identity.service} — {identity.status}
               </p>
-              <p className="mt-1 text-[9.5px] font-semibold text-white/50">
+              <p className="mt-1 text-[11px] text-white/50">
                 {identity.endpoints.length} endpoints détectés (matches, predictions, performance, forecasts, cashout…)
               </p>
             </motion.div>
@@ -193,8 +193,8 @@ export function SettingsScreen({
         {!isLive ? (
           <>
             <SectionTitle>Mode démo</SectionTitle>
-            <div className="rounded-[26px] bg-ink-2 p-4 ring-1 ring-white/5">
-              <p className="text-[10.5px] font-semibold leading-relaxed text-white/60">
+            <div className="rounded-[20px] bg-ink-2 p-4">
+              <p className="text-[12px] leading-relaxed text-white/60">
                 Aucune URL configurée : l&apos;interface navigue sur des données de démonstration aux formes
                 <span className="text-white"> strictement identiques</span> aux réponses de ton API (matchs, pronos
                 moteur, marchés, prévisions figées, performance, tickets). Renseigne l&apos;URL de ton déploiement
@@ -207,14 +207,14 @@ export function SettingsScreen({
         {/* synchronisation */}
         <SectionTitle>Synchronisation ESPN → Neon</SectionTitle>
         {syncLoading ? (
-          <div className="flex items-center justify-center gap-2 rounded-[26px] bg-ink-2 py-8 ring-1 ring-white/5">
+          <div className="flex items-center justify-center gap-2 rounded-[20px] bg-ink-2 py-8">
             <Loader2 size={16} className="animate-spin text-neon" />
-            <span className="text-[10.5px] font-bold text-white/50">Lecture du diagnostic…</span>
+            <span className="text-[12px] text-white/50">Lecture du diagnostic…</span>
           </div>
         ) : sync && sync.ok ? (
-          <div className="rounded-[26px] bg-ink-2 p-4 ring-1 ring-white/5">
+          <div className="rounded-[20px] bg-ink-2 p-4">
             <div className="flex items-center justify-between">
-              <span className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-white/60">
+              <span className="flex items-center gap-1.5 text-[11px] font-medium text-white/60">
                 <Database size={12} className="text-neon" />
                 Base {sync.db?.connected ? "connectée" : "hors ligne"}
                 {sync.db ? <span className="text-white/30">· {sync.db.latencyMs} ms</span> : null}
@@ -222,9 +222,9 @@ export function SettingsScreen({
               <button
                 onClick={() => void doWake()}
                 disabled={waking || !isLive}
-                className="flex items-center gap-1.5 rounded-full bg-neon px-3 py-1.5 text-[9px] font-black uppercase tracking-wider text-black transition-transform active:scale-95 disabled:opacity-50"
+                className="flex items-center gap-1.5 rounded-full bg-neon px-3 py-1.5 text-[11px] font-semibold text-black transition-transform duration-150 ease-out active:scale-95 disabled:opacity-50"
               >
-                <Rocket size={11} strokeWidth={2.8} className={waking ? "animate-pulse" : ""} />
+                <Rocket size={11} strokeWidth={2.4} className={waking ? "animate-pulse" : ""} />
                 {waking ? "Réveil…" : "Réveiller"}
               </button>
             </div>
@@ -241,7 +241,7 @@ export function SettingsScreen({
             ) : null}
 
             {sync.lastSync ? (
-              <p className="mt-3 text-[9px] font-semibold leading-relaxed text-white/35">
+              <p className="mt-3 text-[10px] leading-relaxed text-white/35">
                 Dernier job : {sync.lastSync.phase} ·{" "}
                 {new Date(sync.lastSync.startedAt).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })}
                 {sync.lastSync.finishedAt ? ` → ${new Date(sync.lastSync.finishedAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}` : " (en cours)"}
@@ -252,7 +252,7 @@ export function SettingsScreen({
               <motion.p
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                className="mt-3 rounded-2xl bg-neon/10 px-3.5 py-2.5 text-[10px] font-bold leading-relaxed text-neon ring-1 ring-neon/30"
+                className="mt-3 rounded-2xl bg-neon/10 px-3.5 py-2.5 text-[11px] font-semibold leading-relaxed text-neon ring-1 ring-neon/30"
               >
                 {wakeMsg}
               </motion.p>
@@ -264,7 +264,7 @@ export function SettingsScreen({
 
         {/* à propos */}
         <SectionTitle>À propos</SectionTitle>
-        <div className="rounded-[26px] bg-ink-2 p-4 text-[9.5px] font-semibold leading-relaxed text-white/45 ring-1 ring-white/5">
+        <div className="rounded-[20px] bg-ink-2 p-4 text-[11px] leading-relaxed text-white/45">
           <p>
             Interface pour le système <span className="text-neon">VOLTRIX bet</span> — moteur Poisson + Elo +
             Forme + contexte (météo, blessures, enjeux), prédictions figées anti look-ahead, base Neon

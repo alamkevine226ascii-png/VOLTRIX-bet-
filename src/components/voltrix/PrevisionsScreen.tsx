@@ -47,16 +47,16 @@ function WeekRow({ m }: { m: WeekMatchRow }) {
   const done = m.effectiveStatus === "FINAL";
 
   return (
-    <article className={`rounded-[22px] bg-ink-2 p-3.5 ring-1 ring-white/5 ${done ? "" : ""}`}>
+    <article className="rounded-2xl bg-ink-2 p-3.5">
       {/* en-tête ligne */}
       <div className="flex items-center justify-between gap-2">
-        <span className="max-w-[130px] truncate text-[8.5px] font-black uppercase tracking-widest text-white/40">
+        <span className="max-w-[140px] truncate text-[11px] text-white/45">
           {m.leagueName}
         </span>
-        <span className="flex items-center gap-1.5 text-[9px] font-bold text-white/50">
+        <span className="flex items-center gap-1.5 text-[11px] text-white/50">
           {timeLabel(m.kickoff)}
-          <span className={`rounded-full px-2 py-0.5 text-[8px] font-black uppercase tracking-wide ${
-            done ? "bg-white/10 text-white/60" : m.effectiveStatus === "LIVE" ? "bg-neon text-black" : "bg-ink-3 text-neon"
+          <span className={`rounded-md px-2 py-0.5 text-[10px] font-semibold ${
+            done ? "bg-white/10 text-white/60" : m.effectiveStatus === "LIVE" ? "bg-neon text-black" : "bg-neon/15 text-neon"
           }`}>
             {m.statusLabel}
           </span>
@@ -65,17 +65,17 @@ function WeekRow({ m }: { m: WeekMatchRow }) {
 
       {/* équipes + score */}
       <div className="mt-2 flex items-center gap-2.5">
-        <TeamBadge name={m.homeTeam} logo={m.homeLogo} size={34} />
+        <TeamBadge name={m.homeTeam} logo={m.homeLogo} size={30} />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-right text-[11.5px] font-black text-white">{m.homeTeam}</p>
+          <p className="truncate text-right text-[13px] font-semibold text-white">{m.homeTeam}</p>
         </div>
-        <span className="shrink-0 rounded-lg bg-black/60 px-2.5 py-1 font-display text-[15px] tracking-wide text-white">
+        <span className="shrink-0 rounded-lg bg-ink-3 px-2.5 py-1 text-[16px] font-bold tabular-nums text-white">
           {res?.homeScore != null ? `${res.homeScore}:${res.awayScore}` : "–:–"}
         </span>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[11.5px] font-black text-white">{m.awayTeam}</p>
+          <p className="truncate text-[13px] font-semibold text-white">{m.awayTeam}</p>
         </div>
-        <TeamBadge name={m.awayTeam} logo={m.awayLogo} size={34} />
+        <TeamBadge name={m.awayTeam} logo={m.awayLogo} size={30} />
       </div>
 
       {/* picks figés + grades */}
@@ -83,40 +83,40 @@ function WeekRow({ m }: { m: WeekMatchRow }) {
         <div className="mt-2.5 grid grid-cols-3 gap-1.5">
           <div className="rounded-xl bg-ink-3 px-2 py-1.5">
             <div className="flex items-center justify-between">
-              <span className="text-[7.5px] font-black uppercase tracking-wider text-white/40">1X2</span>
+              <span className="text-[10px] font-medium text-white/45">1X2</span>
               <GradeBadge grade={m.evaluation?.grade1x2 ?? null} />
             </div>
-            <p className="mt-1 truncate text-[10px] font-black text-neon">{s.pick1x2 === "X" ? "Nul" : s.pick1x2Label.replace(/^[12] - /, s.pick1x2 === "1" ? "1 · " : "2 · ")}</p>
-            <p className="text-[8.5px] font-bold text-white/45">
+            <p className="mt-1 truncate text-[12px] font-semibold text-neon">{s.pick1x2 === "X" ? "Nul" : s.pick1x2Label.replace(/^[12] - /, s.pick1x2 === "1" ? "1 · " : "2 · ")}</p>
+            <p className="text-[11px] text-white/45">
               {pct(Math.max(s.p1x2Home, s.p1x2Draw, s.p1x2Away))}
             </p>
           </div>
           <div className="rounded-xl bg-ink-3 px-2 py-1.5">
             <div className="flex items-center justify-between">
-              <span className="text-[7.5px] font-black uppercase tracking-wider text-white/40">O/U 2.5</span>
+              <span className="text-[10px] font-medium text-white/45">O/U 2.5</span>
               <GradeBadge grade={m.evaluation?.gradeOu25 ?? null} />
             </div>
-            <p className="mt-1 text-[10px] font-black text-neon">{s.pickOu25 === "OVER" ? "+2.5 buts" : "−2.5 buts"}</p>
-            <p className="text-[8.5px] font-bold text-white/45">{pct(Math.max(s.pOver25, s.pUnder25))}</p>
+            <p className="mt-1 text-[12px] font-semibold text-neon">{s.pickOu25 === "OVER" ? "+2.5 buts" : "−2.5 buts"}</p>
+            <p className="text-[11px] text-white/45">{pct(Math.max(s.pOver25, s.pUnder25))}</p>
           </div>
           <div className="rounded-xl bg-ink-3 px-2 py-1.5">
             <div className="flex items-center justify-between">
-              <span className="text-[7.5px] font-black uppercase tracking-wider text-white/40">BTTS</span>
+              <span className="text-[10px] font-medium text-white/45">BTTS</span>
               <GradeBadge grade={m.evaluation?.gradeBtts ?? null} />
             </div>
-            <p className="mt-1 text-[10px] font-black text-neon">{s.pickBtts === "YES" ? "Oui" : "Non"}</p>
-            <p className="text-[8.5px] font-bold text-white/45">{pct(Math.max(s.pBttsYes, s.pBttsNo))}</p>
+            <p className="mt-1 text-[12px] font-semibold text-neon">{s.pickBtts === "YES" ? "Oui" : "Non"}</p>
+            <p className="text-[11px] text-white/45">{pct(Math.max(s.pBttsYes, s.pBttsNo))}</p>
           </div>
         </div>
       ) : (
-        <p className="mt-2.5 rounded-xl bg-ink-3 px-3 py-2 text-center text-[9.5px] font-bold uppercase tracking-wider text-white/35">
+        <p className="mt-2.5 rounded-xl bg-ink-3 px-3 py-2 text-center text-[12px] text-white/40">
           {m.predictionPending ? "Prédiction en attente du job" : "Hors fenêtre de génération"}
         </p>
       )}
 
       {s ? (
         <div className="mt-2 flex items-center justify-between">
-          <span className="text-[8px] font-semibold uppercase tracking-wider text-white/25">
+          <span className="text-[10px] text-white/30">
             figé {new Date(s.predictionTime).toLocaleDateString("fr-FR", { day: "2-digit", month: "short" })} · {s.modelVersion} · v{s.version}
           </span>
           <ConfidenceChip confidence={s.confidence} />
@@ -178,14 +178,14 @@ export function PrevisionsScreen({ apiEpoch }: { apiEpoch: number }) {
       <header className="px-5 pt-6">
         <div className="flex items-center justify-between">
           <div>
-            <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.22em] text-white/45">
+            <p className="flex items-center gap-1.5 text-[13px] text-white/45">
               Semaine figée {isLive ? null : <DemoBadge />}
             </p>
-            <h1 className="font-display text-[30px] leading-none tracking-wide text-white">PRÉVISIONS</h1>
+            <h1 className="mt-0.5 text-[32px] font-bold leading-none tracking-[-0.022em] text-white">Prévisions</h1>
           </div>
           <button
             onClick={() => void load(start)}
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-ink-3 text-white transition-colors hover:bg-neon hover:text-black"
+            className="flex h-[34px] w-[34px] items-center justify-center rounded-full bg-white/8 text-white transition-transform duration-150 ease-out active:scale-95"
             aria-label="Rafraîchir"
           >
             <RefreshCw size={15} strokeWidth={2.2} className={loading ? "animate-spin" : ""} />
@@ -193,23 +193,23 @@ export function PrevisionsScreen({ apiEpoch }: { apiEpoch: number }) {
         </div>
 
         {/* navigation semaine */}
-        <div className="mt-4 flex items-center justify-between rounded-full bg-ink-3 p-1.5">
+        <div className="mt-4 flex items-center justify-between rounded-full bg-white/8 p-1">
           <button
             onClick={() => setStart(isoAddDays(start, -7))}
-            className="flex h-8 w-8 items-center justify-center rounded-full bg-ink-2 text-white transition-colors hover:bg-neon hover:text-black"
+            className="flex h-8 w-8 items-center justify-center rounded-full text-white/70 transition-transform duration-150 ease-out active:scale-95"
             aria-label="Semaine précédente"
           >
-            <ChevronLeft size={15} strokeWidth={2.6} />
+            <ChevronLeft size={15} strokeWidth={2.4} />
           </button>
-          <span className="text-[10.5px] font-black uppercase tracking-wider text-white">
+          <span className="text-[13px] font-semibold text-white">
             {data?.week.label ?? `Semaine du ${start}`}
           </span>
           <button
             onClick={() => setStart(isoAddDays(start, 7))}
-            className="flex h-8 w-8 items-center justify-center rounded-full bg-ink-2 text-white transition-colors hover:bg-neon hover:text-black"
+            className="flex h-8 w-8 items-center justify-center rounded-full text-white/70 transition-transform duration-150 ease-out active:scale-95"
             aria-label="Semaine suivante"
           >
-            <ChevronRight size={15} strokeWidth={2.6} />
+            <ChevronRight size={15} strokeWidth={2.4} />
           </button>
         </div>
       </header>
@@ -255,12 +255,12 @@ export function PrevisionsScreen({ apiEpoch }: { apiEpoch: number }) {
                   { k: "BTTS", s: st?.btts },
                 ] as const
               ).map(({ k, s }) => (
-                <div key={k} className="rounded-2xl bg-ink-3 px-3 py-2.5">
-                  <p className="text-[8.5px] font-black uppercase tracking-widest text-white/45">{k}</p>
-                  <p className="mt-1 text-[17px] font-black leading-none text-white">
+                <div key={k} className="rounded-xl bg-ink-2 px-3 py-2.5">
+                  <p className="text-[11px] text-white/45">{k}</p>
+                  <p className="mt-1 text-[17px] font-bold leading-none text-white">
                     {s?.accuracy != null ? pct(s.accuracy) : "—"}
                   </p>
-                  <p className="mt-0.5 text-[8.5px] font-bold text-white/35">
+                  <p className="mt-1 text-[11px] text-white/35">
                     {s?.correct ?? 0}/{s?.n ?? 0} corrects
                   </p>
                 </div>
@@ -275,9 +275,9 @@ export function PrevisionsScreen({ apiEpoch }: { apiEpoch: number }) {
                     href={reportUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="flex flex-1 items-center justify-center gap-1.5 rounded-full bg-ink-3 px-3 py-2.5 text-[9.5px] font-black uppercase tracking-wider text-white transition-colors hover:bg-neon hover:text-black"
+                    className="flex flex-1 items-center justify-center gap-1.5 rounded-[10px] bg-white/8 px-3 py-2.5 text-[12px] font-semibold text-white/80"
                   >
-                    <FileText size={12} strokeWidth={2.6} />
+                    <FileText size={13} strokeWidth={2.2} />
                     Rapport PDF
                   </a>
                 ) : null}
@@ -286,9 +286,9 @@ export function PrevisionsScreen({ apiEpoch }: { apiEpoch: number }) {
                     href={csvUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="flex flex-1 items-center justify-center gap-1.5 rounded-full bg-ink-3 px-3 py-2.5 text-[9.5px] font-black uppercase tracking-wider text-white transition-colors hover:bg-neon hover:text-black"
+                    className="flex flex-1 items-center justify-center gap-1.5 rounded-[10px] bg-white/8 px-3 py-2.5 text-[12px] font-semibold text-white/80"
                   >
-                    <FileDown size={12} strokeWidth={2.6} />
+                    <FileDown size={13} strokeWidth={2.2} />
                     Export CSV
                   </a>
                 ) : null}
@@ -315,7 +315,7 @@ export function PrevisionsScreen({ apiEpoch }: { apiEpoch: number }) {
               </section>
             ))}
 
-            <p className="mt-5 text-center text-[8.5px] leading-relaxed text-white/25">
+            <p className="mt-5 text-center text-[10px] leading-relaxed text-white/30">
               Snapshots immuables (insert-only) — une ré-analyse crée une nouvelle version, jamais de réécriture.
               Évaluation : CORRECT / INCORRECT / VOID sur statut ESPN définitif.
             </p>

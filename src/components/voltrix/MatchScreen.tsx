@@ -66,10 +66,10 @@ const TABS: Array<{ id: TabId; label: string }> = [
 /* ---------- Bloc composante moteur ---------- */
 function ComponentRow({ name, probs, note }: { name: string; probs: { home: number; draw: number; away: number }; note?: string }) {
   return (
-    <div className="rounded-2xl bg-black/30 px-3.5 py-3">
+    <div className="rounded-xl bg-ink-3 px-3.5 py-3">
       <div className="flex items-center justify-between">
-        <span className="text-[10px] font-black uppercase tracking-widest text-white/70">{name}</span>
-        {note ? <span className="text-[9px] font-semibold text-white/35">{note}</span> : null}
+        <span className="text-[12px] font-semibold text-white/75">{name}</span>
+        {note ? <span className="text-[11px] text-white/40">{note}</span> : null}
       </div>
       <div className="mt-2 grid grid-cols-3 gap-1.5">
         <ProbBar label="1" value={probs.home} compact />
@@ -284,17 +284,17 @@ export function MatchScreen({
   };
 
   const teamBlock = (t: TeamAnalysisDTO) => (
-    <div className="rounded-2xl bg-ink-3 p-3.5">
+    <div className="rounded-2xl bg-ink-2 p-3.5">
       <div className="flex items-center gap-2.5">
         <TeamBadge name={t.name} logo={t.logo} size={38} />
         <div className="min-w-0">
-          <p className="truncate text-[12px] font-black uppercase tracking-wide text-white">{t.name}</p>
-          <p className="text-[9.5px] font-bold text-white/40">
+          <p className="truncate text-[15px] font-semibold text-white">{t.name}</p>
+          <p className="text-[12px] text-white/45">
             Elo {t.elo} {t.rank ? `· ${t.rank}e` : ""} {t.points ? `· ${t.points} pts` : ""}
           </p>
         </div>
       </div>
-      <div className="mt-2.5 grid grid-cols-2 gap-x-3 gap-y-1.5 text-[9.5px]">
+      <div className="mt-2.5 grid grid-cols-2 gap-x-3 gap-y-1.5 text-[11px]">
         {[
           ["Forme", `${Math.round(t.formScore * 100)}/100`],
           ["Buts/match", t.goalsForPerMatch.toFixed(2)],
@@ -335,76 +335,76 @@ export function MatchScreen({
         <header className="relative flex items-center justify-between px-5 pt-6">
           <button
             onClick={onBack}
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-ink-3/90 text-white backdrop-blur transition-colors hover:bg-neon hover:text-black"
+            className="material-bar flex h-8 w-8 items-center justify-center rounded-full text-white transition-transform duration-150 ease-out active:scale-95"
             aria-label="Retour"
           >
-            <ChevronLeft size={18} strokeWidth={2.4} />
+            <ChevronLeft size={17} strokeWidth={2.4} />
           </button>
           <div className="flex min-w-0 items-center gap-2">
-            <span className="max-w-[150px] truncate text-[10px] font-black uppercase tracking-widest text-white/80">
+            <span className="max-w-[180px] truncate text-[13px] font-semibold text-white/85">
               {detail?.leagueName ?? light?.leagueName ?? leagueCode}
             </span>
             {live ? (
-              <span className="flex items-center gap-1 rounded-full bg-neon px-2.5 py-1 text-[9px] font-black uppercase text-black">
-                <span className="live-dot h-1.5 w-1.5 rounded-full bg-black" />
+              <span className="flex items-center gap-1 rounded-full bg-neon px-2 py-[2px] text-[11px] font-bold text-black">
+                <span className="live-dot h-[5px] w-[5px] rounded-full bg-black" />
                 Live
               </span>
             ) : (
-              <span className="rounded-full bg-ink-3/90 px-2.5 py-1 text-[9px] font-black uppercase tracking-wide text-white/70 backdrop-blur">
+              <span className="material-bar rounded-full px-2 py-[2px] text-[11px] font-semibold text-white/80">
                 {detail?.status === "post" ? "Terminé" : "À venir"}
               </span>
             )}
           </div>
           <button
             onClick={() => void load()}
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-ink-3/90 text-white backdrop-blur transition-colors hover:bg-neon hover:text-black"
+            className="material-bar flex h-8 w-8 items-center justify-center rounded-full text-white transition-transform duration-150 ease-out active:scale-95"
             aria-label="Réanalyser"
           >
-            <RefreshCw size={15} strokeWidth={2.2} className={loading ? "animate-spin" : ""} />
+            <RefreshCw size={14} strokeWidth={2.2} className={loading ? "animate-spin" : ""} />
           </button>
         </header>
 
         {/* équipes + score */}
         <div className="relative mt-2 grid grid-cols-[1fr_auto_1fr] items-center px-6 pb-4 pt-1">
           <div className="flex flex-col items-center gap-1.5">
-            <TeamBadge name={homeName} logo={light?.home.logo ?? detail?.home.logo ?? null} size={56} />
-            <span className="max-w-[104px] text-center text-[8.5px] font-extrabold leading-[1.3] tracking-wide text-white">
-              {homeName.toUpperCase()}
+            <TeamBadge name={homeName} logo={light?.home.logo ?? detail?.home.logo ?? null} size={52} />
+            <span className="max-w-[110px] text-center text-[13px] font-semibold leading-tight text-white">
+              {homeName}
             </span>
           </div>
           <div className="mx-3 min-w-[88px] px-1 text-center">
             {hasScore ? (
               <>
-                <span className="font-display text-[36px] leading-none tracking-wide text-white">
+                <span className="text-[34px] font-bold leading-none tracking-[-0.02em] text-white">
                   {detail!.homeScore}:{detail!.awayScore}
                 </span>
-                <span className="mt-1 block text-[8.5px] font-semibold uppercase tracking-widest text-white/50">
+                <span className="mt-1 block text-[11px] text-white/50">
                   {detail?.statusDetail || "FT"}
                 </span>
               </>
             ) : (
               <>
-                <span className="font-display text-[28px] leading-none tracking-wide text-white">
+                <span className="text-[24px] font-bold leading-none tracking-[-0.01em] text-white">
                   {detail ? timeLabel(detail.matchDate) : light ? timeLabel(light.date) : "--:--"}
                 </span>
-                <span className="mt-1 block text-[8.5px] font-semibold uppercase tracking-widest text-white/50">
+                <span className="mt-1 block text-[11px] text-white/50">
                   Coup d&apos;envoi
                 </span>
               </>
             )}
           </div>
           <div className="flex flex-col items-center gap-1.5">
-            <TeamBadge name={awayName} logo={light?.away.logo ?? detail?.away.logo ?? null} size={56} />
-            <span className="max-w-[104px] text-center text-[8.5px] font-extrabold leading-[1.3] tracking-wide text-white">
-              {awayName.toUpperCase()}
+            <TeamBadge name={awayName} logo={light?.away.logo ?? detail?.away.logo ?? null} size={52} />
+            <span className="max-w-[110px] text-center text-[13px] font-semibold leading-tight text-white">
+              {awayName}
             </span>
           </div>
         </div>
 
         {/* lieu */}
         <div className="relative flex justify-center pb-3">
-          <span className="inline-flex max-w-[85%] items-center gap-1.5 rounded-full bg-ink-3/80 px-3 py-1 text-[9px] font-bold uppercase tracking-wide text-white/70 backdrop-blur">
-            <MapPin size={10} strokeWidth={2.4} className="shrink-0 text-neon" />
+          <span className="material-bar inline-flex max-w-[85%] items-center gap-1.5 rounded-full px-3 py-1 text-[11px] text-white/70">
+            <MapPin size={11} strokeWidth={2.2} className="shrink-0 text-neon" />
             <span className="truncate">
               {detail?.venue.name ?? light?.venue.name ?? "Stade"}
               {detail?.venue.city ? ` · ${detail.venue.city}` : ""}
@@ -421,25 +421,25 @@ export function MatchScreen({
       ) : (
         <main className="no-scrollbar flex-1 overflow-y-auto px-5 pb-32">
           {/* ---------- PRONO DU MOTEUR : une carte, une hiérarchie ---------- */}
-          <section className="rounded-[26px] bg-neon px-5 pb-4 pt-4 text-black">
+          <section className="rounded-[20px] bg-neon px-4 pb-4 pt-3.5 text-black">
             <div className="flex items-center justify-between gap-2">
-              <p className="text-[9px] font-black uppercase tracking-[0.2em] text-black/50">Prono du moteur</p>
-              <span className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-wider text-black/70">
+              <p className="text-[11px] font-bold text-black/55">Prono du moteur</p>
+              <span className="flex items-center gap-1.5 text-[11px] font-semibold text-black/70">
                 <span title={`Confiance ${pred.confidence}/5`}>{confidenceStars(pred.confidence)}</span>
                 {pred.confidenceLabel}
               </span>
             </div>
 
-            <p className="mt-1 font-display text-[25px] leading-tight tracking-wide text-black">
-              {bestPick ? bestPick.pick.toUpperCase() : "—"}
+            <p className="mt-0.5 text-[24px] font-bold leading-tight tracking-[-0.01em] text-black">
+              {bestPick ? bestPick.pick : "—"}
             </p>
-            <p className="mt-0.5 text-[10.5px] font-bold text-black/60">
+            <p className="mt-0.5 text-[12px] text-black/65">
               {bestPick ? `${bestPick.market} · probabilité ${pct(bestPick.prob)}` : ""}
             </p>
 
             {/* barre 1X2 segmentée : largeur = probabilité, tap = ticket */}
             <div
-              className="mt-3.5 flex h-[46px] overflow-hidden rounded-2xl bg-black/15"
+              className="mt-3.5 flex h-[44px] overflow-hidden rounded-xl bg-black/15"
               role="group"
               aria-label="Probabilités 1X2 — appuyez pour créer un ticket"
             >
@@ -450,37 +450,40 @@ export function MatchScreen({
                     key={s.id}
                     onClick={() => openTicketFor(s.id)}
                     aria-label={`${s.label} ${Math.round(s.value * 100)} %${s.odds != null ? `, cote ${s.odds.toFixed(2)}` : ""} — créer un ticket`}
-                    className={`flex min-w-0 flex-col items-center justify-center gap-[3px] border-black/10 px-1 transition-transform active:scale-95 ${
+                    className={`flex min-w-0 flex-col items-center justify-center gap-[3px] border-black/10 px-1 transition-transform duration-150 ease-out active:scale-95 ${
                       i > 0 ? "border-l" : ""
                     } ${best ? "bg-black text-neon" : "text-black/75"}`}
                     style={{ flexGrow: Math.max(0.09, s.value) }}
                   >
-                    <span className="w-full truncate text-center text-[8px] font-bold uppercase tracking-wider opacity-70">
+                    <span className="w-full truncate text-center text-[10px] font-medium opacity-70">
                       {s.odds != null ? `${s.label} ${s.odds.toFixed(2)}` : s.label}
                     </span>
-                    <span className="text-[14px] font-black leading-none">{Math.round(s.value * 100)}%</span>
+                    <span className="text-[15px] font-bold leading-none">{Math.round(s.value * 100)}%</span>
                   </button>
                 );
               })}
             </div>
 
             {summary ? (
-              <p className="mt-2.5 text-[10px] font-semibold leading-relaxed text-black/65">{summary}</p>
+              <p className="mt-2.5 text-[12px] leading-relaxed text-black/70">{summary}</p>
             ) : null}
           </section>
 
-          {/* ---------- onglets ---------- */}
-          <div className="no-scrollbar sticky top-0 z-20 -mx-5 mt-4 flex gap-1.5 overflow-x-auto bg-ink/95 px-5 py-2 backdrop-blur">
+          {/* ---------- onglets façon App Store : texte + soulignement ---------- */}
+          <div className="no-scrollbar material-bar sticky top-0 z-20 -mx-5 mt-4 flex gap-5 overflow-x-auto border-b border-white/8 px-5">
             {TABS.map((t) => (
               <button
                 key={t.id}
                 onClick={() => setTab(t.id)}
                 aria-pressed={tab === t.id}
-                className={`whitespace-nowrap rounded-full px-3.5 py-1.5 text-[10px] font-black uppercase tracking-wide transition-colors ${
-                  tab === t.id ? "bg-neon text-black" : "bg-ink-3 text-white/60 hover:text-white"
+                className={`relative shrink-0 whitespace-nowrap py-2.5 text-[15px] font-semibold transition-colors duration-150 ease-out ${
+                  tab === t.id ? "text-white" : "text-white/45"
                 }`}
               >
                 {t.label}
+                {tab === t.id ? (
+                  <span className="absolute inset-x-1 -bottom-px h-[2.5px] rounded-full bg-neon" aria-hidden="true" />
+                ) : null}
               </button>
             ))}
           </div>
@@ -505,12 +508,12 @@ export function MatchScreen({
                 <SectionTitle>Scores exacts les plus probables</SectionTitle>
                 <div className="space-y-1.5">
                   {pred.topScores.slice(0, 5).map((s) => (
-                    <div key={s.score} className="flex items-center gap-3 rounded-2xl bg-ink-3 px-3.5 py-2">
-                      <span className="w-10 text-center font-display text-[16px] tracking-wide text-white">{s.score}</span>
-                      <div className="h-[6px] flex-1 overflow-hidden rounded-full bg-black/50">
+                    <div key={s.score} className="flex items-center gap-3 rounded-xl bg-ink-2 px-3.5 py-2">
+                      <span className="w-10 text-center text-[16px] font-bold tabular-nums text-white">{s.score}</span>
+                      <div className="h-[5px] flex-1 overflow-hidden rounded-full bg-white/10">
                         <div className="h-full rounded-full bg-neon" style={{ width: `${Math.min(100, s.prob * 500)}%` }} />
                       </div>
-                      <span className="w-11 text-right text-[11px] font-black text-white/80">{pct(s.prob, 1)}</span>
+                      <span className="w-11 text-right text-[12px] font-semibold text-white/75">{pct(s.prob, 1)}</span>
                     </div>
                   ))}
                 </div>
@@ -518,12 +521,12 @@ export function MatchScreen({
                 <SectionTitle>Premier but</SectionTitle>
                 <div className="space-y-1.5">
                   {pred.firstGoalTiming.map((w) => (
-                    <div key={w.window} className="flex items-center gap-3 rounded-2xl bg-ink-3 px-3.5 py-2">
-                      <span className="w-[110px] text-[9.5px] font-bold text-white/60">{w.label}</span>
-                      <div className="h-[6px] flex-1 overflow-hidden rounded-full bg-black/50">
+                    <div key={w.window} className="flex items-center gap-3 rounded-xl bg-ink-2 px-3.5 py-2">
+                      <span className="w-[110px] text-[11px] text-white/55">{w.label}</span>
+                      <div className="h-[5px] flex-1 overflow-hidden rounded-full bg-white/10">
                         <div className="h-full rounded-full bg-white/70" style={{ width: `${Math.min(100, w.prob * 300)}%` }} />
                       </div>
-                      <span className="w-11 text-right text-[11px] font-black text-white/80">{pct(w.prob, 1)}</span>
+                      <span className="w-11 text-right text-[12px] font-semibold text-white/75">{pct(w.prob, 1)}</span>
                     </div>
                   ))}
                   <div className="mt-2 grid grid-cols-3 gap-2">
@@ -532,22 +535,21 @@ export function MatchScreen({
                       { k: "Aucun but", v: pred.firstToScore.noGoal },
                       { k: detail.away.name, v: pred.firstToScore.away },
                     ].map((x) => (
-                      <div key={x.k} className="rounded-2xl bg-ink-3 px-2 py-2 text-center">
-                        <p className="truncate text-[8.5px] font-bold uppercase tracking-wider text-white/40">{x.k}</p>
-                        <p className="mt-1 text-[14px] font-black text-white">{pct(x.v)}</p>
+                      <div key={x.k} className="rounded-xl bg-ink-2 px-2 py-2 text-center">
+                        <p className="truncate text-[10px] font-medium text-white/45">{x.k}</p>
+                        <p className="mt-1 text-[15px] font-bold text-white">{pct(x.v)}</p>
                       </div>
                     ))}
                   </div>
                 </div>
 
                 {/* détail du calcul : replié par défaut */}
-                <details className="group mt-6 rounded-2xl bg-ink-3">
+                <details className="group mt-6 rounded-2xl bg-ink-2">
                   <summary className="flex cursor-pointer select-none list-none items-center justify-between px-4 py-3 [&::-webkit-details-marker]:hidden">
-                    <span className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.14em] text-white/70">
-                      <span className="h-[3px] w-3.5 rounded-full bg-neon" aria-hidden="true" />
+                    <span className="text-[13px] font-semibold text-white/75">
                       Détail du calcul
                     </span>
-                    <ChevronDown size={15} strokeWidth={2.6} className="shrink-0 text-white/50 transition-transform duration-200 group-open:rotate-180" />
+                    <ChevronDown size={15} strokeWidth={2.4} className="shrink-0 text-white/45 transition-transform duration-200 group-open:rotate-180" />
                   </summary>
                   <div className="space-y-2.5 px-3 pb-3">
                     <ComponentRow name="VOLTRIX (final)" probs={pred.probs} note="calibré" />
@@ -560,9 +562,9 @@ export function MatchScreen({
                         { k: "Total", v: pred.lambda.total },
                         { k: detail.away.name, v: pred.lambda.away },
                       ].map((x) => (
-                        <div key={x.k} className="rounded-2xl bg-black/30 px-2 py-2.5 text-center">
-                          <p className="truncate text-[8.5px] font-bold uppercase tracking-wider text-white/40">{x.k}</p>
-                          <p className="mt-1 text-[17px] font-black text-neon">λ {x.v.toFixed(2)}</p>
+                        <div key={x.k} className="rounded-xl bg-black/30 px-2 py-2.5 text-center">
+                          <p className="truncate text-[10px] font-medium text-white/45">{x.k}</p>
+                          <p className="mt-1 text-[16px] font-bold text-neon">λ {x.v.toFixed(2)}</p>
                         </div>
                       ))}
                     </div>
@@ -586,7 +588,7 @@ export function MatchScreen({
                   Value bets (edge / Kelly)
                 </SectionTitle>
                 {pred.valueBets.length === 0 ? (
-                  <p className="rounded-2xl bg-ink-3 px-4 py-3 text-[10.5px] font-semibold text-white/45">
+                  <p className="rounded-xl bg-ink-2 px-4 py-3 text-[12px] text-white/50">
                     Aucune value bet détectée — le marché est aligné avec le modèle.
                   </p>
                 ) : (
@@ -595,18 +597,18 @@ export function MatchScreen({
                       <button
                         key={i}
                         onClick={() => openTicketMarket(vb.market, vb.pick, vb.modelProb, vb.odds)}
-                        className="w-full rounded-2xl bg-ink-3 px-3.5 py-3 text-left transition-transform active:scale-[0.98]"
+                        className="w-full rounded-xl bg-ink-2 px-3.5 py-3 text-left transition-transform duration-150 ease-out active:scale-[0.98]"
                       >
                         <div className="flex items-center justify-between gap-2">
                           <span className="min-w-0">
-                            <span className="block truncate text-[12px] font-black text-white">{vb.pick}</span>
-                            <span className="text-[9px] font-bold uppercase tracking-wider text-white/40">
+                            <span className="block truncate text-[14px] font-semibold text-white">{vb.pick}</span>
+                            <span className="text-[11px] text-white/45">
                               {vb.market} · modèle {pct(vb.modelProb)} · cote {oddsFmt(vb.odds)}
                             </span>
                           </span>
                           <span className="flex shrink-0 items-center gap-1.5">
                             <EdgeChip edge={vb.edge} />
-                            <span className="rounded-full bg-black/60 px-2 py-0.5 text-[9px] font-black text-white/70">
+                            <span className="rounded-md bg-white/10 px-2 py-0.5 text-[11px] font-semibold text-white/70">
                               K {Math.round(vb.kelly * 100)}%
                             </span>
                           </span>
@@ -622,13 +624,13 @@ export function MatchScreen({
                     const oddsOver = detail.odds?.total.over.line === ou.line ? detail.odds.total.over.closeOdds : null;
                     const oddsUnder = detail.odds?.total.under.line === ou.line ? detail.odds.total.under.closeOdds : null;
                     return (
-                      <div key={ou.line} className="rounded-2xl bg-ink-3 px-3.5 py-2.5">
+                      <div key={ou.line} className="rounded-xl bg-ink-2 px-3.5 py-2.5">
                         <div className="flex items-center justify-between">
-                          <span className="text-[11px] font-black text-white">Ligne {ou.line.toFixed(1)}</span>
+                          <span className="text-[13px] font-semibold text-white">Ligne {ou.line.toFixed(1)}</span>
                           {ou.line === 2.5 ? (
                             <button
                               onClick={() => openTicketMarket("O/U 2.5", ou.over >= 0.5 ? "Plus de 2.5" : "Moins de 2.5", Math.max(ou.over, ou.under), ou.over >= 0.5 ? oddsOver : oddsUnder)}
-                              className="rounded-full bg-neon px-2.5 py-1 text-[8.5px] font-black uppercase tracking-wider text-black"
+                              className="rounded-full bg-neon px-2.5 py-1 text-[11px] font-bold text-black"
                             >
                               Prendre le prono
                             </button>
@@ -659,9 +661,9 @@ export function MatchScreen({
                 ) : null}
 
                 {pred.oddsMovement ? (
-                  <div className="mt-4 flex items-start gap-2 rounded-2xl bg-black/50 px-3.5 py-3 ring-1 ring-white/10">
+                  <div className="mt-4 flex items-start gap-2 rounded-xl bg-ink-2 px-3.5 py-3">
                     <TrendingUp size={14} className="mt-0.5 shrink-0 text-neon" />
-                    <p className="text-[10px] font-semibold leading-relaxed text-white/65">{pred.oddsMovement}</p>
+                    <p className="text-[11px] leading-relaxed text-white/65">{pred.oddsMovement}</p>
                   </div>
                 ) : null}
 
@@ -683,25 +685,25 @@ export function MatchScreen({
                     { k: "Nuls", v: detail.h2hSummary.draws, tone: "bg-white/15 text-white" },
                     { k: detail.away.name, v: detail.h2hSummary.awayWins, tone: "bg-[#ff5d5d]/80 text-white" },
                   ].map((x) => (
-                    <div key={x.k} className={`rounded-2xl px-2 py-3 text-center ${x.tone}`}>
-                      <p className="truncate text-[8.5px] font-bold uppercase tracking-wider opacity-70">{x.k}</p>
-                      <p className="mt-1 font-display text-[22px] leading-none">{x.v}</p>
+                    <div key={x.k} className={`rounded-xl px-2 py-3 text-center ${x.tone}`}>
+                      <p className="truncate text-[10px] font-medium opacity-75">{x.k}</p>
+                      <p className="mt-1 text-[22px] font-bold leading-none">{x.v}</p>
                     </div>
                   ))}
                 </div>
                 <div className="space-y-1.5">
                   {detail.h2h.map((h, i) => (
-                    <div key={i} className="flex items-center justify-between rounded-2xl bg-ink-3 px-3.5 py-2.5">
+                    <div key={i} className="flex items-center justify-between rounded-xl bg-ink-2 px-3.5 py-2.5">
                       <div className="min-w-0">
-                        <p className="truncate text-[11px] font-bold text-white">
-                          {h.homeTeam} <span className="mx-1 rounded bg-black/50 px-1.5 py-0.5 font-display text-[12px] text-neon">{h.score}</span> {h.awayTeam}
+                        <p className="truncate text-[12px] text-white">
+                          {h.homeTeam} <span className="mx-1 rounded bg-white/10 px-1.5 py-0.5 text-[13px] font-bold text-neon">{h.score}</span> {h.awayTeam}
                         </p>
-                        <p className="text-[9px] font-semibold text-white/35">
+                        <p className="text-[11px] text-white/40">
                           {new Date(h.date).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" })}
                         </p>
                       </div>
-                      <span className={`shrink-0 rounded-full px-2 py-0.5 text-[8.5px] font-black uppercase ${
-                        h.winner === "home" ? "bg-neon text-black" : h.winner === "away" ? "bg-[#ff5d5d] text-white" : "bg-white/15 text-white/70"
+                      <span className={`shrink-0 rounded-md px-2 py-0.5 text-[10px] font-semibold ${
+                        h.winner === "home" ? "bg-neon text-black" : h.winner === "away" ? "bg-[#ff453a] text-white" : "bg-white/15 text-white/70"
                       }`}>
                         {h.winner === "draw" ? "Nul" : "Victoire"}
                       </span>
@@ -718,34 +720,34 @@ export function MatchScreen({
             {tab === "contexte" ? (
               <div>
                 {detail.context.isDerby ? (
-                  <div className="mt-4 flex items-center gap-2 rounded-2xl bg-neon px-3.5 py-3 text-black">
+                  <div className="mt-4 flex items-center gap-2 rounded-xl bg-neon px-3.5 py-3 text-black">
                     <span className="text-[16px]">🔥</span>
-                    <p className="text-[11px] font-black uppercase tracking-wide">{detail.context.derbyLabel ?? "Derby"}</p>
+                    <p className="text-[13px] font-bold">{detail.context.derbyLabel ?? "Derby"}</p>
                   </div>
                 ) : null}
 
                 <SectionTitle>Enjeux</SectionTitle>
                 <div className="space-y-2">
-                  <div className="rounded-2xl bg-ink-3 px-3.5 py-3">
-                    <p className="text-[9px] font-black uppercase tracking-widest text-white/40">{detail.home.name}</p>
-                    <p className="mt-1 text-[11px] font-semibold leading-relaxed text-white/80">{detail.context.stakesHome}</p>
+                  <div className="rounded-2xl bg-ink-2 px-3.5 py-3">
+                    <p className="text-[11px] font-semibold text-white/45">{detail.home.name}</p>
+                    <p className="mt-1 text-[12px] leading-relaxed text-white/85">{detail.context.stakesHome}</p>
                   </div>
-                  <div className="rounded-2xl bg-ink-3 px-3.5 py-3">
-                    <p className="text-[9px] font-black uppercase tracking-widest text-white/40">{detail.away.name}</p>
-                    <p className="mt-1 text-[11px] font-semibold leading-relaxed text-white/80">{detail.context.stakesAway}</p>
+                  <div className="rounded-2xl bg-ink-2 px-3.5 py-3">
+                    <p className="text-[11px] font-semibold text-white/45">{detail.away.name}</p>
+                    <p className="mt-1 text-[12px] leading-relaxed text-white/85">{detail.context.stakesAway}</p>
                   </div>
                 </div>
 
                 {detail.context.weather ? (
                   <>
                     <SectionTitle>Météo</SectionTitle>
-                    <div className="flex items-center gap-3 rounded-2xl bg-ink-3 px-3.5 py-3">
+                    <div className="flex items-center gap-3 rounded-2xl bg-ink-2 px-3.5 py-3">
                       <Umbrella size={18} className="shrink-0 text-neon" />
                       <div className="min-w-0 flex-1">
-                        <p className="text-[11.5px] font-black text-white">
+                        <p className="text-[14px] font-semibold text-white">
                           {detail.context.weather.description} · {detail.context.weather.tempC}°C · vent {detail.context.weather.windKmh} km/h
                         </p>
-                        <p className="text-[9.5px] font-semibold text-white/45">Impact moteur : {detail.context.weather.impact}</p>
+                        <p className="text-[12px] text-white/45">Impact moteur : {detail.context.weather.impact}</p>
                       </div>
                     </div>
                   </>
@@ -757,10 +759,10 @@ export function MatchScreen({
                     { team: detail.home.name, inj: detail.context.injuriesNoteHome, fat: detail.context.fatigueNoteHome },
                     { team: detail.away.name, inj: detail.context.injuriesNoteAway, fat: detail.context.fatigueNoteAway },
                   ].map((x) => (
-                    <div key={x.team} className="rounded-2xl bg-ink-3 px-3.5 py-3">
-                      <p className="text-[10px] font-black uppercase tracking-wide text-white/70">{x.team}</p>
-                      <p className="mt-1 text-[10.5px] font-semibold text-white/60">🚑 {x.inj ?? "—"}</p>
-                      <p className="mt-0.5 text-[10.5px] font-semibold text-white/60">⏱ {x.fat ?? "—"}</p>
+                    <div key={x.team} className="rounded-2xl bg-ink-2 px-3.5 py-3">
+                      <p className="text-[12px] font-semibold text-white/75">{x.team}</p>
+                      <p className="mt-1 text-[12px] text-white/60">🚑 {x.inj ?? "—"}</p>
+                      <p className="mt-0.5 text-[12px] text-white/60">⏱ {x.fat ?? "—"}</p>
                     </div>
                   ))}
                 </div>
@@ -773,7 +775,7 @@ export function MatchScreen({
 
                 {/* carte stade illustrée */}
                 <SectionTitle>Stade</SectionTitle>
-                <div className="overflow-hidden rounded-2xl bg-ink-3">
+                <div className="overflow-hidden rounded-2xl bg-ink-2">
                   <div className="relative h-24">
                     <img
                       src="/stadium-night.jpg"
@@ -781,13 +783,13 @@ export function MatchScreen({
                       className="h-full w-full object-cover"
                       loading="lazy"
                     />
-                    <div className="absolute inset-0 bg-gradient-to-t from-ink-3 via-ink-3/30 to-transparent" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-ink-2 via-ink-2/30 to-transparent" />
                   </div>
                   <div className="px-3.5 pb-3 pt-1">
-                    <p className="text-[11.5px] font-black text-white">
+                    <p className="text-[14px] font-semibold text-white">
                       {detail.venue.name ?? "Stade inconnu"}
                     </p>
-                    <p className="mt-0.5 text-[9.5px] font-semibold text-white/45">
+                    <p className="mt-0.5 text-[12px] text-white/45">
                       {[detail.venue.city, detail.venue.country].filter(Boolean).join(", ") || "Lieu non communiqué"}
                     </p>
                   </div>
@@ -804,24 +806,24 @@ export function MatchScreen({
                   <ErrorPanel message="Compositions indisponibles pour ce match." isDemo={!isLive} />
                 ) : (
                   <div>
-                    <div className="mt-4 rounded-2xl bg-ink-3 px-3.5 py-3">
-                      <p className="text-[11.5px] font-black text-white">
+                    <div className="mt-4 rounded-2xl bg-ink-2 px-3.5 py-3">
+                      <p className="text-[14px] font-semibold text-white">
                         {lineups.venue.name ?? "Stade inconnu"}
                         {lineups.venue.city ? ` · ${lineups.venue.city}` : ""}
                       </p>
-                      <p className="mt-0.5 text-[9.5px] font-semibold text-white/45">
+                      <p className="mt-0.5 text-[12px] text-white/45">
                         {lineups.attendance ? `${lineups.attendance.toLocaleString("fr-FR")} spectateurs · ` : ""}
                         {lineups.weather ? `${lineups.weather.description} ${lineups.weather.tempC ?? ""}°C` : ""}
                       </p>
                     </div>
 
                     {!lineups.home?.lineupsPublished ? (
-                      <p className="mt-2 rounded-2xl bg-black/50 px-3.5 py-2.5 text-[9.5px] font-semibold leading-relaxed text-white/50 ring-1 ring-white/10">
+                      <p className="mt-2 rounded-xl bg-ink-2 px-3.5 py-2.5 text-[11px] leading-relaxed text-white/50">
                         Compositions non publiées par ESPN — formation déduite des postes, aucune position inventée.
                       </p>
                     ) : null}
 
-                    <div className="mt-3 flex gap-1.5 rounded-full bg-ink-3 p-1">
+                    <div className="mt-3 flex gap-[3px] rounded-[10px] bg-white/8 p-[3px]">
                       {(["home", "away"] as const).map((s) => {
                         const t = s === "home" ? lineups.home : lineups.away;
                         return (
@@ -829,8 +831,8 @@ export function MatchScreen({
                             key={s}
                             onClick={() => setComposSide(s)}
                             aria-pressed={composSide === s}
-                            className={`flex-1 truncate rounded-full px-3 py-1.5 text-[10px] font-black uppercase tracking-wide transition-colors ${
-                              composSide === s ? "bg-neon text-black" : "text-white/60"
+                            className={`flex-1 truncate rounded-[8px] px-3 py-[7px] text-[13px] font-semibold transition-colors duration-150 ease-out ${
+                              composSide === s ? "bg-[#636366] text-white shadow-sm" : "text-white/60"
                             }`}
                           >
                             {t?.shortName ?? t?.name ?? s}
@@ -845,11 +847,11 @@ export function MatchScreen({
                       return (
                         <div className="mt-3">
                           <div className="mb-2.5 flex items-center justify-between">
-                            <span className="text-[10px] font-black uppercase tracking-widest text-white/60">
+                            <span className="text-[12px] font-medium text-white/60">
                               {t.formation ? `${t.formation.text}${t.formation.source === "deduced" ? " (déduite)" : ""}` : "Formation ?"}
                             </span>
                             {t.squadValueEur != null ? (
-                              <span className="rounded-full bg-ink-3 px-2.5 py-1 text-[9px] font-black text-neon">
+                              <span className="rounded-full bg-ink-2 px-2.5 py-1 text-[11px] font-semibold text-neon">
                                 Effectif {eurCompact(t.squadValueEur)}
                               </span>
                             ) : null}
@@ -859,18 +861,18 @@ export function MatchScreen({
                           <SectionTitle>Banc</SectionTitle>
                           <div className="grid grid-cols-2 gap-1.5">
                             {t.bench.map((p) => (
-                              <div key={p.athleteId} className="flex items-center gap-2 rounded-xl bg-ink-3 px-2.5 py-2">
-                                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/10 text-[9.5px] font-black text-white/70">
+                              <div key={p.athleteId} className="flex items-center gap-2 rounded-xl bg-ink-2 px-2.5 py-2">
+                                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/10 text-[10px] font-semibold text-white/70">
                                   {p.jersey ?? "?"}
                                 </span>
-                                <span className="min-w-0 flex-1 truncate text-[10px] font-bold text-white/80">{p.shortName ?? p.name}</span>
-                                {p.tm?.valueEur ? <span className="text-[8.5px] font-black text-neon">{eurCompact(p.tm.valueEur)}</span> : null}
+                                <span className="min-w-0 flex-1 truncate text-[11px] text-white/85">{p.shortName ?? p.name}</span>
+                                {p.tm?.valueEur ? <span className="text-[10px] font-semibold text-neon">{eurCompact(p.tm.valueEur)}</span> : null}
                               </div>
                             ))}
                           </div>
 
                           {t.coach ? (
-                            <p className="mt-3 text-center text-[9.5px] font-semibold text-white/40">Coach : {t.coach}</p>
+                            <p className="mt-3 text-center text-[11px] text-white/45">Coach : {t.coach}</p>
                           ) : null}
                         </div>
                       );
@@ -883,9 +885,9 @@ export function MatchScreen({
         </main>
       )}
 
-      {/* CTA bas : prono moteur → ticket */}
+      {/* CTA bas : barre d'outil translucide, prono moteur → ticket */}
       {!loading && detail && pred ? (
-        <div className="absolute inset-x-0 bottom-0 z-30 bg-gradient-to-t from-ink via-ink/95 to-transparent px-5 pb-6 pt-8">
+        <div className="material-bar absolute inset-x-0 bottom-0 z-30 border-t border-white/8 px-5 pb-6 pt-3">
           <button
             onClick={() =>
               bestPick
@@ -903,9 +905,9 @@ export function MatchScreen({
                   )
                 : undefined
             }
-            className="flex h-[52px] w-full items-center justify-center gap-2 rounded-full bg-neon text-[14px] font-black uppercase tracking-wide text-black shadow-[0_14px_28px_rgba(0,0,0,0.35)] transition-transform hover:scale-[1.015] active:scale-[0.98]"
+            className="flex h-[50px] w-full items-center justify-center gap-2 rounded-[14px] bg-neon text-[15px] font-semibold text-black transition-transform duration-150 ease-out active:scale-[0.98]"
           >
-            <Ticket size={17} strokeWidth={2.6} />
+            <Ticket size={17} strokeWidth={2.4} />
             {bestPick ? `Ticket · ${bestPick.pick} (${pct(bestPick.prob)})` : "Créer un ticket"}
           </button>
         </div>
@@ -919,9 +921,9 @@ export function MatchScreen({
       ) : null}
 
       {loading ? (
-        <div className="absolute bottom-6 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full bg-black/70 px-3.5 py-2 ring-1 ring-white/10">
+        <div className="material-bar absolute bottom-6 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full px-3.5 py-2">
           <Loader2 size={12} className="animate-spin text-neon" />
-          <span className="text-[9.5px] font-bold uppercase tracking-widest text-white/60">Analyse…</span>
+          <span className="text-[12px] text-white/60">Analyse…</span>
         </div>
       ) : null}
     </div>

@@ -263,12 +263,12 @@ function TicketCard({
             <button
               onClick={() => void doResolve()}
               disabled={busy != null}
-              className="flex flex-1 items-center justify-center gap-1.5 rounded-full bg-neon px-3 py-2.5 text-[9.5px] font-black uppercase tracking-wider text-black transition-transform active:scale-95 disabled:opacity-50"
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-[10px] bg-neon px-3 py-2.5 text-[12px] font-semibold text-black transition-transform duration-150 ease-out active:scale-95 disabled:opacity-50"
             >
-              <RefreshCw size={12} strokeWidth={2.8} className={busy === "resolve" ? "animate-spin" : ""} />
+              <RefreshCw size={12} strokeWidth={2.6} className={busy === "resolve" ? "animate-spin" : ""} />
               Résoudre
             </button>
-            <div className="flex flex-1 items-center gap-1.5 rounded-full bg-ink-3 px-3 py-1.5">
+            <div className="flex flex-1 items-center gap-1.5 rounded-[10px] bg-ink-3 px-3 py-1.5">
               <HandCoins size={13} className="shrink-0 text-neon" />
               <input
                 value={offered}
@@ -276,12 +276,12 @@ function TicketCard({
                 inputMode="decimal"
                 placeholder="Offre €"
                 aria-label="Montant proposé pour la vente"
-                className="w-full min-w-0 bg-transparent text-[11px] font-black text-white placeholder:text-white/30 focus:outline-none"
+                className="w-full min-w-0 bg-transparent text-[12px] font-semibold text-white placeholder:text-white/30 focus:outline-none"
               />
               <button
                 onClick={() => void evaluateCashout()}
                 disabled={busy != null}
-                className="shrink-0 rounded-full bg-white px-2.5 py-1 text-[9px] font-black uppercase text-black disabled:opacity-50"
+                className="shrink-0 rounded-[8px] bg-white px-2.5 py-1 text-[10px] font-semibold text-black disabled:opacity-50"
               >
                 {busy === "cashout" ? "…" : "Évaluer"}
               </button>
@@ -296,34 +296,34 @@ function TicketCard({
                 exit={{ opacity: 0, height: 0 }}
                 className="overflow-hidden"
               >
-                <div className="rounded-2xl bg-black/50 p-3 ring-1 ring-white/10">
+                <div className="rounded-2xl bg-black/40 p-3">
                   <div className="flex items-center justify-between">
                     <span
-                      className={`rounded-full px-2.5 py-1 text-[9.5px] font-black uppercase tracking-wider ${
+                      className={`rounded-md px-2.5 py-1 text-[11px] font-semibold ${
                         advice.decision === "SELL"
                           ? "bg-neon text-black"
                           : advice.decision === "HOLD"
                             ? "bg-white/15 text-white"
                             : advice.decision === "MAYBE"
-                              ? "bg-[#8b5cf6]/30 text-[#c4b5fd]"
-                              : "bg-[#ff5d5d]/80 text-white"
+                              ? "bg-[#bf5af2]/25 text-[#d59cf7]"
+                              : "bg-[#ff453a]/80 text-white"
                       }`}
                     >
                       {advice.decision === "SELL" ? "Vendre" : advice.decision === "HOLD" ? "Garder" : advice.decision === "MAYBE" ? "Zone grise" : advice.decision === "WON" ? "Déjà gagné" : "Déjà perdu"}
                     </span>
-                    <span className="text-[9px] font-bold text-white/45">
+                    <span className="text-[11px] text-white/45">
                       Valeur juste {advice.fairValue.toFixed(2)} € · edge {(advice.edge >= 0 ? "+" : "") + Math.round(advice.edge * 100)} %
                     </span>
                   </div>
-                  <p className="mt-2 text-[10px] font-semibold leading-relaxed text-white/65">{advice.message}</p>
-                  <p className="mt-1 text-[8.5px] font-semibold text-white/35">
+                  <p className="mt-2 text-[12px] leading-relaxed text-white/65">{advice.message}</p>
+                  <p className="mt-1 text-[10px] text-white/35">
                     Proba jointe {pct(advice.jointProb, 1)} · jambes :{" "}
                     {advice.legs.map((l) => `${l.pNow != null ? Math.round(l.pNow * 100) : "?"}%`).join(" · ")}
                   </p>
                   {advice.decision === "SELL" ? (
                     <button
                       onClick={confirmSell}
-                      className="mt-2.5 w-full rounded-full bg-neon py-2 text-[10px] font-black uppercase tracking-wider text-black"
+                      className="mt-2.5 w-full rounded-[10px] bg-neon py-2 text-[12px] font-semibold text-black"
                     >
                       Vendre maintenant · {advice.offered.toFixed(2)} €
                     </button>
@@ -361,23 +361,23 @@ export function PortfolioScreen({ apiEpoch, onToast }: { apiEpoch: number; onToa
       <header className="px-5 pt-6">
         <div className="flex items-start justify-between">
           <div>
-            <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.22em] text-white/45">
+            <p className="flex items-center gap-1.5 text-[13px] text-white/45">
               Simulation locale {getApiBase().length === 0 ? <DemoBadge /> : null}
             </p>
-            <h1 className="font-display text-[30px] leading-none tracking-wide text-white">PORTEFEUILLE</h1>
+            <h1 className="mt-0.5 text-[32px] font-bold leading-none tracking-[-0.022em] text-white">Portefeuille</h1>
           </div>
-          <span className="flex h-11 w-11 items-center justify-center rounded-full bg-ink-3">
-            <WalletIcon size={20} className="text-neon" strokeWidth={2.2} />
+          <span className="flex h-[34px] w-[34px] items-center justify-center rounded-full bg-white/8">
+            <WalletIcon size={17} className="text-neon" strokeWidth={2.2} />
           </span>
         </div>
 
         {/* solde */}
-        <div className="mt-4 rounded-[26px] bg-neon px-5 py-4 text-black">
-          <p className="text-[9px] font-black uppercase tracking-[0.22em] text-black/50">Solde</p>
+        <div className="mt-4 rounded-[20px] bg-neon px-5 py-4 text-black">
+          <p className="text-[12px] font-medium text-black/55">Solde</p>
           <div className="flex items-baseline justify-between">
-            <p className="font-display text-[38px] leading-none tracking-wide">{wallet.toFixed(2)} €</p>
+            <p className="text-[36px] font-bold leading-none tracking-[-0.02em]">{wallet.toFixed(2)} €</p>
             {stats.roi != null ? (
-              <span className={`rounded-full bg-black px-3 py-1 text-[10px] font-black ${stats.roi >= 0 ? "text-neon" : "text-[#ff8a8a]"}`}>
+              <span className={`rounded-full bg-black px-3 py-1 text-[11px] font-semibold ${stats.roi >= 0 ? "text-neon" : "text-[#ff9d9d]"}`}>
                 {stats.roi >= 0 ? "+" : ""}
                 {(stats.roi * 100).toFixed(1)} % ROI
               </span>
@@ -410,7 +410,7 @@ export function PortfolioScreen({ apiEpoch, onToast }: { apiEpoch: number; onToa
                 <TicketCard key={t.id} ticket={t} onToast={onToast} refreshKey={refreshKey} />
               ))}
             </div>
-            <p className="mt-5 text-center text-[8.5px] leading-relaxed text-white/25">
+            <p className="mt-5 text-center text-[10px] leading-relaxed text-white/30">
               Règlement via /api/bankroll/resolve · vente conseillée via /api/cashout — les tickets vivent
               uniquement dans ce navigateur.
             </p>
