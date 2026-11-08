@@ -255,7 +255,7 @@ export function VoltrixApp() {
                   onClick={() => goTab(t.id)}
                   aria-label={t.label}
                   aria-current={active}
-                  className={`flex items-center justify-center rounded-full transition-all ${
+                  className={`flex items-center justify-center rounded-full transition-[color,background-color,box-shadow] duration-150 ease-out ${
                     isMiddle ? "h-12 w-12" : "h-11 w-11"
                   } ${
                     active

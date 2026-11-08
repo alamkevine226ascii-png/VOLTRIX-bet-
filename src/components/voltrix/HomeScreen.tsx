@@ -130,7 +130,7 @@ function MatchCard({
   return (
     <article
       onClick={onOpen}
-      className={`cursor-pointer rounded-[24px] bg-panel p-4 pb-3.5 shadow-[0_10px_24px_rgba(0,0,0,0.35)] transition-transform duration-200 active:scale-[0.97] sm:hover:scale-[1.015] ${done ? "opacity-80" : ""}`}
+      className={`cursor-pointer rounded-[24px] bg-panel p-4 pb-3.5 shadow-[0_10px_24px_rgba(0,0,0,0.35)] transition-transform duration-150 ease-out active:scale-[0.97] sm:hover:scale-[1.015] ${done ? "opacity-80" : ""}`}
     >
       <div className="grid grid-cols-[1fr_auto_1fr] items-start gap-1">
         {/* domicile */}

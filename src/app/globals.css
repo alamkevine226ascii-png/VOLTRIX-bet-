@@ -133,10 +133,41 @@
   --color-canvas: #8cb305;
   --color-pitch: #131b0b;
   --color-pitch-line: #2a3320;
+  /* Courbe ease-out forte (emilkowalski/skills) : tout élément qui
+     entre ou réagit au toucher démarre vite puis s'installe —
+     jamais l'inverse. S'applique à toutes les transitions Tailwind
+     qui ne précisent pas leur easing. */
+  --default-transition-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
 }
 
 .font-display {
   font-family: var(--font-display), var(--font-body), sans-serif;
+}
+
+/* ===== Base mobile-native (emilkowalski/skills — mobile-native) =====
+   Supprime les tells « site web dans un navigateur » :
+   pas de flash gris au tap, pas de pull-to-refresh qui pirate
+   le défilement, pas de délai de 300 ms sur les boutons,
+   pas de callout au appui long sur les contrôles. */
+html {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+  overscroll-behavior: none;
+}
+
+button,
+a,
+[role="button"] {
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* Chiffres à chasse fixe : scores, cotes et pourcentaires
+   restent alignés et ne « sautent » pas quand ils changent. */
+body {
+  font-variant-numeric: tabular-nums;
 }
 
 .no-scrollbar {
@@ -175,6 +206,17 @@
 }
 .live-dot {
   animation: live-blink 1.4s ease-in-out infinite;
+}
+
+/* Mouvement réduit : on coupe les boucles infinies (halo, point
+   live, égaliseur) qui provoquent des malaises vestibulaires, mais
+   on garde les transitions couleur/opacité qui aident la lecture. */
+@media (prefers-reduced-motion: reduce) {
+  .play-pulse,
+  .live-dot,
+  .eq-bar {
+    animation: none;
+  }
 }
 
 /* Audio equalizer bars for the live overlay */

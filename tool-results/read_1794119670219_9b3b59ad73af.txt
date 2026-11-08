@@ -1,0 +1,930 @@
+     1→"use client";
+     2→
+     3→/* ============================================================
+     4→   VOLTRIX front — Détail match (lecture simplifiée)
+     5→   Héro illustré (stade) → prono moteur en une carte claire :
+     6→   pick, probabilité, confiance, barre 1X2 segmentée et phrase
+     7→   de synthèse. Puis onglets : Synthèse / Marchés / H2H /
+     8→   Contexte / Compos. Le détail du calcul (Poisson, Elo, forme,
+     9→   λ) est replié derrière « Détail du calcul » pour ne pas
+    10→   surcharger la première lecture.
+    11→   ============================================================ */
+    12→
+    13→import { useCallback, useEffect, useMemo, useState } from "react";
+    14→import { motion } from "framer-motion";
+    15→import {
+    16→  ChevronDown,
+    17→  ChevronLeft,
+    18→  Loader2,
+    19→  MapPin,
+    20→  RefreshCw,
+    21→  Ticket,
+    22→  TrendingUp,
+    23→  Umbrella,
+    24→} from "lucide-react";
+    25→import {
+    26→  fetchLineups,
+    27→  fetchMatchDetail,
+    28→  getApiBase,
+    29→  oddsFmt,
+    30→  pct,
+    31→  timeLabel,
+    32→} from "@/lib/voltrix";
+    33→import { demoLineups, demoMatchDetail } from "@/lib/demo-data";
+    34→import type {
+    35→  MatchDetailDTO,
+    36→  PlayerLineupsDTO,
+    37→  TeamAnalysisDTO,
+    38→  TeamLineupsDTO,
+    39→} from "@/lib/voltrix-types";
+    40→import type { LightMatch } from "@/lib/voltrix-types";
+    41→import { TeamBadge } from "./TeamBadge";
+    42→import {
+    43→  DemoBadge,
+    44→  EdgeChip,
+    45→  ErrorPanel,
+    46→  FormDots,
+    47→  KpiTile,
+    48→  LoadingPanel,
+    49→  ProbBar,
+    50→  SectionTitle,
+    51→  confidenceStars,
+    52→  eurCompact,
+    53→} from "./ui-bits";
+    54→import type { SelectionDraft } from "./VoltrixApp";
+    55→
+    56→type TabId = "synthese" | "marches" | "h2h" | "contexte" | "compos";
+    57→
+    58→const TABS: Array<{ id: TabId; label: string }> = [
+    59→  { id: "synthese", label: "Synthèse" },
+    60→  { id: "marches", label: "Marchés" },
+    61→  { id: "h2h", label: "H2H" },
+    62→  { id: "contexte", label: "Contexte" },
+    63→  { id: "compos", label: "Compos" },
+    64→];
+    65→
+    66→/* ---------- Bloc composante moteur ---------- */
+    67→function ComponentRow({ name, probs, note }: { name: string; probs: { home: number; draw: number; away: number }; note?: string }) {
+    68→  return (
+    69→    <div className="rounded-2xl bg-black/30 px-3.5 py-3">
+    70→      <div className="flex items-center justify-between">
+    71→        <span className="text-[10px] font-black uppercase tracking-widest text-white/70">{name}</span>
+    72→        {note ? <span className="text-[9px] font-semibold text-white/35">{note}</span> : null}
+    73→      </div>
+    74→      <div className="mt-2 grid grid-cols-3 gap-1.5">
+    75→        <ProbBar label="1" value={probs.home} compact />
+    76→        <ProbBar label="X" value={probs.draw} compact />
+    77→        <ProbBar label="2" value={probs.away} compact />
+    78→      </div>
+    79→    </div>
+    80→  );
+    81→}
+    82→
+    83→/* ---------- Terrain (Compos) ---------- */
+    84→function Pitch({ team }: { team: TeamLineupsDTO }) {
+    85→  const rows: Record<string, PlayerLineupsDTO[]> = { G: [], D: [], M: [], F: [] };
+    86→  team.starters.forEach((p) => {
+    87→    const k = p.position ?? "M";
+    88→    if (!rows[k]) rows[k] = [];
+    89→    rows[k].push(p);
+    90→  });
+    91→  const order = ["F", "M", "D", "G"];
+    92→  return (
+    93→    <div className="rounded-3xl bg-pitch p-3 ring-1 ring-white/10">
+    94→      <div className="relative flex aspect-[3/4] w-full flex-col justify-between rounded-2xl border-2 border-pitch-line bg-[linear-gradient(rgba(255,255,255,0.045)_1px,transparent_1px)] bg-[length:100%_12.5%]">
+    95→        <div className="absolute inset-x-0 top-1/2 h-[2px] bg-pitch-line" />
+    96→        <div className="absolute left-1/2 top-1/2 h-14 w-14 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-pitch-line" />
+    97→        <div className="absolute inset-x-[22%] top-0 h-10 border-x-2 border-b-2 border-pitch-line" />
+    98→        <div className="absolute inset-x-[22%] bottom-0 h-10 border-x-2 border-t-2 border-pitch-line" />
+    99→
+   100→        {order.map((k) => {
+   101→          const players = rows[k];
+   102→          if (players.length === 0) return null;
+   103→          return (
+   104→            <div key={k} className="relative z-10 flex items-start justify-center gap-1 px-2">
+   105→              {players.map((p) => (
+   106→                <div key={p.athleteId} className="flex w-[52px] flex-col items-center">
+   107→                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-neon text-[11px] font-black text-black ring-2 ring-black/30">
+   108→                    {p.jersey ?? "?"}
+   109→                  </span>
+   110→                  <span className="mt-1 max-w-full truncate rounded bg-black/60 px-1 py-[1px] text-[7.5px] font-bold uppercase tracking-wide text-white/85">
+   111→                    {p.shortName ?? p.name}
+   112→                  </span>
+   113→                </div>
+   114→              ))}
+   115→            </div>
+   116→          );
+   117→        })}
+   118→      </div>
+   119→    </div>
+   120→  );
+   121→}
+   122→
+   123→/* ---------- Écran ---------- */
+   124→export function MatchScreen({
+   125→  matchId,
+   126→  leagueCode,
+   127→  date,
+   128→  light,
+   129→  onBack,
+   130→  onTicket,
+   131→}: {
+   132→  matchId: string;
+   133→  leagueCode: string;
+   134→  date: string;
+   135→  light?: LightMatch;
+   136→  onBack: () => void;
+   137→  onTicket: (draft: SelectionDraft) => void;
+   138→}) {
+   139→  const [detail, setDetail] = useState<MatchDetailDTO | null>(null);
+   140→  const [loading, setLoading] = useState(true);
+   141→  const [error, setError] = useState<string | null>(null);
+   142→  const [tab, setTab] = useState<TabId>("synthese");
+   143→  const [lineups, setLineups] = useState<Awaited<ReturnType<typeof loadLineups>>>(null);
+   144→  const [lineupsLoading, setLineupsLoading] = useState(false);
+   145→  const isLive = getApiBase().length > 0;
+   146→
+   147→  const load = useCallback(async () => {
+   148→    setLoading(true);
+   149→    setError(null);
+   150→    try {
+   151→      const res = isLive ? await fetchMatchDetail(matchId, leagueCode, date) : demoMatchDetail(matchId);
+   152→      setDetail(res);
+   153→    } catch (e) {
+   154→      setError(e instanceof Error ? e.message : "Analyse indisponible");
+   155→    } finally {
+   156→      setLoading(false);
+   157→    }
+   158→  }, [matchId, leagueCode, date, isLive]);
+   159→
+   160→  useEffect(() => {
+   161→    void load();
+   162→  }, [load]);
+   163→
+   164→  async function loadLineups(): Promise<ReturnType<typeof demoLineups> | null> {
+   165→    if (isLive) return fetchLineups(matchId, leagueCode);
+   166→    return demoLineups(matchId);
+   167→  }
+   168→
+   169→  useEffect(() => {
+   170→    if (tab !== "compos" || lineups || lineupsLoading) return;
+   171→    let cancelled = false;
+   172→    setLineupsLoading(true);
+   173→    loadLineups()
+   174→      .then((r) => {
+   175→        if (!cancelled) setLineups(r);
+   176→      })
+   177→      .catch(() => {
+   178→        if (!cancelled) setLineups(null);
+   179→      })
+   180→      .finally(() => {
+   181→        if (!cancelled) setLineupsLoading(false);
+   182→      });
+   183→    return () => {
+   184→      cancelled = true;
+   185→    };
+   186→  }, [tab]);
+   187→
+   188→  /* Onglet Compos : équipe affichée */
+   189→  const [composSide, setComposSide] = useState<"home" | "away">("home");
+   190→
+   191→  const pred = detail?.prediction;
+   192→  const bestPick = useMemo(() => pred?.recommendedBets[0] ?? null, [pred]);
+   193→
+   194→  const live = detail?.status === "in" || light?.status === "in";
+   195→  const hasScore = detail && detail.homeScore != null && detail.awayScore != null;
+   196→
+   197→  const homeName = detail?.home.name ?? light?.home.name ?? "?";
+   198→  const awayName = detail?.away.name ?? light?.away.name ?? "?";
+   199→  const homeShort = (light?.home.shortName ?? detail?.home.name ?? "Domicile").slice(0, 10);
+   200→  const awayShort = (light?.away.shortName ?? detail?.away.name ?? "Extérieur").slice(0, 10);
+   201→
+   202→  /* Segments 1X2 pour la barre unique */
+   203→  const segments = useMemo(() => {
+   204→    if (!pred) return [];
+   205→    return [
+   206→      {
+   207→        id: "home" as const,
+   208→        value: pred.probs.home,
+   209→        label: homeShort,
+   210→        odds: light?.mlHome ?? detail?.odds?.moneyline.home.close ?? null,
+   211→      },
+   212→      {
+   213→        id: "draw" as const,
+   214→        value: pred.probs.draw,
+   215→        label: "Nul",
+   216→        odds: light?.mlDraw ?? detail?.odds?.moneyline.draw.close ?? null,
+   217→      },
+   218→      {
+   219→        id: "away" as const,
+   220→        value: pred.probs.away,
+   221→        label: awayShort,
+   222→        odds: light?.mlAway ?? detail?.odds?.moneyline.away.close ?? null,
+   223→      },
+   224→    ];
+   225→  }, [pred, light, detail, homeShort, awayShort]);
+   226→
+   227→  /* Phrase de synthèse en français clair */
+   228→  const summary = useMemo(() => {
+   229→    if (!pred || !detail) return null;
+   230→    const fav = pred.probs.home >= pred.probs.away
+   231→      ? { name: detail.home.name, p: pred.probs.home }
+   232→      : { name: detail.away.name, p: pred.probs.away };
+   233→    const top = pred.topScores[0];
+   234→    const parts = [
+   235→      `Favori : ${fav.name} (${pct(fav.p)})`,
+   236→      `${pred.lambda.total.toFixed(1)} buts attendus`,
+   237→      top ? `score le plus probable ${top.score}` : null,
+   238→    ];
+   239→    if (pred.valueBets.length > 0) {
+   240→      parts.push(`${pred.valueBets.length} value bet${pred.valueBets.length > 1 ? "s" : ""} détectée${pred.valueBets.length > 1 ? "s" : ""}`);
+   241→    }
+   242→    return parts.filter(Boolean).join(" · ");
+   243→  }, [pred, detail]);
+   244→
+   245→  const openTicketFor = (id: "home" | "draw" | "away") => {
+   246→    if (!detail || !pred) return;
+   247→    const pick1x2 =
+   248→      id === "home" ? `1 - ${detail.home.name}` : id === "away" ? `2 - ${detail.away.name}` : "Match nul";
+   249→    onTicket({
+   250→      matchId,
+   251→      leagueCode,
+   252→      matchDate: detail.matchDate,
+   253→      market: "1X2",
+   254→      pick: pick1x2,
+   255→      prob: id === "home" ? pred.probs.home : id === "away" ? pred.probs.away : pred.probs.draw,
+   256→      odds:
+   257→        id === "home"
+   258→          ? light?.mlHome ?? detail.odds?.moneyline.home.close ?? null
+   259→          : id === "away"
+   260→            ? light?.mlAway ?? detail.odds?.moneyline.away.close ?? null
+   261→            : light?.mlDraw ?? detail.odds?.moneyline.draw.close ?? null,
+   262→      homeName: detail.home.name,
+   263→      awayName: detail.away.name,
+   264→      homeLogo: light?.home.logo ?? null,
+   265→      awayLogo: light?.away.logo ?? null,
+   266→    });
+   267→  };
+   268→
+   269→  const openTicketMarket = (market: string, pick: string, prob: number, odds: number | null) => {
+   270→    if (!detail) return;
+   271→    onTicket({
+   272→      matchId,
+   273→      leagueCode,
+   274→      matchDate: detail.matchDate,
+   275→      market,
+   276→      pick,
+   277→      prob,
+   278→      odds,
+   279→      homeName: detail.home.name,
+   280→      awayName: detail.away.name,
+   281→      homeLogo: light?.home.logo ?? null,
+   282→      awayLogo: light?.away.logo ?? null,
+   283→    });
+   284→  };
+   285→
+   286→  const teamBlock = (t: TeamAnalysisDTO) => (
+   287→    <div className="rounded-2xl bg-ink-3 p-3.5">
+   288→      <div className="flex items-center gap-2.5">
+   289→        <TeamBadge name={t.name} logo={t.logo} size={38} />
+   290→        <div className="min-w-0">
+   291→          <p className="truncate text-[12px] font-black uppercase tracking-wide text-white">{t.name}</p>
+   292→          <p className="text-[9.5px] font-bold text-white/40">
+   293→            Elo {t.elo} {t.rank ? `· ${t.rank}e` : ""} {t.points ? `· ${t.points} pts` : ""}
+   294→          </p>
+   295→        </div>
+   296→      </div>
+   297→      <div className="mt-2.5 grid grid-cols-2 gap-x-3 gap-y-1.5 text-[9.5px]">
+   298→        {[
+   299→          ["Forme", `${Math.round(t.formScore * 100)}/100`],
+   300→          ["Buts/match", t.goalsForPerMatch.toFixed(2)],
+   301→          ["Encaissés/match", t.goalsAgainstPerMatch.toFixed(2)],
+   302→          ["Clean sheets", `${t.cleanSheetsPct}%`],
+   303→          ["Sans marquer", `${t.failedToScorePct}%`],
+   304→          ["Blessés (clés)", `${t.injuriesCount} (${t.injuriesKey})`],
+   305→          ["Matchs/14 j", String(t.matchesLast14Days)],
+   306→          ["Dernier match", t.fatigueDaysSinceLast != null ? `il y a ${t.fatigueDaysSinceLast} j` : "—"],
+   307→        ].map(([k, v]) => (
+   308→          <div key={k} className="flex items-baseline justify-between gap-1 border-b border-white/5 pb-1">
+   309→            <span className="text-white/40">{k}</span>
+   310→            <span className="font-bold text-white/85">{v}</span>
+   311→          </div>
+   312→        ))}
+   313→      </div>
+   314→      <div className="mt-2 flex items-center justify-between">
+   315→        <span className="text-[8.5px] font-bold uppercase tracking-widest text-white/35">Forme</span>
+   316→        <FormDots form={t.form.map((f) => f.result).join("")} />
+   317→      </div>
+   318→    </div>
+   319→  );
+   320→
+   321→  return (
+   322→    <div className="flex h-full flex-col bg-ink">
+   323→      {/* ============ HÉRO : image du stade + voile sombre ============ */}
+   324→      <div className="relative shrink-0">
+   325→        <div className="absolute inset-0 overflow-hidden" aria-hidden="true">
+   326→          <img
+   327→            src="/hero-match.jpg"
+   328→            alt=""
+   329→            className="h-full w-full object-cover object-center"
+   330→          />
+   331→          <div className="absolute inset-0 bg-gradient-to-b from-ink/75 via-ink/40 to-ink" />
+   332→        </div>
+   333→
+   334→        {/* barre supérieure */}
+   335→        <header className="relative flex items-center justify-between px-5 pt-6">
+   336→          <button
+   337→            onClick={onBack}
+   338→            className="flex h-9 w-9 items-center justify-center rounded-full bg-ink-3/90 text-white backdrop-blur transition-colors hover:bg-neon hover:text-black"
+   339→            aria-label="Retour"
+   340→          >
+   341→            <ChevronLeft size={18} strokeWidth={2.4} />
+   342→          </button>
+   343→          <div className="flex min-w-0 items-center gap-2">
+   344→            <span className="max-w-[150px] truncate text-[10px] font-black uppercase tracking-widest text-white/80">
+   345→              {detail?.leagueName ?? light?.leagueName ?? leagueCode}
+   346→            </span>
+   347→            {live ? (
+   348→              <span className="flex items-center gap-1 rounded-full bg-neon px-2.5 py-1 text-[9px] font-black uppercase text-black">
+   349→                <span className="live-dot h-1.5 w-1.5 rounded-full bg-black" />
+   350→                Live
+   351→              </span>
+   352→            ) : (
+   353→              <span className="rounded-full bg-ink-3/90 px-2.5 py-1 text-[9px] font-black uppercase tracking-wide text-white/70 backdrop-blur">
+   354→                {detail?.status === "post" ? "Terminé" : "À venir"}
+   355→              </span>
+   356→            )}
+   357→          </div>
+   358→          <button
+   359→            onClick={() => void load()}
+   360→            className="flex h-9 w-9 items-center justify-center rounded-full bg-ink-3/90 text-white backdrop-blur transition-colors hover:bg-neon hover:text-black"
+   361→            aria-label="Réanalyser"
+   362→          >
+   363→            <RefreshCw size={15} strokeWidth={2.2} className={loading ? "animate-spin" : ""} />
+   364→          </button>
+   365→        </header>
+   366→
+   367→        {/* équipes + score */}
+   368→        <div className="relative mt-2 grid grid-cols-[1fr_auto_1fr] items-center px-6 pb-4 pt-1">
+   369→          <div className="flex flex-col items-center gap-1.5">
+   370→            <TeamBadge name={homeName} logo={light?.home.logo ?? detail?.home.logo ?? null} size={56} />
+   371→            <span className="max-w-[104px] text-center text-[8.5px] font-extrabold leading-[1.3] tracking-wide text-white">
+   372→              {homeName.toUpperCase()}
+   373→            </span>
+   374→          </div>
+   375→          <div className="mx-3 min-w-[88px] px-1 text-center">
+   376→            {hasScore ? (
+   377→              <>
+   378→                <span className="font-display text-[36px] leading-none tracking-wide text-white">
+   379→                  {detail!.homeScore}:{detail!.awayScore}
+   380→                </span>
+   381→                <span className="mt-1 block text-[8.5px] font-semibold uppercase tracking-widest text-white/50">
+   382→                  {detail?.statusDetail || "FT"}
+   383→                </span>
+   384→              </>
+   385→            ) : (
+   386→              <>
+   387→                <span className="font-display text-[28px] leading-none tracking-wide text-white">
+   388→                  {detail ? timeLabel(detail.matchDate) : light ? timeLabel(light.date) : "--:--"}
+   389→                </span>
+   390→                <span className="mt-1 block text-[8.5px] font-semibold uppercase tracking-widest text-white/50">
+   391→                  Coup d&apos;envoi
+   392→                </span>
+   393→              </>
+   394→            )}
+   395→          </div>
+   396→          <div className="flex flex-col items-center gap-1.5">
+   397→            <TeamBadge name={awayName} logo={light?.away.logo ?? detail?.away.logo ?? null} size={56} />
+   398→            <span className="max-w-[104px] text-center text-[8.5px] font-extrabold leading-[1.3] tracking-wide text-white">
+   399→              {awayName.toUpperCase()}
+   400→            </span>
+   401→          </div>
+   402→        </div>
+   403→
+   404→        {/* lieu */}
+   405→        <div className="relative flex justify-center pb-3">
+   406→          <span className="inline-flex max-w-[85%] items-center gap-1.5 rounded-full bg-ink-3/80 px-3 py-1 text-[9px] font-bold uppercase tracking-wide text-white/70 backdrop-blur">
+   407→            <MapPin size={10} strokeWidth={2.4} className="shrink-0 text-neon" />
+   408→            <span className="truncate">
+   409→              {detail?.venue.name ?? light?.venue.name ?? "Stade"}
+   410→              {detail?.venue.city ? ` · ${detail.venue.city}` : ""}
+   411→            </span>
+   412→          </span>
+   413→        </div>
+   414→      </div>
+   415→
+   416→      {/* ============ CONTENU ============ */}
+   417→      {loading ? (
+   418→        <LoadingPanel label="Le moteur VOLTRIX analyse le match…" />
+   419→      ) : error || !detail || !pred ? (
+   420→        <ErrorPanel message={error ?? "Analyse indisponible"} onRetry={() => void load()} isDemo={!isLive} />
+   421→      ) : (
+   422→        <main className="no-scrollbar flex-1 overflow-y-auto px-5 pb-32">
+   423→          {/* ---------- PRONO DU MOTEUR : une carte, une hiérarchie ---------- */}
+   424→          <section className="rounded-[26px] bg-neon px-5 pb-4 pt-4 text-black">
+   425→            <div className="flex items-center justify-between gap-2">
+   426→              <p className="text-[9px] font-black uppercase tracking-[0.2em] text-black/50">Prono du moteur</p>
+   427→              <span className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-wider text-black/70">
+   428→                <span title={`Confiance ${pred.confidence}/5`}>{confidenceStars(pred.confidence)}</span>
+   429→                {pred.confidenceLabel}
+   430→              </span>
+   431→            </div>
+   432→
+   433→            <p className="mt-1 font-display text-[25px] leading-tight tracking-wide text-black">
+   434→              {bestPick ? bestPick.pick.toUpperCase() : "—"}
+   435→            </p>
+   436→            <p className="mt-0.5 text-[10.5px] font-bold text-black/60">
+   437→              {bestPick ? `${bestPick.market} · probabilité ${pct(bestPick.prob)}` : ""}
+   438→            </p>
+   439→
+   440→            {/* barre 1X2 segmentée : largeur = probabilité, tap = ticket */}
+   441→            <div
+   442→              className="mt-3.5 flex h-[46px] overflow-hidden rounded-2xl bg-black/15"
+   443→              role="group"
+   444→              aria-label="Probabilités 1X2 — appuyez pour créer un ticket"
+   445→            >
+   446→              {segments.map((s, i) => {
+   447→                const best = s.value >= Math.max(...segments.map((x) => x.value));
+   448→                return (
+   449→                  <button
+   450→                    key={s.id}
+   451→                    onClick={() => openTicketFor(s.id)}
+   452→                    aria-label={`${s.label} ${Math.round(s.value * 100)} %${s.odds != null ? `, cote ${s.odds.toFixed(2)}` : ""} — créer un ticket`}
+   453→                    className={`flex min-w-0 flex-col items-center justify-center gap-[3px] border-black/10 px-1 transition-transform active:scale-95 ${
+   454→                      i > 0 ? "border-l" : ""
+   455→                    } ${best ? "bg-black text-neon" : "text-black/75"}`}
+   456→                    style={{ flexGrow: Math.max(0.09, s.value) }}
+   457→                  >
+   458→                    <span className="w-full truncate text-center text-[8px] font-bold uppercase tracking-wider opacity-70">
+   459→                      {s.odds != null ? `${s.label} ${s.odds.toFixed(2)}` : s.label}
+   460→                    </span>
+   461→                    <span className="text-[14px] font-black leading-none">{Math.round(s.value * 100)}%</span>
+   462→                  </button>
+   463→                );
+   464→              })}
+   465→            </div>
+   466→
+   467→            {summary ? (
+   468→              <p className="mt-2.5 text-[10px] font-semibold leading-relaxed text-black/65">{summary}</p>
+   469→            ) : null}
+   470→          </section>
+   471→
+   472→          {/* ---------- onglets ---------- */}
+   473→          <div className="no-scrollbar sticky top-0 z-20 -mx-5 mt-4 flex gap-1.5 overflow-x-auto bg-ink/95 px-5 py-2 backdrop-blur">
+   474→            {TABS.map((t) => (
+   475→              <button
+   476→                key={t.id}
+   477→                onClick={() => setTab(t.id)}
+   478→                aria-pressed={tab === t.id}
+   479→                className={`whitespace-nowrap rounded-full px-3.5 py-1.5 text-[10px] font-black uppercase tracking-wide transition-colors ${
+   480→                  tab === t.id ? "bg-neon text-black" : "bg-ink-3 text-white/60 hover:text-white"
+   481→                }`}
+   482→              >
+   483→                {t.label}
+   484→              </button>
+   485→            ))}
+   486→          </div>
+   487→
+   488→          <motion.div key={tab} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22 }}>
+   489→            {/* ---------------- SYNTHÈSE ---------------- */}
+   490→            {tab === "synthese" ? (
+   491→              <div>
+   492→                <SectionTitle>En bref</SectionTitle>
+   493→                <div className="grid grid-cols-3 gap-2">
+   494→                  <KpiTile
+   495→                    label="Favori"
+   496→                    value={`${(pred.probs.home >= pred.probs.away ? homeShort : awayShort).slice(0, 6)} ${pct(Math.max(pred.probs.home, pred.probs.away))}`}
+   497→                  />
+   498→                  <KpiTile label="Buts attendus" value={pred.lambda.total.toFixed(1)} tone="neon" />
+   499→                  <KpiTile
+   500→                    label="Score clé"
+   501→                    value={pred.topScores[0]?.score ?? "—"}
+   502→                  />
+   503→                </div>
+   504→
+   505→                <SectionTitle>Scores exacts les plus probables</SectionTitle>
+   506→                <div className="space-y-1.5">
+   507→                  {pred.topScores.slice(0, 5).map((s) => (
+   508→                    <div key={s.score} className="flex items-center gap-3 rounded-2xl bg-ink-3 px-3.5 py-2">
+   509→                      <span className="w-10 text-center font-display text-[16px] tracking-wide text-white">{s.score}</span>
+   510→                      <div className="h-[6px] flex-1 overflow-hidden rounded-full bg-black/50">
+   511→                        <div className="h-full rounded-full bg-neon" style={{ width: `${Math.min(100, s.prob * 500)}%` }} />
+   512→                      </div>
+   513→                      <span className="w-11 text-right text-[11px] font-black text-white/80">{pct(s.prob, 1)}</span>
+   514→                    </div>
+   515→                  ))}
+   516→                </div>
+   517→
+   518→                <SectionTitle>Premier but</SectionTitle>
+   519→                <div className="space-y-1.5">
+   520→                  {pred.firstGoalTiming.map((w) => (
+   521→                    <div key={w.window} className="flex items-center gap-3 rounded-2xl bg-ink-3 px-3.5 py-2">
+   522→                      <span className="w-[110px] text-[9.5px] font-bold text-white/60">{w.label}</span>
+   523→                      <div className="h-[6px] flex-1 overflow-hidden rounded-full bg-black/50">
+   524→                        <div className="h-full rounded-full bg-white/70" style={{ width: `${Math.min(100, w.prob * 300)}%` }} />
+   525→                      </div>
+   526→                      <span className="w-11 text-right text-[11px] font-black text-white/80">{pct(w.prob, 1)}</span>
+   527→                    </div>
+   528→                  ))}
+   529→                  <div className="mt-2 grid grid-cols-3 gap-2">
+   530→                    {[
+   531→                      { k: detail.home.name, v: pred.firstToScore.home },
+   532→                      { k: "Aucun but", v: pred.firstToScore.noGoal },
+   533→                      { k: detail.away.name, v: pred.firstToScore.away },
+   534→                    ].map((x) => (
+   535→                      <div key={x.k} className="rounded-2xl bg-ink-3 px-2 py-2 text-center">
+   536→                        <p className="truncate text-[8.5px] font-bold uppercase tracking-wider text-white/40">{x.k}</p>
+   537→                        <p className="mt-1 text-[14px] font-black text-white">{pct(x.v)}</p>
+   538→                      </div>
+   539→                    ))}
+   540→                  </div>
+   541→                </div>
+   542→
+   543→                {/* détail du calcul : replié par défaut */}
+   544→                <details className="group mt-6 rounded-2xl bg-ink-3">
+   545→                  <summary className="flex cursor-pointer select-none list-none items-center justify-between px-4 py-3 [&::-webkit-details-marker]:hidden">
+   546→                    <span className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.14em] text-white/70">
+   547→                      <span className="h-[3px] w-3.5 rounded-full bg-neon" aria-hidden="true" />
+   548→                      Détail du calcul
+   549→                    </span>
+   550→                    <ChevronDown size={15} strokeWidth={2.6} className="shrink-0 text-white/50 transition-transform duration-200 group-open:rotate-180" />
+   551→                  </summary>
+   552→                  <div className="space-y-2.5 px-3 pb-3">
+   553→                    <ComponentRow name="VOLTRIX (final)" probs={pred.probs} note="calibré" />
+   554→                    <ComponentRow name="Poisson" probs={pred.poisson} note="buts attendus" />
+   555→                    <ComponentRow name="Elo" probs={pred.elo} note="force relative" />
+   556→                    <ComponentRow name="Forme" probs={pred.form} note="5 derniers" />
+   557→                    <div className="grid grid-cols-3 gap-2">
+   558→                      {[
+   559→                        { k: detail.home.name, v: pred.lambda.home },
+   560→                        { k: "Total", v: pred.lambda.total },
+   561→                        { k: detail.away.name, v: pred.lambda.away },
+   562→                      ].map((x) => (
+   563→                        <div key={x.k} className="rounded-2xl bg-black/30 px-2 py-2.5 text-center">
+   564→                          <p className="truncate text-[8.5px] font-bold uppercase tracking-wider text-white/40">{x.k}</p>
+   565→                          <p className="mt-1 text-[17px] font-black text-neon">λ {x.v.toFixed(2)}</p>
+   566→                        </div>
+   567→                      ))}
+   568→                    </div>
+   569→                  </div>
+   570→                </details>
+   571→              </div>
+   572→            ) : null}
+   573→
+   574→            {/* ---------------- MARCHÉS (value bets d'abord) ---------------- */}
+   575→            {tab === "marches" ? (
+   576→              <div>
+   577→                <SectionTitle
+   578→                  right={
+   579→                    pred.valueBets.length ? (
+   580→                      <span className="rounded-full bg-neon px-2 py-0.5 text-[8.5px] font-black uppercase text-black">
+   581→                        {pred.valueBets.length} value
+   582→                      </span>
+   583→                    ) : undefined
+   584→                  }
+   585→                >
+   586→                  Value bets (edge / Kelly)
+   587→                </SectionTitle>
+   588→                {pred.valueBets.length === 0 ? (
+   589→                  <p className="rounded-2xl bg-ink-3 px-4 py-3 text-[10.5px] font-semibold text-white/45">
+   590→                    Aucune value bet détectée — le marché est aligné avec le modèle.
+   591→                  </p>
+   592→                ) : (
+   593→                  <div className="space-y-2">
+   594→                    {pred.valueBets.map((vb, i) => (
+   595→                      <button
+   596→                        key={i}
+   597→                        onClick={() => openTicketMarket(vb.market, vb.pick, vb.modelProb, vb.odds)}
+   598→                        className="w-full rounded-2xl bg-ink-3 px-3.5 py-3 text-left transition-transform active:scale-[0.98]"
+   599→                      >
+   600→                        <div className="flex items-center justify-between gap-2">
+   601→                          <span className="min-w-0">
+   602→                            <span className="block truncate text-[12px] font-black text-white">{vb.pick}</span>
+   603→                            <span className="text-[9px] font-bold uppercase tracking-wider text-white/40">
+   604→                              {vb.market} · modèle {pct(vb.modelProb)} · cote {oddsFmt(vb.odds)}
+   605→                            </span>
+   606→                          </span>
+   607→                          <span className="flex shrink-0 items-center gap-1.5">
+   608→                            <EdgeChip edge={vb.edge} />
+   609→                            <span className="rounded-full bg-black/60 px-2 py-0.5 text-[9px] font-black text-white/70">
+   610→                              K {Math.round(vb.kelly * 100)}%
+   611→                            </span>
+   612→                          </span>
+   613→                        </div>
+   614→                      </button>
+   615→                    ))}
+   616→                  </div>
+   617→                )}
+   618→
+   619→                <SectionTitle>Plus/Moins — échelle du moteur</SectionTitle>
+   620→                <div className="space-y-2">
+   621→                  {pred.overUnder.map((ou) => {
+   622→                    const oddsOver = detail.odds?.total.over.line === ou.line ? detail.odds.total.over.closeOdds : null;
+   623→                    const oddsUnder = detail.odds?.total.under.line === ou.line ? detail.odds.total.under.closeOdds : null;
+   624→                    return (
+   625→                      <div key={ou.line} className="rounded-2xl bg-ink-3 px-3.5 py-2.5">
+   626→                        <div className="flex items-center justify-between">
+   627→                          <span className="text-[11px] font-black text-white">Ligne {ou.line.toFixed(1)}</span>
+   628→                          {ou.line === 2.5 ? (
+   629→                            <button
+   630→                              onClick={() => openTicketMarket("O/U 2.5", ou.over >= 0.5 ? "Plus de 2.5" : "Moins de 2.5", Math.max(ou.over, ou.under), ou.over >= 0.5 ? oddsOver : oddsUnder)}
+   631→                              className="rounded-full bg-neon px-2.5 py-1 text-[8.5px] font-black uppercase tracking-wider text-black"
+   632→                            >
+   633→                              Prendre le prono
+   634→                            </button>
+   635→                          ) : null}
+   636→                        </div>
+   637→                        <div className="mt-2 grid grid-cols-2 gap-2">
+   638→                          <ProbBar label={`Over ${oddsOver ? oddsFmt(oddsOver) : ""}`} value={ou.over} compact />
+   639→                          <ProbBar label={`Under ${oddsUnder ? oddsFmt(oddsUnder) : ""}`} value={ou.under} compact />
+   640→                        </div>
+   641→                      </div>
+   642→                    );
+   643→                  })}
+   644→                </div>
+   645→
+   646→                <SectionTitle>Les deux équipes marquent</SectionTitle>
+   647→                <div className="grid grid-cols-2 gap-2">
+   648→                  <button onClick={() => openTicketMarket("BTTS", "Oui", pred.btts.yes, null)} className="text-left">
+   649→                    <ProbBar label="BTTS Oui" value={pred.btts.yes} />
+   650→                  </button>
+   651→                  <button onClick={() => openTicketMarket("BTTS", "Non", pred.btts.no, null)} className="text-left">
+   652→                    <ProbBar label="BTTS Non" value={pred.btts.no} />
+   653→                  </button>
+   654→                </div>
+   655→                {pred.raw ? (
+   656→                  <p className="mt-2 text-[9px] leading-relaxed text-white/35">
+   657→                    Probabilités brutes (pré-calibrage marché) : Over {pct(pred.raw.overUnder[0]?.over, 1)} · BTTS Oui {pct(pred.raw.btts.yes, 1)}. La calibration marché s&apos;applique aux totals.
+   658→                  </p>
+   659→                ) : null}
+   660→
+   661→                {pred.oddsMovement ? (
+   662→                  <div className="mt-4 flex items-start gap-2 rounded-2xl bg-black/50 px-3.5 py-3 ring-1 ring-white/10">
+   663→                    <TrendingUp size={14} className="mt-0.5 shrink-0 text-neon" />
+   664→                    <p className="text-[10px] font-semibold leading-relaxed text-white/65">{pred.oddsMovement}</p>
+   665→                  </div>
+   666→                ) : null}
+   667→
+   668→                {detail.odds ? (
+   669→                  <p className="mt-3 text-center text-[9px] font-semibold uppercase tracking-widest text-white/30">
+   670→                    Cotes {detail.odds.provider} · open/close capturées à la prédiction
+   671→                  </p>
+   672→                ) : null}
+   673→              </div>
+   674→            ) : null}
+   675→
+   676→            {/* ---------------- H2H ---------------- */}
+   677→            {tab === "h2h" ? (
+   678→              <div>
+   679→                <SectionTitle>Confrontations</SectionTitle>
+   680→                <div className="mb-3 grid grid-cols-3 gap-2">
+   681→                  {[
+   682→                    { k: detail.home.name, v: detail.h2hSummary.homeWins, tone: "bg-neon text-black" },
+   683→                    { k: "Nuls", v: detail.h2hSummary.draws, tone: "bg-white/15 text-white" },
+   684→                    { k: detail.away.name, v: detail.h2hSummary.awayWins, tone: "bg-[#ff5d5d]/80 text-white" },
+   685→                  ].map((x) => (
+   686→                    <div key={x.k} className={`rounded-2xl px-2 py-3 text-center ${x.tone}`}>
+   687→                      <p className="truncate text-[8.5px] font-bold uppercase tracking-wider opacity-70">{x.k}</p>
+   688→                      <p className="mt-1 font-display text-[22px] leading-none">{x.v}</p>
+   689→                    </div>
+   690→                  ))}
+   691→                </div>
+   692→                <div className="space-y-1.5">
+   693→                  {detail.h2h.map((h, i) => (
+   694→                    <div key={i} className="flex items-center justify-between rounded-2xl bg-ink-3 px-3.5 py-2.5">
+   695→                      <div className="min-w-0">
+   696→                        <p className="truncate text-[11px] font-bold text-white">
+   697→                          {h.homeTeam} <span className="mx-1 rounded bg-black/50 px-1.5 py-0.5 font-display text-[12px] text-neon">{h.score}</span> {h.awayTeam}
+   698→                        </p>
+   699→                        <p className="text-[9px] font-semibold text-white/35">
+   700→                          {new Date(h.date).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" })}
+   701→                        </p>
+   702→                      </div>
+   703→                      <span className={`shrink-0 rounded-full px-2 py-0.5 text-[8.5px] font-black uppercase ${
+   704→                        h.winner === "home" ? "bg-neon text-black" : h.winner === "away" ? "bg-[#ff5d5d] text-white" : "bg-white/15 text-white/70"
+   705→                      }`}>
+   706→                        {h.winner === "draw" ? "Nul" : "Victoire"}
+   707→                      </span>
+   708→                    </div>
+   709→                  ))}
+   710→                </div>
+   711→                <p className="mt-3 text-[9px] leading-relaxed text-white/30">
+   712→                  Historique synchronisé depuis ESPN (2 saisons) — comptage par identifiant d&apos;équipe, les deux ordres domicile/extérieur.
+   713→                </p>
+   714→              </div>
+   715→            ) : null}
+   716→
+   717→            {/* ---------------- CONTEXTE ---------------- */}
+   718→            {tab === "contexte" ? (
+   719→              <div>
+   720→                {detail.context.isDerby ? (
+   721→                  <div className="mt-4 flex items-center gap-2 rounded-2xl bg-neon px-3.5 py-3 text-black">
+   722→                    <span className="text-[16px]">🔥</span>
+   723→                    <p className="text-[11px] font-black uppercase tracking-wide">{detail.context.derbyLabel ?? "Derby"}</p>
+   724→                  </div>
+   725→                ) : null}
+   726→
+   727→                <SectionTitle>Enjeux</SectionTitle>
+   728→                <div className="space-y-2">
+   729→                  <div className="rounded-2xl bg-ink-3 px-3.5 py-3">
+   730→                    <p className="text-[9px] font-black uppercase tracking-widest text-white/40">{detail.home.name}</p>
+   731→                    <p className="mt-1 text-[11px] font-semibold leading-relaxed text-white/80">{detail.context.stakesHome}</p>
+   732→                  </div>
+   733→                  <div className="rounded-2xl bg-ink-3 px-3.5 py-3">
+   734→                    <p className="text-[9px] font-black uppercase tracking-widest text-white/40">{detail.away.name}</p>
+   735→                    <p className="mt-1 text-[11px] font-semibold leading-relaxed text-white/80">{detail.context.stakesAway}</p>
+   736→                  </div>
+   737→                </div>
+   738→
+   739→                {detail.context.weather ? (
+   740→                  <>
+   741→                    <SectionTitle>Météo</SectionTitle>
+   742→                    <div className="flex items-center gap-3 rounded-2xl bg-ink-3 px-3.5 py-3">
+   743→                      <Umbrella size={18} className="shrink-0 text-neon" />
+   744→                      <div className="min-w-0 flex-1">
+   745→                        <p className="text-[11.5px] font-black text-white">
+   746→                          {detail.context.weather.description} · {detail.context.weather.tempC}°C · vent {detail.context.weather.windKmh} km/h
+   747→                        </p>
+   748→                        <p className="text-[9.5px] font-semibold text-white/45">Impact moteur : {detail.context.weather.impact}</p>
+   749→                      </div>
+   750→                    </div>
+   751→                  </>
+   752→                ) : null}
+   753→
+   754→                <SectionTitle>Alertes effectifs &amp; fatigue</SectionTitle>
+   755→                <div className="space-y-1.5">
+   756→                  {[
+   757→                    { team: detail.home.name, inj: detail.context.injuriesNoteHome, fat: detail.context.fatigueNoteHome },
+   758→                    { team: detail.away.name, inj: detail.context.injuriesNoteAway, fat: detail.context.fatigueNoteAway },
+   759→                  ].map((x) => (
+   760→                    <div key={x.team} className="rounded-2xl bg-ink-3 px-3.5 py-3">
+   761→                      <p className="text-[10px] font-black uppercase tracking-wide text-white/70">{x.team}</p>
+   762→                      <p className="mt-1 text-[10.5px] font-semibold text-white/60">🚑 {x.inj ?? "—"}</p>
+   763→                      <p className="mt-0.5 text-[10.5px] font-semibold text-white/60">⏱ {x.fat ?? "—"}</p>
+   764→                    </div>
+   765→                  ))}
+   766→                </div>
+   767→
+   768→                <SectionTitle>Profils équipes</SectionTitle>
+   769→                <div className="grid gap-2.5">
+   770→                  {teamBlock(detail.home)}
+   771→                  {teamBlock(detail.away)}
+   772→                </div>
+   773→
+   774→                {/* carte stade illustrée */}
+   775→                <SectionTitle>Stade</SectionTitle>
+   776→                <div className="overflow-hidden rounded-2xl bg-ink-3">
+   777→                  <div className="relative h-24">
+   778→                    <img
+   779→                      src="/stadium-night.jpg"
+   780→                      alt="Ambiance de stade la nuit"
+   781→                      className="h-full w-full object-cover"
+   782→                      loading="lazy"
+   783→                    />
+   784→                    <div className="absolute inset-0 bg-gradient-to-t from-ink-3 via-ink-3/30 to-transparent" />
+   785→                  </div>
+   786→                  <div className="px-3.5 pb-3 pt-1">
+   787→                    <p className="text-[11.5px] font-black text-white">
+   788→                      {detail.venue.name ?? "Stade inconnu"}
+   789→                    </p>
+   790→                    <p className="mt-0.5 text-[9.5px] font-semibold text-white/45">
+   791→                      {[detail.venue.city, detail.venue.country].filter(Boolean).join(", ") || "Lieu non communiqué"}
+   792→                    </p>
+   793→                  </div>
+   794→                </div>
+   795→              </div>
+   796→            ) : null}
+   797→
+   798→            {/* ---------------- COMPOS ---------------- */}
+   799→            {tab === "compos" ? (
+   800→              <div>
+   801→                {lineupsLoading ? (
+   802→                  <LoadingPanel label="Chargement des compositions…" />
+   803→                ) : !lineups || (!lineups.home && !lineups.away) ? (
+   804→                  <ErrorPanel message="Compositions indisponibles pour ce match." isDemo={!isLive} />
+   805→                ) : (
+   806→                  <div>
+   807→                    <div className="mt-4 rounded-2xl bg-ink-3 px-3.5 py-3">
+   808→                      <p className="text-[11.5px] font-black text-white">
+   809→                        {lineups.venue.name ?? "Stade inconnu"}
+   810→                        {lineups.venue.city ? ` · ${lineups.venue.city}` : ""}
+   811→                      </p>
+   812→                      <p className="mt-0.5 text-[9.5px] font-semibold text-white/45">
+   813→                        {lineups.attendance ? `${lineups.attendance.toLocaleString("fr-FR")} spectateurs · ` : ""}
+   814→                        {lineups.weather ? `${lineups.weather.description} ${lineups.weather.tempC ?? ""}°C` : ""}
+   815→                      </p>
+   816→                    </div>
+   817→
+   818→                    {!lineups.home?.lineupsPublished ? (
+   819→                      <p className="mt-2 rounded-2xl bg-black/50 px-3.5 py-2.5 text-[9.5px] font-semibold leading-relaxed text-white/50 ring-1 ring-white/10">
+   820→                        Compositions non publiées par ESPN — formation déduite des postes, aucune position inventée.
+   821→                      </p>
+   822→                    ) : null}
+   823→
+   824→                    <div className="mt-3 flex gap-1.5 rounded-full bg-ink-3 p-1">
+   825→                      {(["home", "away"] as const).map((s) => {
+   826→                        const t = s === "home" ? lineups.home : lineups.away;
+   827→                        return (
+   828→                          <button
+   829→                            key={s}
+   830→                            onClick={() => setComposSide(s)}
+   831→                            aria-pressed={composSide === s}
+   832→                            className={`flex-1 truncate rounded-full px-3 py-1.5 text-[10px] font-black uppercase tracking-wide transition-colors ${
+   833→                              composSide === s ? "bg-neon text-black" : "text-white/60"
+   834→                            }`}
+   835→                          >
+   836→                            {t?.shortName ?? t?.name ?? s}
+   837→                          </button>
+   838→                        );
+   839→                      })}
+   840→                    </div>
+   841→
+   842→                    {(() => {
+   843→                      const t = composSide === "home" ? lineups.home : lineups.away;
+   844→                      if (!t) return null;
+   845→                      return (
+   846→                        <div className="mt-3">
+   847→                          <div className="mb-2.5 flex items-center justify-between">
+   848→                            <span className="text-[10px] font-black uppercase tracking-widest text-white/60">
+   849→                              {t.formation ? `${t.formation.text}${t.formation.source === "deduced" ? " (déduite)" : ""}` : "Formation ?"}
+   850→                            </span>
+   851→                            {t.squadValueEur != null ? (
+   852→                              <span className="rounded-full bg-ink-3 px-2.5 py-1 text-[9px] font-black text-neon">
+   853→                                Effectif {eurCompact(t.squadValueEur)}
+   854→                              </span>
+   855→                            ) : null}
+   856→                          </div>
+   857→                          <Pitch team={t} />
+   858→
+   859→                          <SectionTitle>Banc</SectionTitle>
+   860→                          <div className="grid grid-cols-2 gap-1.5">
+   861→                            {t.bench.map((p) => (
+   862→                              <div key={p.athleteId} className="flex items-center gap-2 rounded-xl bg-ink-3 px-2.5 py-2">
+   863→                                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/10 text-[9.5px] font-black text-white/70">
+   864→                                  {p.jersey ?? "?"}
+   865→                                </span>
+   866→                                <span className="min-w-0 flex-1 truncate text-[10px] font-bold text-white/80">{p.shortName ?? p.name}</span>
+   867→                                {p.tm?.valueEur ? <span className="text-[8.5px] font-black text-neon">{eurCompact(p.tm.valueEur)}</span> : null}
+   868→                              </div>
+   869→                            ))}
+   870→                          </div>
+   871→
+   872→                          {t.coach ? (
+   873→                            <p className="mt-3 text-center text-[9.5px] font-semibold text-white/40">Coach : {t.coach}</p>
+   874→                          ) : null}
+   875→                        </div>
+   876→                      );
+   877→                    })()}
+   878→                  </div>
+   879→                )}
+   880→              </div>
+   881→            ) : null}
+   882→          </motion.div>
+   883→        </main>
+   884→      )}
+   885→
+   886→      {/* CTA bas : prono moteur → ticket */}
+   887→      {!loading && detail && pred ? (
+   888→        <div className="absolute inset-x-0 bottom-0 z-30 bg-gradient-to-t from-ink via-ink/95 to-transparent px-5 pb-6 pt-8">
+   889→          <button
+   890→            onClick={() =>
+   891→              bestPick
+   892→                ? openTicketMarket(
+   893→                    bestPick.market,
+   894→                    bestPick.pick,
+   895→                    bestPick.prob,
+   896→                    bestPick.market === "1X2"
+   897→                      ? bestPick.pick.startsWith("1 ")
+   898→                        ? detail.odds?.moneyline.home.close ?? light?.mlHome ?? null
+   899→                        : bestPick.pick.startsWith("2 ")
+   900→                          ? detail.odds?.moneyline.away.close ?? light?.mlAway ?? null
+   901→                          : detail.odds?.moneyline.draw.close ?? light?.mlDraw ?? null
+   902→                      : null,
+   903→                  )
+   904→                : undefined
+   905→            }
+   906→            className="flex h-[52px] w-full items-center justify-center gap-2 rounded-full bg-neon text-[14px] font-black uppercase tracking-wide text-black shadow-[0_14px_28px_rgba(0,0,0,0.35)] transition-transform hover:scale-[1.015] active:scale-[0.98]"
+   907→          >
+   908→            <Ticket size={17} strokeWidth={2.6} />
+   909→            {bestPick ? `Ticket · ${bestPick.pick} (${pct(bestPick.prob)})` : "Créer un ticket"}
+   910→          </button>
+   911→        </div>
+   912→      ) : null}
+   913→
+   914→      {/* pastille mode démo */}
+   915→      {!isLive ? (
+   916→        <div className="absolute right-4 top-[70px] z-20">
+   917→          <DemoBadge />
+   918→        </div>
+   919→      ) : null}
+   920→
+   921→      {loading ? (
+   922→        <div className="absolute bottom-6 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full bg-black/70 px-3.5 py-2 ring-1 ring-white/10">
+   923→          <Loader2 size={12} className="animate-spin text-neon" />
+   924→          <span className="text-[9.5px] font-bold uppercase tracking-widest text-white/60">Analyse…</span>
+   925→        </div>
+   926→      ) : null}
+   927→    </div>
+   928→  );
+   929→}
+   930→
