@@ -4,57 +4,29 @@
    VOLTRIX front — Racine de l'application
    Design conservé du front KickOff (cadre téléphone, encre +
    lime néon, Anton) — données et écrans adaptés à l'API VOLTRIX :
-   pronos moteur, marchés, value bets, prévisions figées,
-   performance, portefeuille.
+   pronos moteur, marchés, value bets, réglages.
    ============================================================ */
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { CheckCircle2 } from "lucide-react";
-import { CalendarRange, Home, Settings, Target, Wallet } from "lucide-react";
+import { Home, Settings } from "lucide-react";
 import { getApiBase } from "@/lib/voltrix";
 import { HomeScreen } from "./HomeScreen";
 import { MatchScreen } from "./MatchScreen";
-import { PrevisionsScreen } from "./PrevisionsScreen";
-import { PrecisionScreen } from "./PrecisionScreen";
-import { PortfolioScreen } from "./PortfolioScreen";
 import { SettingsScreen } from "./SettingsScreen";
-import { TicketSheet } from "./TicketSheet";
 import type { LightMatch } from "@/lib/voltrix-types";
 
-export type TabId = "home" | "previsions" | "precision" | "portfolio" | "settings";
+export type TabId = "home" | "settings";
 
 export type Screen =
   | { name: TabId }
   | { name: "match"; matchId: string; leagueCode: string; date: string; light?: LightMatch };
 
-/** Contexte de sélection passé au TicketSheet. */
-export interface SelectionDraft {
-  matchId: string;
-  leagueCode: string;
-  matchDate: string;
-  market: string;
-  pick: string;
-  prob: number;
-  odds: number | null;
-  homeName: string;
-  awayName: string;
-  homeLogo: string | null;
-  awayLogo: string | null;
-}
-
-const TABS: Array<{ id: TabId; icon: typeof Home; label: string }> = [
-  { id: "home", icon: Home, label: "Accueil" },
-  { id: "previsions", icon: CalendarRange, label: "Prévisions" },
-  { id: "precision", icon: Target, label: "Précision" },
-  { id: "portfolio", icon: Wallet, label: "Portefeuille" },
-  { id: "settings", icon: Settings, label: "Réglages" },
-];
-
 function LogoBadge() {
   return (
-    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-neon">
-      <svg width="20" height="20" viewBox="0 0 24 24" role="img" aria-label="Logo VOLTRIX">
+    <span className="flex h-11 w-11 items-center justify-center rounded-full bg-neon shadow-[0_4px_18px_rgba(198,242,17,0.35)]">
+      <svg width="24" height="24" viewBox="0 0 24 24" role="img" aria-label="Logo VOLTRIX">
         <path
           d="M4 12 L8 5 H16 L20 12 L16 19 H8 Z"
           fill="none"
@@ -69,17 +41,17 @@ function LogoBadge() {
   );
 }
 
+const TABS: Array<{ id: TabId; icon: typeof Home; label: string }> = [
+  { id: "home", icon: Home, label: "Accueil" },
+  { id: "settings", icon: Settings, label: "Réglages" },
+];
+
 export function VoltrixApp() {
   const [stack, setStack] = useState<Screen[]>([{ name: "home" }]);
   const [direction, setDirection] = useState(1);
   const [tab, setTab] = useState<TabId>("home");
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  /* Ticket sheet */
-  const [ticketOpen, setTicketOpen] = useState(false);
-  const [ticketSession, setTicketSession] = useState(0);
-  const [draft, setDraft] = useState<SelectionDraft | null>(null);
 
   /* incrémente à chaque changement d'URL d'API pour recharger les écrans */
   const [apiEpoch, setApiEpoch] = useState(0);
@@ -118,23 +90,14 @@ export function VoltrixApp() {
     toastTimer.current = setTimeout(() => setToast(null), 2800);
   }, []);
 
-  const openTicket = useCallback((d: SelectionDraft) => {
-    setDraft(d);
-    setTicketSession((s) => s + 1);
-    setTicketOpen(true);
-  }, []);
-
-  /* Échap : ferme les overlays puis dépile */
+  /* Échap : dépile */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        if (ticketOpen) setTicketOpen(false);
-        else if (stack.length > 1) pop();
-      }
+      if (e.key === "Escape" && stack.length > 1) pop();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [ticketOpen, stack.length, pop]);
+  }, [stack.length, pop]);
 
   const screenKey =
     current.name === "match" ? `match-${current.matchId}` : `tab-${current.name}`;
@@ -172,21 +135,7 @@ export function VoltrixApp() {
             className="absolute inset-0"
           >
             {current.name === "home" ? (
-              <HomeScreen
-                onOpenMatch={openMatch}
-                onQuickTicket={openTicket}
-                apiEpoch={apiEpoch}
-              />
-            ) : null}
-
-            {current.name === "previsions" ? (
-              <PrevisionsScreen apiEpoch={apiEpoch} />
-            ) : null}
-
-            {current.name === "precision" ? <PrecisionScreen apiEpoch={apiEpoch} /> : null}
-
-            {current.name === "portfolio" ? (
-              <PortfolioScreen apiEpoch={apiEpoch} onToast={showToast} />
+              <HomeScreen onOpenMatch={openMatch} apiEpoch={apiEpoch} />
             ) : null}
 
             {current.name === "settings" ? (
@@ -205,13 +154,12 @@ export function VoltrixApp() {
                 date={current.date}
                 light={current.light}
                 onBack={pop}
-                onTicket={openTicket}
               />
             ) : null}
           </motion.div>
         </AnimatePresence>
 
-        {/* toast — notification iOS : pilule translucide en haut */}
+        {/* toast — pilule en haut */}
         <AnimatePresence>
           {toast ? (
             <motion.div
@@ -219,7 +167,7 @@ export function VoltrixApp() {
               animate={{ y: 0, opacity: 1, scale: 1 }}
               exit={{ y: -70, opacity: 0, scale: 0.96 }}
               transition={{ type: "spring", stiffness: 420, damping: 32 }}
-              className="material-bar absolute left-1/2 top-3 z-[70] flex max-w-[88%] -translate-x-1/2 items-center gap-2 rounded-full px-4 py-2.5 shadow-[0_8px_24px_rgba(0,0,0,0.4)]"
+              className="absolute left-1/2 top-3 z-[70] flex max-w-[88%] -translate-x-1/2 items-center gap-2 rounded-full bg-ink-2 px-4 py-2.5 shadow-[0_8px_24px_rgba(0,0,0,0.4)] ring-1 ring-white/10"
               role="status"
             >
               <CheckCircle2 size={16} className="shrink-0 text-neon" />
@@ -228,22 +176,11 @@ export function VoltrixApp() {
           ) : null}
         </AnimatePresence>
 
-        {/* feuille de ticket */}
-        {draft ? (
-          <TicketSheet
-            key={`ticket-${ticketSession}`}
-            draft={draft}
-            open={ticketOpen}
-            onClose={() => setTicketOpen(false)}
-            onPlaced={() => showToast("Ticket enregistré au Portefeuille")}
-          />
-        ) : null}
-
-        {/* barre d'onglets iOS — matériau translucide, le contenu
-            défile derrière ; masquée sur l'écran détail match */}
+        {/* barre d'onglets — matériau sombre, le contenu défile derrière ;
+            masquée sur l'écran détail match */}
         {current.name !== "match" ? (
           <nav
-            className="material-bar absolute inset-x-0 bottom-0 z-30 border-t border-white/8"
+            className="absolute inset-x-0 bottom-0 z-30 border-t border-white/10 bg-ink/95 backdrop-blur"
             style={{ paddingBottom: "max(env(safe-area-inset-bottom), 6px)" }}
             aria-label="Navigation principale"
           >

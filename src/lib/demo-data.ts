@@ -18,6 +18,7 @@ import type {
   WeekResponse,
   LineupsResponse,
 } from "./voltrix-types";
+import { demoVenueFor } from "./stadiums";
 
 /* ---------- PRNG déterministe ---------- */
 function seedFrom(s: string): () => number {
@@ -176,7 +177,7 @@ export function demoMatches(date: string): MatchesResponse {
         mlHome: mlH,
         mlDraw: mlD,
         mlAway: mlA,
-        venue: { name: `${h.short} Arena`, city: null, country: null },
+        venue: demoVenueFor(h.short, h.name),
       });
       total++;
     }
@@ -307,7 +308,7 @@ export function demoMatchDetail(matchId: string): MatchDetailDTO {
     statusDetail: m?.statusDetail ?? "",
     homeScore: m?.home.score ?? null,
     awayScore: m?.away.score ?? null,
-    venue: { name: `${h.shortName} Arena`, city: "Londres", country: "Angleterre" },
+    venue: demoVenueFor(h.shortName, h.name),
     odds: m?.hasOdds
       ? {
           provider: "DraftKings",
@@ -657,7 +658,7 @@ export function demoLineups(matchId: string): LineupsResponse {
     matchId,
     leagueCode: m?.leagueCode ?? "eng.1",
     seasonYear: 2026,
-    venue: { name: m ? `Stade ${m.home.name}` : "Emirates Stadium", city: null, country: null },
+    venue: m ? demoVenueFor(m.home.shortName, m.home.name) : { name: "Emirates Stadium", city: null, country: null },
     attendance: 60_278,
     weather: { description: "Dégagé", tempC: 11 },
     home: mkTeam("home"),
