@@ -176,15 +176,17 @@ export function VoltrixApp() {
           ) : null}
         </AnimatePresence>
 
-        {/* barre d'onglets — matériau sombre, le contenu défile derrière ;
+        {/* barre d'onglets — capsule flottante arrondie façon iOS 27 :
+            verre sombre, contenu qui défile derrière, pastille active
+            animée (layoutId) qui glisse entre les onglets ;
             masquée sur l'écran détail match */}
         {current.name !== "match" ? (
           <nav
-            className="absolute inset-x-0 bottom-0 z-30 border-t border-white/10 bg-ink/95 backdrop-blur"
-            style={{ paddingBottom: "max(env(safe-area-inset-bottom), 6px)" }}
+            className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center"
+            style={{ paddingBottom: "max(env(safe-area-inset-bottom), 14px)" }}
             aria-label="Navigation principale"
           >
-            <div className="flex items-stretch px-1 pt-1.5">
+            <div className="pointer-events-auto flex items-center gap-1 rounded-full bg-ink-2/80 p-1.5 ring-1 ring-white/10 shadow-[0_16px_44px_rgba(0,0,0,0.6),0_2px_10px_rgba(0,0,0,0.4)] backdrop-blur-xl">
               {TABS.map((t) => {
                 const Icon = t.icon;
                 const active = t.id === tab;
@@ -193,13 +195,31 @@ export function VoltrixApp() {
                     key={t.id}
                     onClick={() => goTab(t.id)}
                     aria-label={t.label}
-                    aria-current={active}
-                    className={`flex flex-1 flex-col items-center gap-[3px] rounded-lg py-1.5 transition-colors duration-150 ease-out ${
-                      active ? "text-neon" : "text-white/40"
+                    aria-current={active ? "page" : undefined}
+                    className={`relative flex items-center gap-2 rounded-full px-5 py-2.5 transition-colors duration-150 ease-out ${
+                      active ? "text-ink" : "text-white/50 hover:text-white/80"
                     }`}
                   >
-                    <Icon size={22} strokeWidth={active ? 2.3 : 1.9} />
-                    <span className={`text-[10px] ${active ? "font-semibold" : "font-medium"}`}>{t.label}</span>
+                    {active ? (
+                      <motion.span
+                        layoutId="tab-pill"
+                        className="absolute inset-0 rounded-full bg-neon shadow-[0_5px_18px_rgba(198,242,17,0.4)]"
+                        transition={{ type: "spring", stiffness: 480, damping: 38 }}
+                        aria-hidden="true"
+                      />
+                    ) : null}
+                    <Icon
+                      size={17}
+                      strokeWidth={active ? 2.4 : 2}
+                      className="relative z-10"
+                    />
+                    <span
+                      className={`relative z-10 text-[13px] leading-none tracking-tight ${
+                        active ? "font-bold" : "font-medium"
+                      }`}
+                    >
+                      {t.label}
+                    </span>
                   </button>
                 );
               })}
