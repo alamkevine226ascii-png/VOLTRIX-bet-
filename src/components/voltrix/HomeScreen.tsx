@@ -26,6 +26,7 @@ import {
   hydrateMmaForms,
   eventCategoryLabel,
 } from "@/lib/mma-bridge";
+import { predDbGetAll, predDbPut } from "@/lib/pred-db";
 import type { LightMatch, MatchesResponse, QuickPred } from "@/lib/voltrix-types";
 import type { MmaEventsResponse, MmaFight, MmaQuickPred } from "@/lib/mma-types";
 import { TeamBadge } from "./TeamBadge";
@@ -39,6 +40,16 @@ import {
 } from "./ui-bits";
 
 const PRED_MAX = 24; // borne de pronos football calculés en arrière-plan
+
+/* TTL des pronos en base locale (exigence : ≥ 10 min sans recalcul).
+ * Un match terminé ne change plus → 6 h ; en direct → 10 min ;
+ * à venir → 15 min (les cotes bougent peu, et le pull-to-refresh
+ * reste possible à tout moment). */
+function predTtlMs(status?: string): number {
+  if (status === "post") return 6 * 60 * 60 * 1000;
+  if (status === "in") return 10 * 60 * 1000;
+  return 15 * 60 * 1000;
+}
 
 function isoAddDays(iso: string, days: number): string {
   const d = new Date(`${iso}T12:00:00Z`);
@@ -364,6 +375,9 @@ export function HomeScreen({
   const [preds, setPreds] = useState<Record<string, QuickPred>>({});
   const [mmaPreds, setMmaPreds] = useState<Record<string, MmaQuickPred>>({});
   const [predsBusy, setPredsBusy] = useState(false);
+  /* pronos restaurés depuis la base locale (affichés instantanément
+     à la réouverture de l'App — preuve visible du non-recalcul) */
+  const [restoredCount, setRestoredCount] = useState(0);
   const [activeFilter, setActiveFilter] = useState("all");
   const abortRef = useRef(0);
 
@@ -402,6 +416,15 @@ export function HomeScreen({
   /* ---------- chargement : football par date, MMA par événements UFC ---------- */
   const loadMma = useCallback(async (run: number) => {
     try {
+      /* restauration immédiate des pronos MMA depuis la base locale :
+         les cartes affichent leurs probabilités AVANT même que le
+         réseau ne réponde (calcul déjà fait il y a < 15 min). */
+      const storedMma = await predDbGetAll<MmaQuickPred>("mma").catch(
+        () => ({}) as Record<string, MmaQuickPred>,
+      );
+      if (run !== abortRef.current) return;
+      if (Object.keys(storedMma).length > 0) setMmaPreds(storedMma);
+
       const res = await loadMmaUpcoming();
       if (run !== abortRef.current) return;
       setMmaData(res);
@@ -416,6 +439,11 @@ export function HomeScreen({
       if (run !== abortRef.current) return;
       setMmaData(withForms);
       setMmaPreds(preds);
+      /* persistance : le calcul une fois fait n'est plus refait au
+         retour dans l'App pendant au moins 15 minutes */
+      for (const [fightId, p] of Object.entries(preds)) {
+        void predDbPut("mma", fightId, p, 15 * 60 * 1000);
+      }
     } catch {
       /* réseau indisponible : les sections MMA disparaissent, le foot continue */
       if (run === abortRef.current) setMmaData(null);
@@ -486,7 +514,7 @@ export function HomeScreen({
     }
   }, [pull, date, load]);
 
-  /* ---------- pronos football en arrière-plan ---------- */
+  /* ---------- pronos football : base locale d'abord, calcul ensuite ---------- */
   useEffect(() => {
     if (!footData || footData.totalMatches === 0) return;
     const upcoming = footData.leagues
@@ -496,11 +524,34 @@ export function HomeScreen({
     let cancelled = false;
 
     void (async () => {
+      /* 1. RESTAURATION : les pronos déjà calculés (TTL 15 min) sont
+         relus depuis la base locale et affichés INSTANTANÉMENT —
+         quitter puis rouvrir l'App ne redéclenche AUCUN calcul. */
+      const stored = await predDbGetAll<QuickPred>("foot").catch(
+        () => ({}) as Record<string, QuickPred>,
+      );
+      if (cancelled) return;
+      const toRestore = upcoming.filter((m) => stored[m.id]);
+      if (toRestore.length > 0) {
+        setPreds((p) => {
+          const next = { ...p };
+          for (const m of toRestore) next[m.id] = stored[m.id];
+          return next;
+        });
+        setRestoredCount((n) => Math.max(n, toRestore.length));
+      }
+
+      /* 2. CALCUL : uniquement les pronos MANQUANTS (jamais recalculés
+         tant que leur entrée en base est encore valide). */
+      const missing = upcoming.filter((m) => !stored[m.id]).slice(0, PRED_MAX);
+      if (missing.length === 0) return;
       setPredsBusy(true);
       await computeQuickPreds(
-        upcoming.slice(0, PRED_MAX).map((m) => ({ id: m.id, leagueCode: m.leagueCode, date: m.date })),
+        missing.map((m) => ({ id: m.id, leagueCode: m.leagueCode, date: m.date })),
         (pred) => {
-          if (!cancelled) setPreds((p) => ({ ...p, [pred.matchId]: pred }));
+          if (cancelled) return;
+          setPreds((p) => ({ ...p, [pred.matchId]: pred }));
+          void predDbPut("foot", pred.matchId, pred, predTtlMs(pred.status));
         },
       );
       if (!cancelled) setPredsBusy(false);
@@ -601,6 +652,13 @@ export function HomeScreen({
           {predsBusy ? (
             <span className="text-[9.5px] font-bold uppercase tracking-widest text-neon">
               Moteur en analyse…
+            </span>
+          ) : restoredCount > 0 ? (
+            <span
+              className="rounded-full bg-white/5 px-2 py-0.5 text-[8.5px] font-bold uppercase tracking-widest text-white/45 ring-1 ring-white/10"
+              title={"Pronostics relus depuis la base locale de l\u2019app — aucun recalcul nécessaire."}
+            >
+              ⚡ {restoredCount} prono{restoredCount > 1 ? "s" : ""} restauré{restoredCount > 1 ? "s" : ""} · base locale
             </span>
           ) : null}
         </div>

@@ -15,18 +15,18 @@ import type { EspnScheduleGame, EspnStandingsTeam, EspnOdds, EspnInjury } from '
 // overProb + totalGoalsDist = proba brute du modèle à UNE ligne donnée
 // (value bets O/U quand la ligne du marché n'est pas 1.5/2.5/3.5).
 import { bttsProb, calibrateTotals, deMarginOverUnder, overProb, totalGoalsDist } from './market-odds';
-// goal-timing.ts : minute du 1er but basée sur les vraies minutes de buts
-// (histogrammes ESPN des deux équipes + baseline empirique de ligue).
-// goal-timing importe lui-même ./espn et ../mma/espn — aucun cycle :
-// espn.ts n'importe jamais prediction.ts ni goal-timing.ts.
+// goal-timing.ts est remplacé par first-goal.ts : MOTEUR DÉDIÉ à la
+// minute du premier but (demande explicite 2026-11-09). Il prédit
+// directement la quantité demandée à partir des minutes RÉELLES des
+// 1ers buts des matchs des deux équipes (12 derniers matchs chacun,
+// summaries ESPN) : fusion par hazards cumulés + mise à l'échelle λ.
+// Aucun cycle d'imports : first-goal.ts importe ./espn et ../mma/espn,
+// jamais prediction.ts.
 import {
-  GOAL_WINDOWS,
-  LEAGUE_BASELINE_SHARES,
-  blendGoalTiming,
-  firstGoalTimingFromHazard,
-  goalTimingBasis,
-  type TeamGoalTiming,
-} from './goal-timing';
+  predictFirstGoal,
+  type FirstGoalHeadline,
+  type TeamFirstGoals,
+} from './first-goal';
 
 // ---------- Types publics ----------
 
@@ -79,16 +79,19 @@ export interface MatchPrediction {
   };
   // scores exacts les plus probables
   topScores: Array<{ score: string; prob: number }>;
-  // moment du premier but — basis = source des parts ('equipes' = vraies
-  // minutes de buts des 2 équipes, 'ligue' = baseline empirique de ligue,
-  // 'modele' = repli Poisson homogène), sampleGoals = taille d'échantillon
+  // moment du premier but — MOTEUR DÉDIÉ first-goal.ts :
+  // 6 fenêtres + 0-0 (somme exactement 1) ; basis = 'equipes' si les
+  // minutes réelles des 1ers buts d'au moins une équipe ont pu être
+  // lues chez ESPN, sinon profil de ligue empirique ('ligue').
   firstGoalTiming: Array<{
     window: string;
     label: string;
     prob: number;
-    basis: 'equipes' | 'ligue' | 'modele';
-    sampleGoals: number;
+    basis: 'equipes' | 'ligue';
+    sampleMatches: number;
   }>;
+  // titre « 1er but attendu vers la Xe minute » + tempo des équipes
+  firstGoalHeadline: FirstGoalHeadline;
   // première équipe à marquer
   firstToScore: { home: number; away: number; noGoal: number };
   // buts attendus
@@ -393,33 +396,12 @@ function stakesLabel(rank: number | null, gamesPlayed: number, totalTeams: numbe
 }
 
 // ---------- Marché : moment du premier but ----------
-// ANCIEN modèle (REPLI) : processus de Poisson HOMOGÈNE — intensité
-// constante r = λ/90 sur tout le match, P(aucun but avant t) = e^(−r·t).
-// La forme est strictement identique pour TOUS les matchs (seul λ la met
-// à l'échelle) et contredit la réalité connue du football : plus de buts
-// en fin de chaque mi-temps. C'est ce que l'utilisateur percevait comme
-// des probabilités « aléatoires » / sous- et sur-estimées.
-// Conservé exporté comme chemin de repli quand aucune donnée réelle de
-// timing n'est fournie au moteur (EngineInput.goalTiming absent).
-// Le chemin principal est firstGoalTimingFromHazard (goal-timing.ts),
-// calé sur les minutes de buts réelles d'ESPN.
-export function firstGoalTimingProbs(lambdaTotal: number): Array<{ window: string; label: string; prob: number }> {
-  // Garde-fou anti-NaN : λ inutilisable → moyenne de l'échantillon empirique
-  // de goal-timing.ts (168 buts / 66 matchs ≈ 2,545).
-  const lam = Number.isFinite(lambdaTotal) && lambdaTotal > 0 ? lambdaTotal : 168 / 66;
-  const r = lam / 90;
-  const bounds = [0, 15, 30, 45, 60, 75, 90];
-  const out: Array<{ window: string; label: string; prob: number }> = [];
-  let acc = 0;
-  for (let w = 0; w < 6; w++) {
-    const p = Math.round((Math.exp(-r * bounds[w]) - Math.exp(-r * bounds[w + 1])) * 10000) / 10000;
-    acc += p;
-    out.push({ window: GOAL_WINDOWS[w].window, label: GOAL_WINDOWS[w].label, prob: p });
-  }
-  // NO_GOAL absorbe l'arrondi → les 7 entrées somment EXACTEMENT à 1
-  out.push({ window: 'NO_GOAL', label: 'Aucun but (0-0)', prob: Math.max(0, Math.round((1 - acc) * 10000) / 10000) });
-  return out;
-}
+// L'ANCIEN modèle homogène (Poisson à intensité constante, même forme
+// pour tous les matchs) a été RETIRÉ : c'est lui que l'utilisateur
+// percevait comme « le 1er but toujours à la 16e ». Tout passe
+// désormais par le moteur dédié first-goal.ts (predictFirstGoal),
+// qui prédit la minute du 1er but à partir des VRAIS 1ers buts des
+// matchs des deux équipes — repli profil de ligue empirique inclus.
 
 // ---------- Poisson complet ----------
 
@@ -621,12 +603,12 @@ export interface EngineInput {
   //           (fatigue ×0.94, blessures ×[0.92..1], derby ×0.92 neutralisés).
   //           Blend des 3 modèles, calibration, marchés : inchangés.
   contextMode?: 'full' | 'mix';
-  // Minute du 1er but — données RÉELLES (mission « moteur de pronostics ») :
-  // histogrammes des minutes de buts des 10 derniers matchs terminés de
-  // chaque équipe, extraits des summaries ESPN par fetchTeamGoalTiming
-  // (goal-timing.ts). OPTIONNEL et rétrocompatible : absent/null → repli sur
-  // l'ancien modèle homogène (firstGoalTimingProbs), étiqueté 'modele'.
-  goalTiming?: { home: TeamGoalTiming | null; away: TeamGoalTiming | null } | null;
+  // Minute du 1er but — données RÉELLES (moteur dédié first-goal.ts) :
+  // minutes des 1ers buts des 12 derniers matchs terminés de chaque
+  // équipe, extraites des summaries ESPN par fetchTeamFirstGoals.
+  // OPTIONNEL et rétrocompatible : absent/null → profil de ligue
+  // empirique, étiqueté 'ligue'.
+  firstGoals?: { home: TeamFirstGoals | null; away: TeamFirstGoals | null } | null;
 }
 
 export function runEngine(input: EngineInput): MatchAnalysis {
@@ -930,30 +912,19 @@ export function runEngine(input: EngineInput): MatchAnalysis {
     note: 'Option la plus sûre du match',
   });
 
-  // --- Moment du 1er but (hazard par morceaux sur données réelles) ---
-  // Chemin principal : histogrammes ESPN fournis (au moins une équipe) →
-  // fusion des deux équipes + retrait vers la baseline empirique (shrinkage
-  // n/(n+60)) → Poisson par morceaux. Chaque entrée est étiquetée avec sa
-  // source (basis) et la taille d'échantillon — jamais de donnée inventée.
-  // Repli : ancien modèle homogène (firstGoalTimingProbs), basis 'modele'.
-  const gtHome = input.goalTiming?.home ?? null;
-  const gtAway = input.goalTiming?.away ?? null;
-  let firstGoalTiming: MatchPrediction['firstGoalTiming'];
-  if (gtHome !== null || gtAway !== null) {
-    const blended = blendGoalTiming(gtHome, gtAway, [...LEAGUE_BASELINE_SHARES]);
-    const { basis, sampleGoals } = goalTimingBasis(gtHome, gtAway);
-    firstGoalTiming = firstGoalTimingFromHazard(lambdaHome + lambdaAway, blended.shares).map((e) => ({
-      ...e,
-      basis,
-      sampleGoals,
-    }));
-  } else {
-    firstGoalTiming = firstGoalTimingProbs(lambdaHome + lambdaAway).map((e) => ({
-      ...e,
-      basis: 'modele' as const,
-      sampleGoals: 0,
-    }));
-  }
+  // Minute du 1er but — MOTEUR DÉDIÉ (mission « moteur à part »,
+  // 2026-11-09) : fetchTeamFirstGoals (first-goal.ts) lit les minutes
+  // RÉELLES des 1ers buts des 12 derniers matchs de chaque équipe,
+  // predictFirstGoal fusionne les deux profils par hazards cumulés,
+  // met à l'échelle par le λ du match et ressort la minute attendue.
+  // Aucune donnée → profil de ligue empirique, étiqueté 'ligue'.
+  const firstGoals = predictFirstGoal(
+    lambdaHome + lambdaAway,
+    input.firstGoals?.home ?? null,
+    input.firstGoals?.away ?? null,
+  );
+  const firstGoalTiming = firstGoals.entries;
+  const firstGoalHeadline = firstGoals.headline;
 
   // --- H2H ---
   // Task 28 §7 (BUG CORRIGÉ) : le scan ne portait que sur le calendrier
@@ -1039,6 +1010,7 @@ export function runEngine(input: EngineInput): MatchAnalysis {
       raw: { overUnder: rawOverUnder, btts: rawBtts },
       topScores: poissonRes.topScores,
       firstGoalTiming,
+      firstGoalHeadline,
       firstToScore: firstToScoreProbs(lambdaHome, lambdaAway),
       lambda: { home: lambdaHome, away: lambdaAway, total: round(lambdaHome + lambdaAway, 2) },
       confidence: conf,

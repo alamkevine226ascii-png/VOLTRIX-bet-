@@ -21,8 +21,8 @@ const SITE = `${SITE_BASE}/apis/site/v2/sports/soccer`;
 
 export { SITE };
 
-const TTL_SCOREBOARD_PRE = 10 * 60 * 1000; // 10 min avant match
-const TTL_SCOREBOARD_DAY = 60 * 1000; // 1 min le jour J
+const TTL_SCOREBOARD_PRE = 10 * 60 * 1000; // 10 min — journée passée ou future
+const TTL_SCOREBOARD_DAY = 60 * 1000; // 1 min — journée en cours (scores live frais)
 const TTL_TEAM_SCHEDULE = 3 * 60 * 60 * 1000; // 3 h
 const TTL_STANDINGS = 3 * 60 * 60 * 1000; // 3 h
 const TTL_INJURIES = 6 * 60 * 60 * 1000; // 6 h
@@ -285,7 +285,16 @@ export async function fetchScoreboard(leagueCode: string, dateISO?: string): Pro
   const url = dateISO
     ? `${SITE}/${leagueCode}/scoreboard?dates=${dateISO.replace(/-/g, "")}`
     : `${SITE}/${leagueCode}/scoreboard`;
-  const ttl = dateISO ? TTL_SCOREBOARD_PRE : TTL_SCOREBOARD_DAY;
+  /* TTL : 60 s pour la JOURNÉE EN COURSE (les scores en direct doivent
+     rester frais), 10 min pour toute autre journée (passée : figée ;
+     future : quasi stable). Le scan d'une journée au retour dans
+     l'App reste ainsi quasi gratuit, sans recalcul du moteur. */
+  const isToday = (() => {
+    const now = new Date();
+    const today = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-${String(now.getUTCDate()).padStart(2, "0")}`;
+    return !dateISO || dateISO === today;
+  })();
+  const ttl = isToday ? TTL_SCOREBOARD_DAY : TTL_SCOREBOARD_PRE;
   const raw = await espnFetch<RawScoreboard>(url, {
     cacheKey: `foot:sb:${leagueCode}:${dateISO ?? "today"}`,
     ttlMs: ttl,

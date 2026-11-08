@@ -19,7 +19,7 @@ import {
   type EspnScheduleGame,
 } from "./espn";
 import { runEngine, type MatchAnalysis } from "./prediction";
-import { fetchTeamGoalTiming } from "./goal-timing";
+import { fetchTeamFirstGoals } from "./first-goal";
 import { getLeague } from "./leagues";
 import { persistGet, persistSet } from "../persist";
 
@@ -106,6 +106,14 @@ function cacheGet<T>(key: string): T | null {
     if (!stored) return null;
     if (stored.expiresAt < Date.now()) return null;
     memory.set(key, stored);
+    /* Instrument de vérification (test utilisateur « pas de recalcul ») :
+       chaque lecture servie depuis le stockage persistant est comptée —
+       window.__voltrixAnalysisCacheHits est lisible depuis la console ou
+       l'automatisation navigateur. */
+    if (typeof window !== "undefined") {
+      const w = window as typeof window & { __voltrixAnalysisCacheHits?: number };
+      w.__voltrixAnalysisCacheHits = (w.__voltrixAnalysisCacheHits ?? 0) + 1;
+    }
     return stored.payload;
   } catch {
     return null;
@@ -147,11 +155,23 @@ export async function analyzeMatch(
   opts: AnalyzeOptions = {},
 ): Promise<AnalyzeResult | null> {
   const { matchId, leagueCode, date } = req;
-  const isLiveOrDone = (() => {
-    const matchTime = new Date(date).getTime();
-    return Date.now() > matchTime - 60 * 60 * 1000;
+  /* TTL de l'analyse (le calcul LOURD — moteur + historiques) :
+   *   à venir  → 30 min ;
+   *   en direct → 10 min (exigence produit : calculé une fois, pas de
+   *               recalcul au retour dans l'App, même 5 min après) ;
+   *   terminé  → 6 h (un match fini ne bouge plus).
+   * Le score en direct reste frais via le scoreboard (TTL propre,
+   * 60 s le jour J) rafraîchi séparément — jamais via le moteur. */
+  const matchTime = new Date(date).getTime();
+  const isFinished = (() => {
+    if (!Number.isFinite(matchTime)) return false;
+    return Date.now() > matchTime + 3 * 60 * 60 * 1000;
   })();
-  const ttl = isLiveOrDone ? 60 * 1000 : 30 * 60 * 1000;
+  const isLive = (() => {
+    if (!Number.isFinite(matchTime)) return false;
+    return !isFinished && Date.now() > matchTime - 60 * 60 * 1000;
+  })();
+  const ttl = isFinished ? 6 * 60 * 60 * 1000 : isLive ? 10 * 60 * 1000 : 30 * 60 * 1000;
 
   const key = `analysis:${matchId}`;
   const cachedEntry = cacheGet<AnalyzeResult>(key);
@@ -186,18 +206,19 @@ export async function analyzeMatch(
      constante fixe dupliquait les matchs quand les deux coincideaient —
      [season - 1, season] comme lineups.ts. */
   const seasons = [season - 1, season].filter((s) => s > 0);
-  const [homeSchedule, awaySchedule, goalTimingHome, goalTimingAway] = await Promise.all([
+  const [homeSchedule, awaySchedule, firstGoalsHome, firstGoalsAway] = await Promise.all([
     fetchTeamSchedule(leagueCode, event.home.team.id, seasons).catch(() => [] as EspnScheduleGame[]),
     fetchTeamSchedule(leagueCode, event.away.team.id, seasons).catch(() => [] as EspnScheduleGame[]),
-    /* minutes de buts réelles (10 derniers matchs par équipe) — UNIQUEMENT
-     * pour l'analyse complète (page détail) : les summaries sont mis en
-     * cache et partagés avec l'onglet Compos. */
+    /* minutes RÉELLES des 1ers buts (12 derniers matchs par équipe) —
+     * moteur dédié first-goal.ts, uniquement pour l'analyse complète
+     * (page détail) : les summaries sont mis en cache et partagés avec
+     * l'onglet Compos. */
     opts.light
       ? Promise.resolve(null)
-      : fetchTeamGoalTiming(leagueCode, event.home.team.id, seasons, event.date).catch(() => null),
+      : fetchTeamFirstGoals(leagueCode, event.home.team.id, seasons, event.date).catch(() => null),
     opts.light
       ? Promise.resolve(null)
-      : fetchTeamGoalTiming(leagueCode, event.away.team.id, seasons, event.date).catch(() => null),
+      : fetchTeamFirstGoals(leagueCode, event.away.team.id, seasons, event.date).catch(() => null),
   ]);
 
   /* 3. Classement + blessures (par ligue) */
@@ -233,7 +254,7 @@ export async function analyzeMatch(
     weatherImpact: weather ? { goalsFactor: weather.goalsFactor } : null,
     nowMs: Date.now(),
     leagueTeamsCount: standings.length || 20,
-    goalTiming: { home: goalTimingHome, away: goalTimingAway },
+    firstGoals: { home: firstGoalsHome, away: firstGoalsAway },
   });
 
   /* H2H : sortie BILATÉRALE du moteur (union des deux calendriers,

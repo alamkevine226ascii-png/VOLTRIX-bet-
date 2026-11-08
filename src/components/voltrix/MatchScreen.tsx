@@ -542,22 +542,94 @@ export function MatchScreen({
                   </div>
 
                   <SectionTitle>Premier but</SectionTitle>
+                  {/* ---- carte titre : minute attendue (moteur dédié) ---- */}
+                  {pred.firstGoalHeadline ? (
+                    <div className="mb-3 rounded-2xl bg-ink-3 px-3.5 py-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-[9px] font-black uppercase tracking-widest text-white/40">
+                          1er but attendu
+                        </p>
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[8px] font-black uppercase tracking-wide ${
+                            pred.firstGoalHeadline.basis === "equipes"
+                              ? "bg-neon/15 text-neon"
+                              : "bg-white/10 text-white/50"
+                          }`}
+                        >
+                          {pred.firstGoalHeadline.basis === "equipes"
+                            ? `${pred.firstGoalHeadline.sampleMatches} matchs réels`
+                            : "profil de ligue"}
+                        </span>
+                      </div>
+                      {pred.firstGoalHeadline.expectedMinute != null ? (
+                        <>
+                          <p className="mt-1 font-display text-[30px] leading-none tracking-wide text-white">
+                            <span className="text-neon">{pred.firstGoalHeadline.expectedMinute}</span>
+                            <span className="ml-1 text-[14px] font-bold text-white/60">
+                              e minute
+                            </span>
+                          </p>
+                          <p className="mt-1 text-[9.5px] font-semibold text-white/50">
+                            Fenêtre la plus probable : {pred.firstGoalTiming[pred.firstGoalHeadline.bestWindow]?.label} (
+                            {pct(pred.firstGoalHeadline.bestWindowProb, 1)})
+                          </p>
+                        </>
+                      ) : (
+                        <p className="mt-1 text-[12px] font-bold leading-snug text-white/80">
+                          Match très fermé : {pct(pred.firstGoalHeadline.noGoalProb)} de risque de 0-0 —
+                          le 1er but n&apos;est pas garanti.
+                        </p>
+                      )}
+                      {pred.firstGoalHeadline.basis === "equipes" &&
+                      (pred.firstGoalHeadline.homeMedianMinute != null || pred.firstGoalHeadline.awayMedianMinute != null) ? (
+                        <div className="mt-2.5 grid grid-cols-2 gap-2">
+                          {[
+                            { name: detail.home.name, med: pred.firstGoalHeadline.homeMedianMinute },
+                            { name: detail.away.name, med: pred.firstGoalHeadline.awayMedianMinute },
+                          ].map((t) => (
+                            <div key={t.name} className="rounded-xl bg-black/40 px-2.5 py-2">
+                              <p className="truncate text-[8px] font-bold uppercase tracking-wider text-white/35">
+                                {t.name}
+                              </p>
+                              <p className="mt-0.5 text-[10.5px] font-black text-white/85">
+                                {t.med != null ? (
+                                  <>
+                                    1er but médian <span className="text-neon">{t.med}e</span>
+                                  </>
+                                ) : (
+                                  "—"
+                                )}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
                   <div className="space-y-1.5">
-                    {pred.firstGoalTiming.map((w) => (
-                      <div key={w.window} className="flex items-center gap-3 rounded-2xl bg-ink-3 px-3.5 py-2">
+                    {pred.firstGoalTiming.map((w, i) => (
+                      <div
+                        key={w.window}
+                        className={`flex items-center gap-3 rounded-2xl px-3.5 py-2 ${
+                          pred.firstGoalHeadline && i === pred.firstGoalHeadline.bestWindow
+                            ? "bg-ink-3 ring-1 ring-neon/40"
+                            : "bg-ink-3"
+                        }`}
+                      >
                         <span className="w-[110px] text-[9.5px] font-bold text-white/60">{w.label}</span>
                         <div className="h-[6px] flex-1 overflow-hidden rounded-full bg-black/50">
-                          <div className="h-full rounded-full bg-white/70" style={{ width: `${Math.min(100, w.prob * 300)}%` }} />
+                          <div
+                            className={`h-full rounded-full ${pred.firstGoalHeadline && i === pred.firstGoalHeadline.bestWindow ? "bg-neon" : "bg-white/70"}`}
+                            style={{ width: `${Math.min(100, w.prob * 300)}%` }}
+                          />
                         </div>
                         <span className="w-11 text-right text-[11px] font-black text-white/80">{pct(w.prob, 1)}</span>
                       </div>
                     ))}
                     <p className="text-[8.5px] leading-relaxed text-white/35">
                       {pred.firstGoalTiming[0]?.basis === "equipes"
-                        ? `Calcul sur les minutes de buts réellement observées des ${detail.home.name} et ${detail.away.name} (${pred.firstGoalTiming[0]?.sampleGoals ?? 0} buts, summaries ESPN) fondues avec le profil de ligue.`
-                        : pred.firstGoalTiming[0]?.basis === "ligue"
-                          ? "Minutes de buts des équipes indisponibles chez ESPN : calcul sur le profil empirique de ligue (échantillon documenté dans le moteur)."
-                          : "Estimation Poisson homogène (minutes de buts des équipes et profil indisponibles)."}
+                        ? `Moteur dédié : minutes réelles des 1ers buts des ${pred.firstGoalTiming[0]?.sampleMatches ?? 0} derniers matchs de ${detail.home.name} et ${detail.away.name} (summaries ESPN), fusionnées puis mises à l'échelle sur les buts attendus du match (λ ×${pred.firstGoalHeadline?.lambdaScale ?? 1}).`
+                        : "Minutes des 1ers buts indisponibles chez ESPN pour ces équipes : calcul sur le profil empirique de ligue (échantillon documenté dans le moteur)."}
                     </p>
                     <div className="mt-2 grid grid-cols-3 gap-2">
                       {[

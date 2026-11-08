@@ -153,11 +153,25 @@ export interface MatchDetailDTO {
       window: string;
       label: string;
       prob: number;
-      /** Source du calcul : minutes de buts réelles des équipes, profil de
-       * ligue empirique, ou repli modèle (Poisson homogène). */
-      basis?: "equipes" | "ligue" | "modele";
-      sampleGoals?: number;
+      /** Source du calcul : minutes RÉELLES des 1ers buts des matchs des
+       * deux équipes (summaries ESPN) ou profil de ligue empirique. */
+      basis?: "equipes" | "ligue";
+      sampleMatches?: number;
     }>;
+    /** Titre « 1er but attendu vers la Xe minute » (moteur dédié
+     * first-goal.ts) : minute médiane, fenêtre la plus probable,
+     * tempo médian de chaque équipe, traçabilité du calcul. */
+    firstGoalHeadline?: {
+      expectedMinute: number | null;
+      bestWindow: number;
+      bestWindowProb: number;
+      noGoalProb: number;
+      homeMedianMinute: number | null;
+      awayMedianMinute: number | null;
+      basis: "equipes" | "ligue";
+      sampleMatches: number;
+      lambdaScale: number;
+    };
     firstToScore: { home: number; away: number; noGoal: number };
     lambda: { home: number; away: number; total: number };
     confidence: number; // 1..5
