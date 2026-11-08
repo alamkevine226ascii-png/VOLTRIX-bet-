@@ -22,8 +22,9 @@ const UA = "Mozilla/5.0 (compatible; VOLTRIX-App/1.0; +local)";
 
 async function handler(req: NextRequest, ctx: { params: Promise<{ path: string[] }> }) {
   const { path } = await ctx.params;
-  const [hostKey, ...rest] = path;
-  const target = HOSTS[hostKey];
+  const first = path[0];
+  const rest = path.slice(1);
+  const target = first ? HOSTS[first] : undefined;
   if (!target || rest.length === 0) {
     return NextResponse.json({ error: "Relai ESPN : hôte inconnu" }, { status: 400 });
   }

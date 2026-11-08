@@ -516,7 +516,8 @@ export async function runModelCheck(
   const now = new Date()
   const from = new Date(now.getTime() - 60 * 86400000)
   const pastEvents: ScoreboardEventDTO[] = []
-  for (const org of ['UFC', 'PFL']) {
+  // Directive produit : vérification du modèle sur l'UFC uniquement.
+  for (const org of ['UFC']) {
     try {
       const evts = (await getScoreboard(org, from, endOfUtcDay(now)))
         .filter((e) => e.status === 'TERMINE')

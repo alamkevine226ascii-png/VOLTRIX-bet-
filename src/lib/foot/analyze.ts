@@ -5,7 +5,8 @@
    Portage navigateur de src/lib/analyze.ts du dépôt VOLTRIX-bet :
    orchestration identique (scoreboard → historiques → classement
    → blessures → météo → moteur), mais SANS base de données —
-   cache mémoire + sessionStorage uniquement.
+   cache mémoire + stockage local persistant (10 min minimum,
+   exigence produit : reprise sans recalcul après fermeture).
    ============================================================ */
 
 import {
@@ -18,7 +19,9 @@ import {
   type EspnScheduleGame,
 } from "./espn";
 import { runEngine, type MatchAnalysis } from "./prediction";
+import { fetchTeamGoalTiming } from "./goal-timing";
 import { getLeague } from "./leagues";
+import { persistGet, persistSet } from "../persist";
 
 export interface AnalyzeRequest {
   matchId: string;
@@ -85,7 +88,7 @@ export function currentSeasonYear(matchDate: string, leagueCode: string): number
   return month >= 7 ? year : year - 1;
 }
 
-/* ---------- Cache local (mémoire + sessionStorage) ---------- */
+/* ---------- Cache local (mémoire + stockage persistant) ---------- */
 
 interface CacheEntry<T> {
   payload: T;
@@ -99,15 +102,11 @@ function cacheGet<T>(key: string): T | null {
   const mem = memory.get(key);
   if (mem && mem.expiresAt > Date.now()) return mem.payload as T;
   try {
-    const raw = sessionStorage.getItem(SS_PREFIX + key);
-    if (!raw) return null;
-    const entry = JSON.parse(raw) as CacheEntry<T>;
-    if (entry.expiresAt < Date.now()) {
-      sessionStorage.removeItem(SS_PREFIX + key);
-      return null;
-    }
-    memory.set(key, entry);
-    return entry.payload;
+    const stored = persistGet<CacheEntry<T>>(SS_PREFIX + key);
+    if (!stored) return null;
+    if (stored.expiresAt < Date.now()) return null;
+    memory.set(key, stored);
+    return stored.payload;
   } catch {
     return null;
   }
@@ -116,62 +115,24 @@ function cacheGet<T>(key: string): T | null {
 function cacheSet<T>(key: string, payload: T, ttlMs: number): void {
   const entry: CacheEntry<T> = { payload, expiresAt: Date.now() + ttlMs };
   memory.set(key, entry);
-  try {
-    sessionStorage.setItem(SS_PREFIX + key, JSON.stringify(entry));
-  } catch {
-    /* quota : le cache mémoire suffit */
-  }
+  // Stockage PERSISTANT : l'analyse survit à la fermeture de l'App
+  // (au moins 10 min — TTL 30 min avant match, 1 min en direct).
+  persistSet(SS_PREFIX + key, entry, ttlMs);
 }
 
 export function clearFootballCache(): void {
   memory.clear();
   try {
+    if (typeof window === "undefined" || !window.localStorage) return;
     const toRemove: string[] = [];
-    for (let i = 0; i < sessionStorage.length; i++) {
-      const k = sessionStorage.key(i);
+    for (let i = 0; i < window.localStorage.length; i++) {
+      const k = window.localStorage.key(i);
       if (k && k.startsWith(SS_PREFIX)) toRemove.push(k);
     }
-    for (const k of toRemove) sessionStorage.removeItem(k);
+    for (const k of toRemove) window.localStorage.removeItem(k);
   } catch {
     /* ignore */
   }
-}
-
-/* ---------- H2H : confrontations directes tirées des calendriers ---------- */
-
-function computeH2hFromSchedules(
-  homeId: string,
-  homeName: string,
-  awayId: string,
-  awayName: string,
-  homeSchedule: EspnScheduleGame[],
-) {
-  const rows: AnalyzeResult["h2h"] = [];
-  for (const g of homeSchedule) {
-    if (g.opponentId !== awayId || !g.completed) continue;
-    if (g.teamScore == null || g.opponentScore == null) continue;
-    const isHome = g.homeAway === "home";
-    const hs = isHome ? g.teamScore : g.opponentScore;
-    const as = isHome ? g.opponentScore : g.teamScore;
-    rows.push({
-      date: g.date,
-      homeTeam: isHome ? homeName : awayName,
-      awayTeam: isHome ? awayName : homeName,
-      score: `${hs}-${as}`,
-      winner: hs > as ? "home" : hs < as ? "away" : "draw",
-    });
-  }
-  rows.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  const top = rows.slice(0, 8);
-  return {
-    h2h: top,
-    h2hSummary: {
-      homeWins: top.filter((r) => r.winner === "home").length,
-      draws: top.filter((r) => r.winner === "draw").length,
-      awayWins: top.filter((r) => r.winner === "away").length,
-      total: top.length,
-    },
-  };
 }
 
 /* ---------- Analyse complète ---------- */
@@ -220,11 +181,23 @@ export async function analyzeMatch(
 
   const season = currentSeasonYear(date, leagueCode);
 
-  /* 2. Historiques des 2 équipes (saison courante + précédente) */
-  const seasons = [PREV_SEASON, season].filter((s) => s > 0);
-  const [homeSchedule, awaySchedule] = await Promise.all([
+  /* 2. Historiques des 2 équipes (saison courante + précédente).
+     Audit 2026-11-09 (agent A) : l'ancien [PREV_SEASON, season] avec
+     constante fixe dupliquait les matchs quand les deux coincideaient —
+     [season - 1, season] comme lineups.ts. */
+  const seasons = [season - 1, season].filter((s) => s > 0);
+  const [homeSchedule, awaySchedule, goalTimingHome, goalTimingAway] = await Promise.all([
     fetchTeamSchedule(leagueCode, event.home.team.id, seasons).catch(() => [] as EspnScheduleGame[]),
     fetchTeamSchedule(leagueCode, event.away.team.id, seasons).catch(() => [] as EspnScheduleGame[]),
+    /* minutes de buts réelles (10 derniers matchs par équipe) — UNIQUEMENT
+     * pour l'analyse complète (page détail) : les summaries sont mis en
+     * cache et partagés avec l'onglet Compos. */
+    opts.light
+      ? Promise.resolve(null)
+      : fetchTeamGoalTiming(leagueCode, event.home.team.id, seasons, event.date).catch(() => null),
+    opts.light
+      ? Promise.resolve(null)
+      : fetchTeamGoalTiming(leagueCode, event.away.team.id, seasons, event.date).catch(() => null),
   ]);
 
   /* 3. Classement + blessures (par ligue) */
@@ -260,15 +233,14 @@ export async function analyzeMatch(
     weatherImpact: weather ? { goalsFactor: weather.goalsFactor } : null,
     nowMs: Date.now(),
     leagueTeamsCount: standings.length || 20,
+    goalTiming: { home: goalTimingHome, away: goalTimingAway },
   });
 
-  const { h2h, h2hSummary } = computeH2hFromSchedules(
-    event.home.team.id,
-    event.home.team.displayName,
-    event.away.team.id,
-    event.away.team.displayName,
-    homeSchedule,
-  );
+  /* H2H : sortie BILATÉRALE du moteur (union des deux calendriers,
+   * dédupliquée par eventId — Task 28 §7). L'ancien scan mono-côté
+   * d'analyze.ts écrasait ce résultat et manquait les confrontations
+   * « B reçoit A » (audit 2026-11-09, agent A). */
+  const { h2h, h2hSummary } = { h2h: analysis.h2h, h2hSummary: analysis.h2hSummary };
 
   const result: AnalyzeResult = {
     ...analysis,

@@ -146,8 +146,15 @@ export function calibrateTotals(
     overProb(totalGoalsDist(s * (lh + la)), anchorLine);
 
   // Si le modèle est déjà aligné sur le marché → scale 1
-  let lo = 0.25;
-  let hi = 2.5;
+  // Bornes élargies [0.05, 12] (audit « moteur de pronostics ») : les anciennes
+  // bornes [0.25, 2.5] pouvaient ne pas encadrer la cible sur les cas extrêmes
+  // (ex. λ total 1.0 et marché à P(over 1.5) = 0.95 → échelle requise ≈ 4.8) ;
+  // la dichotomie convergeait alors SILENCIEUSEMENT vers la borne 2.5 et la
+  // calibration affichait P(over) ≈ 0.71 contre 0.95 côté marché. Avec λt
+  // borné par le moteur (≤ 7.2), l'échelle 12 couvre toute cible atteignable
+  // pour les lignes 0.5..12.5 ; overAtScale reste monotone en s.
+  let lo = 0.05;
+  let hi = 12;
   let scale = 1;
   if (Math.abs(overAtScale(1) - target) < 0.005) {
     scale = 1;

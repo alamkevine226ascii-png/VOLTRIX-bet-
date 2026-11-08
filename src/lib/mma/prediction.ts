@@ -244,49 +244,61 @@ export function computePrediction(
   }
 }
 
-/** Méthode de victoire la plus fréquente dans le palmarès du combattant. */
+/**
+ * Méthode de victoire la plus fréquente dans le palmarès du combattant.
+ *
+ * Audit 2026-11-09 (point A5) : l'ancienne version moyennait le palmarès
+ * (méthodes par VICTOIRE : 7/14 = 50 %) avec les stats de carrière ESPN
+ * (koPercentage + tkoPercentage : part par COMBAT : 10/17 = 58,8 %) — deux
+ * dénominateurs différents, moyenne sans sens, étiquetée à tort « % des
+ * victoires ». Désormais : UNE SEULE source à la fois, correctement
+ * étiquetée. Priorité au palmarès (records/0, par victoire) ; repli sur
+ * les stats de carrière (par combat) avec un libellé honnête.
+ */
 function predictMethod(f: FighterView): PredictionMethod {
+  // Source 1 — palmarès : répartition DES VICTOIRES.
   const wins = f.record.wins
-  const rates: { label: PredictionMethod['label']; rate: number | null }[] = []
-
-  if (wins != null && wins > 0) {
+  if (wins != null && wins > 0 && (f.record.winsByKo != null || f.record.winsBySub != null)) {
     const ko = (f.record.winsByKo ?? 0) / wins
     const sub = (f.record.winsBySub ?? 0) / wins
-    rates.push({ label: 'KO/TKO', rate: ko })
-    rates.push({ label: 'Soumission', rate: sub })
-    rates.push({ label: 'Décision', rate: Math.max(0, 1 - ko - sub) })
+    const dec = Math.max(0, 1 - ko - sub)
+    const best = { ko, sub, dec }
+    const label = (Object.keys(best) as (keyof typeof best)[]).reduce((a, b) =>
+      best[a] >= best[b] ? a : b
+    )
+    const share = Math.round(best[label] * 100)
+    const labelFr = label === 'ko' ? 'KO/TKO' : label === 'sub' ? 'Soumission' : 'Décision'
+    return {
+      label: labelFr,
+      share,
+      detail: `${share} % des ${wins} victoires répertoriées de ${f.fullName} ont été obtenues par ${labelFr.toLowerCase()} (source : palmarès ESPN).`,
+    }
   }
 
+  // Source 2 — stats de carrière : répartition DES COMBATS (dénominateur
+  // différent, libellé distinct — pas de mélange avec la source 1).
   const s = f.stats
   if (s) {
-    const career: { label: PredictionMethod['label']; rate: number | null }[] = [
-      { label: 'KO/TKO', rate: pct2rate(s.koPercentage) != null ? pct2rate(s.koPercentage)! + pct2rate(s.tkoPercentage)! : null },
-      { label: 'Soumission', rate: null },
-      { label: 'Décision', rate: pct2rate(s.decisionPercentage) },
-    ]
-    for (const c of career) {
-      if (c.rate == null) continue
-      const existing = rates.find((r) => r.label === c.label)
-      if (existing && existing.rate != null) existing.rate = (existing.rate + c.rate) / 2
-      else if (!existing) rates.push({ label: c.label, rate: c.rate })
+    const ko = (pct2rate(s.koPercentage) ?? 0) + (pct2rate(s.tkoPercentage) ?? 0)
+    const dec = pct2rate(s.decisionPercentage)
+    if ((ko > 0 || dec != null) && Number.isFinite(ko)) {
+      const decRate = dec ?? Math.max(0, 1 - ko)
+      const label = ko >= decRate ? 'ko' : 'dec'
+      const best = label === 'ko' ? ko : decRate
+      const share = Math.round(best * 100)
+      const labelFr = label === 'ko' ? 'KO/TKO' : 'Décision'
+      return {
+        label: labelFr,
+        share,
+        detail: `${share} % des combats de ${f.fullName} se sont terminés par ${labelFr === 'KO/TKO' ? 'KO/TKO' : 'décision'} (source : stats de carrière ESPN, part par combat — palmarès détaillé non publié).`,
+      }
     }
   }
 
-  const valid = rates.filter((r) => r.rate != null && Number.isFinite(r.rate)) as { label: PredictionMethod['label']; rate: number }[]
-  if (valid.length === 0) {
-    return {
-      label: 'Décision',
-      share: null,
-      detail: `Répartition des méthodes de victoire non disponible dans les données ESPN de ${f.fullName} — méthode non déterminable.`,
-    }
-  }
-  valid.sort((x, y) => y.rate - x.rate)
-  const best = valid[0]
-  const share = Math.round(best.rate * 100)
   return {
-    label: best.label,
-    share,
-    detail: `${share} % des victoires répertoriées de ${f.fullName} ont été obtenues par ${best.label.toLowerCase()} (source : palmarès ESPN)${valid.length < 3 ? ' — répartition partielle' : ''}.`,
+    label: 'Décision',
+    share: null,
+    detail: `Répartition des méthodes de victoire non disponible dans les données ESPN de ${f.fullName} — méthode non déterminable.`,
   }
 }
 

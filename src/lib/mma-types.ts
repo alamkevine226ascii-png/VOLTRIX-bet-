@@ -28,6 +28,10 @@ export interface MmaFighter {
   koWins: number | null;
   subWins: number | null;
   decWins: number | null;
+  /* méthodes de DÉFAITE (records/0 ESPN) — base du byMethod adversaire */
+  koLosses: number | null;
+  subLosses: number | null;
+  decLosses: number | null;
   totalFights: number | null;
   /* stats moyennes de carrière ESPN */
   strikesLandedPerMin: number | null;
@@ -73,6 +77,8 @@ export interface MmaFight {
   winner: "A" | "B" | null;
   method: string | null; // "KO/TKO — R2" si terminé
   venue: { name: string | null; city: string | null; country: string | null };
+  /** Combat prospectif : au moins un adversaire non annoncé (TBD ESPN). */
+  prospect: boolean;
 }
 
 export interface MmaEventGroup {
@@ -81,9 +87,17 @@ export interface MmaEventGroup {
   eventName: string;
   region: string;
   fights: MmaFight[];
+  /** Identifiant ESPN de l'événement (catégorie de filtrage). */
+  eventId: string;
+  /** Date ISO de l'événement. */
+  eventDate: string;
+  /** Événement contenant des combats à adversaire non annoncé. */
+  hasProspects: boolean;
 }
 
 export interface MmaEventsResponse {
+  /** Date de construction de la réponse (les événements UFC ne dépendent
+   *  pas du sélecteur de date — catégories globales à venir). */
   date: string;
   totalFights: number;
   events: MmaEventGroup[];
@@ -128,13 +142,23 @@ export interface MmaFightDetail {
     missingDimensions: string[];
     /* méthode de victoire la plus probable du favori (palmarès ESPN) */
     method: { label: "KO/TKO" | "Soumission" | "Décision"; share: number | null; detail: string } | null;
-    /* répartition victoire × méthode, dérivée des carrières observées */
+    /* répartition victoire × méthode — victoires du combattant fondues
+     * avec les méthodes de DÉFAITE de l'adversaire (records/0 ESPN) */
     byMethod: { a: MmaMethodMix; b: MmaMethodMix };
-    /* probabilité d'un arrêt au round N — modèle à prior public (voir note) */
+    /* probabilité d'un arrêt au round N — rounds de fin RÉELS d'ESPN
+     * (status.period), personnalisés par combattant puis fondus */
     roundFinish: Array<{ round: number; prob: number }>;
-    goesToDecision: number;
+    goesToDecision: number | null;
     totalRoundsExpected: number | null;
     roundModelNote: string;
+    /* transparence du modèle de rounds */
+    roundBasis: {
+      priorSample: number | null; // combats UFC du prior calculé
+      documentedWinsA: number | null;
+      documentedWinsB: number | null;
+      priorWeightA: number | null; // part du prior dans les taux de A
+      priorWeightB: number | null;
+    } | null;
     recommendedBets: Array<{ market: string; pick: string; prob: number; note: string }>;
     keyFactors: Array<{ title: string; text: string }>;
     watchOuts: Array<{ title: string; text: string }>;

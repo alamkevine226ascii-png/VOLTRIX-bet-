@@ -11,10 +11,11 @@
    méthodes sont dérivés des carrières observées et étiquetés.
    ============================================================ */
 
-import { useCallback, useEffect, useMemo, useState, type UIEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type UIEvent } from "react";
 import { motion } from "framer-motion";
 import {
   ChevronLeft,
+  Hourglass,
   Loader2,
   MapPin,
   RefreshCw,
@@ -182,6 +183,26 @@ export function MmaFightScreen({
   useEffect(() => {
     void load();
   }, [load]);
+
+  /* recharge automatique : quand les indicateurs dérivés ou le prior de
+   * rounds se calculent en arrière-plan, on réactualise la fiche (max 3
+   * fois, espacées de 9 s) — les pronos rounds/personnalisés arrivent
+   * sans action manuelle. */
+  const autoReloads = useRef(0);
+  useEffect(() => {
+    if (!detail) return;
+    const pendingSomething =
+      detail.derivedPending ||
+      (detail.prediction.available &&
+        detail.prediction.roundFinish.length === 0 &&
+        detail.prediction.goesToDecision == null);
+    if (!pendingSomething || autoReloads.current >= 3) return;
+    const t = setTimeout(() => {
+      autoReloads.current += 1;
+      void load();
+    }, 9000);
+    return () => clearTimeout(t);
+  }, [detail, load]);
 
   const pred = detail?.prediction;
   const fight = detail?.fight;
@@ -382,7 +403,9 @@ export function MmaFightScreen({
             {pred?.available ? (
               <section className="rounded-[26px] bg-neon px-5 pb-4 pt-4 text-black">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-[9px] font-black uppercase tracking-[0.2em] text-black/50">Prono du moteur</p>
+                  <p className="text-[9px] font-black uppercase tracking-[0.2em] text-black/50">
+                    {done ? "Prono du moteur · reconstruction a posteriori" : "Prono du moteur"}
+                  </p>
                   <span className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-wider text-black/70">
                     <span title={`Confiance ${pred.confidence}/5`}>{confidenceStars(pred.confidence)}</span>
                     {pred.confidenceLabel}
@@ -517,7 +540,7 @@ export function MmaFightScreen({
                           <div key={s.label} className="flex items-center gap-2.5 rounded-2xl bg-ink-3 px-3.5 py-2">
                             <span className="w-[128px] shrink-0 truncate text-[9px] font-bold text-white/70" title={s.label}>{s.label.replace(" par ", " · ")}</span>
                             <div className="h-[6px] flex-1 overflow-hidden rounded-full bg-black/50">
-                              <div className="h-full rounded-full bg-neon" style={{ width: `${Math.min(100, s.p * 400)}%` }} />
+                              <div className="h-full rounded-full bg-neon" style={{ width: `${Math.min(100, s.p * 250)}%` }} />
                             </div>
                             <span className="w-11 text-right text-[11px] font-black text-white/80">{pct(s.p, 1)}</span>
                           </div>
@@ -601,9 +624,14 @@ export function MmaFightScreen({
 
                   <SectionTitle>Distance</SectionTitle>
                   <div className="space-y-1.5">
-                    <ProbBar label="Ne passe pas la distance" value={pred ? 1 - pred.goesToDecision : undefined} />
+                    <ProbBar label="Ne passe pas la distance" value={pred?.goesToDecision != null ? 1 - pred.goesToDecision : undefined} />
                     <ProbBar label="Va jusqu'à la décision" value={pred?.goesToDecision ?? undefined} />
                   </div>
+                  {pred?.goesToDecision == null ? (
+                    <p className="mt-1 text-[9px] font-semibold text-white/35">
+                      Distance non déterminable : répartition des victoires/défaites incomplète chez ESPN.
+                    </p>
+                  ) : null}
 
                   {pred?.available ? (
                     <>
@@ -630,30 +658,52 @@ export function MmaFightScreen({
               {/* ---------------- ROUNDS ---------------- */}
               {tab === "rounds" ? (
                 <div>
-                  <SectionTitle>Le combat s&apos;arrête au…</SectionTitle>
-                  <div className="space-y-1.5">
-                    {pred?.roundFinish.map((r) => (
-                      <ProbBar key={r.round} label={`Round ${r.round}`} value={r.prob} />
-                    ))}
-                    <ProbBar label="Décision (distance)" value={pred?.goesToDecision ?? undefined} />
-                  </div>
+                  {pred && pred.roundFinish.length > 0 ? (
+                    <>
+                      <SectionTitle>Le combat s&apos;arrête au…</SectionTitle>
+                      <div className="space-y-1.5">
+                        {pred.roundFinish.map((r) => (
+                          <ProbBar key={r.round} label={`Round ${r.round}`} value={r.prob} />
+                        ))}
+                        <ProbBar label="Décision (distance)" value={pred.goesToDecision ?? undefined} />
+                      </div>
 
-                  <SectionTitle>Lecture du moteur</SectionTitle>
-                  <div className="grid grid-cols-3 gap-2">
-                    <KpiTile label="Rounds attendus" value={pred?.totalRoundsExpected != null ? pred.totalRoundsExpected.toFixed(1) : "—"} tone="neon" />
-                    <KpiTile label="Format" value={fight.rounds ? `${fight.rounds} rounds` : "—"} />
-                    <KpiTile
-                      label="Fin attendue"
-                      value={pred ? (1 - pred.goesToDecision > 0.5 ? "Avant la limite" : "Aux points") : "—"}
-                    />
-                  </div>
-                  <p className="mt-3 rounded-2xl bg-ink-3 px-4 py-3 text-[10.5px] leading-relaxed text-white/55">
-                    {pred
-                      ? 1 - pred.goesToDecision > 0.5
-                        ? `Les deux combattants finissent la majorité de leurs victoires avant la limite : le moteur anticipe un arrêt, avec le round ${pred.roundFinish.reduce((a, b) => (b.prob > a.prob ? b : a)).round} comme fenêtre la plus probable.`
-                        : `Les deux combattants vont régulièrement chercher la décision : le moteur donne ${pct(pred.goesToDecision, 0)} de chances que les juges aient le dernier mot.`
-                      : ""}
-                  </p>
+                      <SectionTitle>Lecture du moteur</SectionTitle>
+                      <div className="grid grid-cols-3 gap-2">
+                        <KpiTile label="Rounds attendus" value={pred.totalRoundsExpected != null ? pred.totalRoundsExpected.toFixed(1) : "—"} tone="neon" />
+                        <KpiTile label="Format" value={fight.rounds ? `${fight.rounds} rounds` : "—"} />
+                        <KpiTile
+                          label="Fin attendue"
+                          value={pred.goesToDecision != null ? (1 - pred.goesToDecision > 0.5 ? "Avant la limite" : "Aux points") : "—"}
+                        />
+                      </div>
+                      <p className="mt-3 rounded-2xl bg-ink-3 px-4 py-3 text-[10.5px] leading-relaxed text-white/55">
+                        {pred.goesToDecision != null
+                          ? 1 - pred.goesToDecision > 0.5
+                            ? `Les rounds de fin réels des deux combattants penchent pour un arrêt : le moteur situe la fenêtre la plus probable au round ${pred.roundFinish.reduce((a, b) => (b.prob > a.prob ? b : a)).round}.`
+                            : `Les rounds de fin réels des deux combattants mènent souvent à la décision : le moteur donne ${pct(pred.goesToDecision, 0)} de chances que les juges aient le dernier mot.`
+                          : ""}
+                      </p>
+                      {pred.roundBasis ? (
+                        <p className="mt-2 rounded-2xl bg-black/40 px-3.5 py-2.5 text-[8.5px] leading-relaxed text-white/40">
+                          Base : {pred.roundBasis.documentedWinsA ?? 0} victoire(s) documentée(s) {aShort}
+                          {pred.roundBasis.priorWeightA != null ? ` (part du prior UFC : ${Math.round(pred.roundBasis.priorWeightA * 100)} %)` : ""}
+                          {" · "}{pred.roundBasis.documentedWinsB ?? 0} victoire(s) documentée(s) {bShort}
+                          {pred.roundBasis.priorWeightB != null ? ` (part du prior : ${Math.round(pred.roundBasis.priorWeightB * 100)} %)` : ""}
+                          {pred.roundBasis.priorSample != null ? ` · prior calculé sur ${pred.roundBasis.priorSample} combats UFC` : " · prior en construction"}.
+                        </p>
+                      ) : null}
+                    </>
+                  ) : (
+                    <div className="flex flex-col items-center gap-2 py-10 text-center">
+                      <Hourglass size={24} className="text-white/30" />
+                      <p className="text-[11.5px] font-semibold text-white/50">Modèle de rounds en préparation.</p>
+                      <p className="max-w-[250px] text-[10px] leading-relaxed text-white/35">
+                        Les rounds de fin réels de chaque combattant et le prior UFC se collectent en arrière-plan
+                        (première consultation seulement). La fiche se réactualise automatiquement.
+                      </p>
+                    </div>
+                  )}
                   <p className="mt-2 text-[8.5px] leading-relaxed text-white/30">{pred?.roundModelNote}</p>
                 </div>
               ) : null}
@@ -680,8 +730,8 @@ export function MmaFightScreen({
                       label="Précision frappes"
                       a={detail.fighterA.strikingAccuracy}
                       b={detail.fighterB.strikingAccuracy}
-                      fmt={(x) => pct(x)}
-                      max={0.7}
+                      fmt={(x) => pct(x / 100)}
+                      max={70}
                     />
                     <StatRow
                       label="Takedowns / 15 min"
@@ -694,8 +744,8 @@ export function MmaFightScreen({
                       label="Défense takedown"
                       a={detail.fighterA.takedownDefense}
                       b={detail.fighterB.takedownDefense}
-                      fmt={(x) => pct(x)}
-                      max={1}
+                      fmt={(x) => pct(x / 100)}
+                      max={100}
                     />
                     <StatRow
                       label="Soumissions / 15 min"

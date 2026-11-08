@@ -2,14 +2,31 @@
 // VOLTRIX bet — Moteur de prédiction
 // Ensemble : Poisson (45%) + Elo (30%) + Forme (25%)
 // Marchés : 1X2, Double Chance, O/U 1.5/2.5/3.5, BTTS,
-//           Moment du 1er but, Équipe à marquer en 1er
+//           Moment du 1er but (hazard par morceaux calé sur les
+//           minutes de buts réelles d'ESPN — goal-timing.ts —,
+//           repli Poisson homogène si aucune donnée),
+//           Équipe à marquer en 1er
 // ============================================================
 
 import type { EspnScheduleGame, EspnStandingsTeam, EspnOdds, EspnInjury } from './espn';
 // market-odds.ts est un module de math pures (aucun import) : aucun cycle.
 // bttsProb = forme fermée BTTS partagée (cohérence inter-écrans, audit 21-b FIX 2) ;
-// deMarginOverUnder + calibrateTotals = calibration marché (audit 21-b FIX 1).
-import { bttsProb, calibrateTotals, deMarginOverUnder } from './market-odds';
+// deMarginOverUnder + calibrateTotals = calibration marché (audit 21-b FIX 1) ;
+// overProb + totalGoalsDist = proba brute du modèle à UNE ligne donnée
+// (value bets O/U quand la ligne du marché n'est pas 1.5/2.5/3.5).
+import { bttsProb, calibrateTotals, deMarginOverUnder, overProb, totalGoalsDist } from './market-odds';
+// goal-timing.ts : minute du 1er but basée sur les vraies minutes de buts
+// (histogrammes ESPN des deux équipes + baseline empirique de ligue).
+// goal-timing importe lui-même ./espn et ../mma/espn — aucun cycle :
+// espn.ts n'importe jamais prediction.ts ni goal-timing.ts.
+import {
+  GOAL_WINDOWS,
+  LEAGUE_BASELINE_SHARES,
+  blendGoalTiming,
+  firstGoalTimingFromHazard,
+  goalTimingBasis,
+  type TeamGoalTiming,
+} from './goal-timing';
 
 // ---------- Types publics ----------
 
@@ -62,8 +79,16 @@ export interface MatchPrediction {
   };
   // scores exacts les plus probables
   topScores: Array<{ score: string; prob: number }>;
-  // moment du premier but
-  firstGoalTiming: Array<{ window: string; label: string; prob: number }>;
+  // moment du premier but — basis = source des parts ('equipes' = vraies
+  // minutes de buts des 2 équipes, 'ligue' = baseline empirique de ligue,
+  // 'modele' = repli Poisson homogène), sampleGoals = taille d'échantillon
+  firstGoalTiming: Array<{
+    window: string;
+    label: string;
+    prob: number;
+    basis: 'equipes' | 'ligue' | 'modele';
+    sampleGoals: number;
+  }>;
   // première équipe à marquer
   firstToScore: { home: number; away: number; noGoal: number };
   // buts attendus
@@ -185,22 +210,9 @@ export function computeElo(teamIdA: string, teamIdB: string, schedules: Map<stri
   const ratings = new Map<string, number>();
   const games = new Map<string, number>();
 
-  // Fusionner TOUS les matchs connus des deux équipes + adversaires, triés par date
-  const allMatches: Array<{ date: number; teamA: string; teamB: string; scoreA: number | null; scoreB: number | null }> = [];
-  for (const [, list] of schedules) {
-    for (const g of list) {
-      if (!g.completed || g.teamScore === null || g.opponentScore === null) continue;
-      allMatches.push({
-        date: new Date(g.date).getTime(),
-        teamA: g.homeAway === 'home' ? (schedules.has(g.eventId + ':homeId') ? g.opponentId : '') : '',
-        teamB: '',
-        scoreA: g.teamScore,
-        scoreB: g.opponentScore,
-      });
-    }
-  }
-
-  // Reconstruction plus simple : parcourir chaque équipe et ses matchs
+  // Reconstruction : parcourir chaque équipe et ses matchs, reconstituer le
+  // domicile/l'extérieur de chaque rencontre, dédupliquer par
+  // eventId + paire d'équipes (le même match est vu depuis les 2 calendriers).
   const events = new Map<
     string,
     { date: number; homeId: string; awayId: string; hs: number; as: number }
@@ -238,7 +250,6 @@ export function computeElo(teamIdA: string, teamIdB: string, schedules: Map<stri
   }
   void teamIdA;
   void teamIdB;
-  void allMatches;
   return { ratings, games };
 }
 
@@ -382,26 +393,32 @@ function stakesLabel(rank: number | null, gamesPlayed: number, totalTeams: numbe
 }
 
 // ---------- Marché : moment du premier but ----------
-// Processus de Poisson : P(aucun but avant t) = e^(-r*t), r = buts/min
-
+// ANCIEN modèle (REPLI) : processus de Poisson HOMOGÈNE — intensité
+// constante r = λ/90 sur tout le match, P(aucun but avant t) = e^(−r·t).
+// La forme est strictement identique pour TOUS les matchs (seul λ la met
+// à l'échelle) et contredit la réalité connue du football : plus de buts
+// en fin de chaque mi-temps. C'est ce que l'utilisateur percevait comme
+// des probabilités « aléatoires » / sous- et sur-estimées.
+// Conservé exporté comme chemin de repli quand aucune donnée réelle de
+// timing n'est fournie au moteur (EngineInput.goalTiming absent).
+// Le chemin principal est firstGoalTimingFromHazard (goal-timing.ts),
+// calé sur les minutes de buts réelles d'ESPN.
 export function firstGoalTimingProbs(lambdaTotal: number): Array<{ window: string; label: string; prob: number }> {
-  const r = lambdaTotal / 90;
-  const windows: Array<{ window: string; label: string; from: number; to: number }> = [
-    { window: '0-15', label: 'Avant la 16e', from: 0, to: 15 },
-    { window: '16-30', label: 'Entre la 16e et 30e', from: 15, to: 30 },
-    { window: '31-45', label: 'Entre la 31e et 45e', from: 30, to: 45 },
-    { window: '46-60', label: 'Entre la 46e et 60e', from: 45, to: 60 },
-    { window: '61-75', label: 'Entre la 61e et 75e', from: 60, to: 75 },
-    { window: '76-90', label: 'Après la 76e', from: 75, to: 90 },
-  ];
-  const out = windows.map((w) => ({
-    window: w.window,
-    label: w.label,
-    prob: Math.exp(-r * w.from) - Math.exp(-r * w.to),
-  }));
-  out.push({ window: 'NO_GOAL', label: 'Aucun but (0-0)', prob: Math.exp(-lambdaTotal) });
-  const sum = out.reduce((s, o) => s + o.prob, 0);
-  return out.map((o) => ({ ...o, prob: round(o.prob / sum, 4) }));
+  // Garde-fou anti-NaN : λ inutilisable → moyenne de l'échantillon empirique
+  // de goal-timing.ts (168 buts / 66 matchs ≈ 2,545).
+  const lam = Number.isFinite(lambdaTotal) && lambdaTotal > 0 ? lambdaTotal : 168 / 66;
+  const r = lam / 90;
+  const bounds = [0, 15, 30, 45, 60, 75, 90];
+  const out: Array<{ window: string; label: string; prob: number }> = [];
+  let acc = 0;
+  for (let w = 0; w < 6; w++) {
+    const p = Math.round((Math.exp(-r * bounds[w]) - Math.exp(-r * bounds[w + 1])) * 10000) / 10000;
+    acc += p;
+    out.push({ window: GOAL_WINDOWS[w].window, label: GOAL_WINDOWS[w].label, prob: p });
+  }
+  // NO_GOAL absorbe l'arrondi → les 7 entrées somment EXACTEMENT à 1
+  out.push({ window: 'NO_GOAL', label: 'Aucun but (0-0)', prob: Math.max(0, Math.round((1 - acc) * 10000) / 10000) });
+  return out;
 }
 
 // ---------- Poisson complet ----------
@@ -420,16 +437,16 @@ interface PoissonResult {
 // « 1ère équipe à marquer » = qui ouvre le score × P(qu'un but soit marqué).
 // L'ancienne version inline sommait home + away + noGoal à 1 + e^-λ (> 1).
 export function firstToScoreProbs(lambdaHome: number, lambdaAway: number): { home: number; away: number; noGoal: number } {
-  const lh = lambdaHome;
-  const la = lambdaAway;
+  // Garde-fous anti-NaN (λ invalides → quasi-aucun but attendu)
+  const lh = Number.isFinite(lambdaHome) && lambdaHome > 0 ? lambdaHome : 0.02;
+  const la = Number.isFinite(lambdaAway) && lambdaAway > 0 ? lambdaAway : 0.02;
   const noGoal = Math.exp(-(lh + la));
   const goalShare = 1 - noGoal;
   const total = lh + la;
-  return {
-    home: round(total > 0 ? (lh / total) * goalShare : 0, 4),
-    away: round(total > 0 ? (la / total) * goalShare : 0, 4),
-    noGoal: round(noGoal, 4),
-  };
+  const home = round((lh / total) * goalShare, 4);
+  const away = round((la / total) * goalShare, 4);
+  // noGoal absorbe l'arrondi → home + away + noGoal = 1 EXACTEMENT
+  return { home, away, noGoal: round(1 - home - away, 4) };
 }
 
 export function poissonModel(lambdaHome: number, lambdaAway: number): PoissonResult {
@@ -505,7 +522,8 @@ function buildValueBets(
     overUnder: Array<{ line: number; over: number; under: number }>;
     btts: { yes: number; no: number };
   },
-  odds: EspnOdds | null
+  odds: EspnOdds | null,
+  lambdaTotal: number
 ): MatchPrediction['valueBets'] {
   if (!odds?.hasOdds) return [];
   const bets: MatchPrediction['valueBets'] = [];
@@ -523,17 +541,27 @@ function buildValueBets(
       });
     }
   };
+  // Certaines ligues n'exposent que les cotes d'OUVERTURE (jamais de close) :
+  // repli sur open, comme le fait déjà la calibration O/U du pipeline.
+  const dec = (close: number | null, open: number | null): number | null => close ?? open;
 
   const ml = odds.moneyline;
-  add('1X2', 'Victoire domicile', prediction.probs.home, ml.home.close);
-  add('1X2', 'Nul', prediction.probs.draw, ml.draw.close);
-  add('1X2', 'Victoire extérieur', prediction.probs.away, ml.away.close);
+  add('1X2', 'Victoire domicile', prediction.probs.home, dec(ml.home.close, ml.home.open));
+  add('1X2', 'Nul', prediction.probs.draw, dec(ml.draw.close, ml.draw.open));
+  add('1X2', 'Victoire extérieur', prediction.probs.away, dec(ml.away.close, ml.away.open));
 
   const ouLine = odds.overUnderLine;
-  const ou = prediction.overUnder.find((o) => o.line === ouLine) ?? prediction.overUnder[1];
-  if (ou && ouLine !== null) {
-    add(`Over/Under ${ouLine}`, `Plus de ${ouLine}`, ou.over, odds.total.over.closeOdds);
-    add(`Over/Under ${ouLine}`, `Moins de ${ouLine}`, ou.under, odds.total.under.closeOdds);
+  if (ouLine !== null) {
+    // Proba BRUTE du modèle à LA ligne du marché : ligne standard → grille
+    // du Poisson ; ligne exotique (ex. 4.5, absente de rawOverUnder) →
+    // distribution 1D du total (somme de Poisson indépendantes = Poisson(λt)).
+    // L'ancien code retombait silencieusement sur la ligne 2.5 et comparait
+    // P(over 2.5) aux cotes d'une ligne 4.5 — edge faux.
+    const exact = prediction.overUnder.find((o) => o.line === ouLine);
+    const overModel = exact ? exact.over : overProb(totalGoalsDist(lambdaTotal), ouLine);
+    const underModel = exact ? exact.under : 1 - overModel;
+    add(`Over/Under ${ouLine}`, `Plus de ${ouLine}`, overModel, dec(odds.total.over.closeOdds, odds.total.over.openOdds));
+    add(`Over/Under ${ouLine}`, `Moins de ${ouLine}`, underModel, dec(odds.total.under.closeOdds, odds.total.under.openOdds));
   }
   return bets.sort((a, b) => b.edge - a.edge).slice(0, 4);
 }
@@ -593,6 +621,12 @@ export interface EngineInput {
   //           (fatigue ×0.94, blessures ×[0.92..1], derby ×0.92 neutralisés).
   //           Blend des 3 modèles, calibration, marchés : inchangés.
   contextMode?: 'full' | 'mix';
+  // Minute du 1er but — données RÉELLES (mission « moteur de pronostics ») :
+  // histogrammes des minutes de buts des 10 derniers matchs terminés de
+  // chaque équipe, extraits des summaries ESPN par fetchTeamGoalTiming
+  // (goal-timing.ts). OPTIONNEL et rétrocompatible : absent/null → repli sur
+  // l'ancien modèle homogène (firstGoalTimingProbs), étiqueté 'modele'.
+  goalTiming?: { home: TeamGoalTiming | null; away: TeamGoalTiming | null } | null;
 }
 
 export function runEngine(input: EngineInput): MatchAnalysis {
@@ -605,17 +639,39 @@ export function runEngine(input: EngineInput): MatchAnalysis {
   const ablateContext = (input.contextMode ?? 'full') === 'mix';
   const contextMode: 'full' | 'mix' = ablateContext ? 'mix' : 'full';
 
+  // Déduplication défensive par eventId : un calendrier peut contenir le même
+  // match deux fois si l'appelant fournit deux fois la même saison (chaque
+  // fetch de fetchTeamSchedule repousse ses events — ex. analyze.ts avec
+  // PREV_SEASON === saison courante). Sans déduplication : forme affichée en
+  // double, gamesHome/gamesAway et matchesLast14Days gonflés (le SHRINK et la
+  // fatigue sur-réagiraient). Le moteur doit rester correct quel que soit
+  // l'appelant. NB : le même match vu depuis les DEUX calendriers (les deux
+  // équipes se sont rencontrées) est légitime et conservé — la déduplication
+  // est faite PAR calendrier.
+  const dedupeByEvent = (list: EspnScheduleGame[]): EspnScheduleGame[] => {
+    const seen = new Set<string>();
+    const out: EspnScheduleGame[] = [];
+    for (const g of list) {
+      if (!g || !g.eventId || seen.has(g.eventId)) continue;
+      seen.add(g.eventId);
+      out.push(g);
+    }
+    return out;
+  };
+  const homeSchedule = dedupeByEvent(homeTeam.schedule);
+  const awaySchedule = dedupeByEvent(awayTeam.schedule);
+
   const schedules = new Map<string, EspnScheduleGame[]>([
-    [homeTeam.id, homeTeam.schedule],
-    [awayTeam.id, awayTeam.schedule],
+    [homeTeam.id, homeSchedule],
+    [awayTeam.id, awaySchedule],
   ]);
 
   const elo = computeElo(homeTeam.id, awayTeam.id, schedules);
   const eloHome = elo.ratings.get(homeTeam.id) ?? 1500;
   const eloAway = elo.ratings.get(awayTeam.id) ?? 1500;
 
-  const home = analyzeTeam(homeTeam.id, homeTeam.name, homeTeam.logo, homeTeam.schedule, homeTeam.standings, injuries, nowMs, true);
-  const away = analyzeTeam(awayTeam.id, awayTeam.name, awayTeam.logo, awayTeam.schedule, awayTeam.standings, injuries, nowMs, false);
+  const home = analyzeTeam(homeTeam.id, homeTeam.name, homeTeam.logo, homeSchedule, homeTeam.standings, injuries, nowMs, true);
+  const away = analyzeTeam(awayTeam.id, awayTeam.name, awayTeam.logo, awaySchedule, awayTeam.standings, injuries, nowMs, false);
   home.elo = Math.round(eloHome);
   away.elo = Math.round(eloAway);
 
@@ -810,7 +866,11 @@ export function runEngine(input: EngineInput): MatchAnalysis {
   const rawBtts = poissonRes.btts;
   let finalOverUnder = rawOverUnder;
   let finalBtts = rawBtts;
-  const anchorLine = odds?.hasOdds ? odds.overUnderLine : null;
+  // Ligne d'ancrage = celle des cotes O/U réellement utilisées. Si le champ
+  // brut overUnderLine et la ligne close divergent (rare), ce sont les cotes
+  // close qui portent l'information : ancrer sur LEUR ligne, sinon la
+  // dichotomie cale P(over L1) sur la proba marché d'une autre ligne L2.
+  const anchorLine = odds?.hasOdds ? (odds.total.over.line ?? odds.overUnderLine) : null;
   const marketOverOdds = odds?.total.over.closeOdds ?? odds?.total.over.openOdds ?? null;
   const marketUnderOdds = odds?.total.under.closeOdds ?? odds?.total.under.openOdds ?? null;
   if (anchorLine !== null && marketOverOdds !== null && marketUnderOdds !== null) {
@@ -831,7 +891,8 @@ export function runEngine(input: EngineInput): MatchAnalysis {
   // edge ≈ −marge systématique (value fictive, audit 21-b FIX 4).
   const valueBets = buildValueBets(
     { probs: finalProbs, overUnder: rawOverUnder, btts: rawBtts },
-    odds
+    odds,
+    lambdaHome + lambdaAway
   );
   const oddsMovement = oddsMovementNote(odds);
 
@@ -869,6 +930,31 @@ export function runEngine(input: EngineInput): MatchAnalysis {
     note: 'Option la plus sûre du match',
   });
 
+  // --- Moment du 1er but (hazard par morceaux sur données réelles) ---
+  // Chemin principal : histogrammes ESPN fournis (au moins une équipe) →
+  // fusion des deux équipes + retrait vers la baseline empirique (shrinkage
+  // n/(n+60)) → Poisson par morceaux. Chaque entrée est étiquetée avec sa
+  // source (basis) et la taille d'échantillon — jamais de donnée inventée.
+  // Repli : ancien modèle homogène (firstGoalTimingProbs), basis 'modele'.
+  const gtHome = input.goalTiming?.home ?? null;
+  const gtAway = input.goalTiming?.away ?? null;
+  let firstGoalTiming: MatchPrediction['firstGoalTiming'];
+  if (gtHome !== null || gtAway !== null) {
+    const blended = blendGoalTiming(gtHome, gtAway, [...LEAGUE_BASELINE_SHARES]);
+    const { basis, sampleGoals } = goalTimingBasis(gtHome, gtAway);
+    firstGoalTiming = firstGoalTimingFromHazard(lambdaHome + lambdaAway, blended.shares).map((e) => ({
+      ...e,
+      basis,
+      sampleGoals,
+    }));
+  } else {
+    firstGoalTiming = firstGoalTimingProbs(lambdaHome + lambdaAway).map((e) => ({
+      ...e,
+      basis: 'modele' as const,
+      sampleGoals: 0,
+    }));
+  }
+
   // --- H2H ---
   // Task 28 §7 (BUG CORRIGÉ) : le scan ne portait que sur le calendrier
   // de l'équipe domicile — les confrontations « B reçoit A » étaient
@@ -902,8 +988,8 @@ export function runEngine(input: EngineInput): MatchAnalysis {
       );
     }
   };
-  scanH2HSide(homeTeam.schedule, homeTeam.id, homeTeam.name, awayTeam.id, awayTeam.name);
-  scanH2HSide(awayTeam.schedule, awayTeam.id, awayTeam.name, homeTeam.id, homeTeam.name);
+  scanH2HSide(homeSchedule, homeTeam.id, homeTeam.name, awayTeam.id, awayTeam.name);
+  scanH2HSide(awaySchedule, awayTeam.id, awayTeam.name, homeTeam.id, homeTeam.name);
   const top6 = [...h2hMap.entries()].sort((a, b) => new Date(b[1].date).getTime() - new Date(a[1].date).getTime()).slice(0, 6);
   const h2h = top6.map(([, m]) => m);
   // "home/away" dans h2h = équipe domicile du match historique ;
@@ -952,7 +1038,7 @@ export function runEngine(input: EngineInput): MatchAnalysis {
       btts: finalBtts,
       raw: { overUnder: rawOverUnder, btts: rawBtts },
       topScores: poissonRes.topScores,
-      firstGoalTiming: firstGoalTimingProbs(lambdaHome + lambdaAway),
+      firstGoalTiming,
       firstToScore: firstToScoreProbs(lambdaHome, lambdaAway),
       lambda: { home: lambdaHome, away: lambdaAway, total: round(lambdaHome + lambdaAway, 2) },
       confidence: conf,

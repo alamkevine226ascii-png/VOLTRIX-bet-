@@ -162,13 +162,18 @@ export function MatchScreen({
   }, [load]);
 
   /* compos : réelles si publiées, sinon celles du match précédent.
-     Lancé une fois par match (garde par ref) — le départ de la
-     requête ne doit pas s'annuler lui-même via ses propres deps. */
+     Règle produit (2026-11-09) : après le coup d'envoi, on RECHERCHE
+     les compositions officielles — l'état « match précédent » est
+     invalidé dès que le match passe en direct/terminé, et l'onglet
+     re-consulté relance la lecture (polling 60 s pendant le direct). */
   const lineupsStartedRef = useRef<string | null>(null);
   useEffect(() => {
     if (tab !== "compos" || !detail) return;
-    if (lineupsStartedRef.current === matchId) return;
-    lineupsStartedRef.current = matchId;
+    /* clé d'invalidation : match + phase (pré-match vs après coup d'envoi) */
+    const phase = detail.status === "pre" ? "pre" : "live";
+    const key = `${matchId}:${phase}`;
+    if (lineupsStartedRef.current === key) return;
+    lineupsStartedRef.current = key;
     setLineupsLoading(true);
     const ctx = {
       matchDate: detail.matchDate,
@@ -184,6 +189,31 @@ export function MatchScreen({
       .catch(() => setLineups(null))
       .finally(() => setLineupsLoading(false));
   }, [tab, detail, matchId, leagueCode]);
+
+  /* pendant un match EN DIRECT avec compos non publiées : re-vérification
+     toutes les 60 s tant que l'onglet Compos est ouvert (les onze
+     officiels tombent généralement 20-40 min avant le coup d'envoi, mais
+     ESPN peut publier en retard) */
+  useEffect(() => {
+    if (tab !== "compos" || detail?.status !== "in" || lineups?.published || !detail) return;
+    const t = setInterval(() => {
+      const ctx = {
+        matchDate: detail.matchDate,
+        homeTeamId: detail.home.id,
+        awayTeamId: detail.away.id,
+        homeName: detail.home.name,
+        awayName: detail.away.name,
+        homeLogo: detail.home.logo,
+        awayLogo: detail.away.logo,
+      };
+      loadMatchLineups(matchId, leagueCode, ctx)
+        .then((r) => {
+          if (r?.published) setLineups(r); // seul l'OFFICIEL remplace l'affichage
+        })
+        .catch(() => null);
+    }, 60000);
+    return () => clearInterval(t);
+  }, [tab, detail, matchId, leagueCode, lineups?.published]);
 
   /* Onglet Compos : équipe affichée */
   const [composSide, setComposSide] = useState<"home" | "away">("home");
@@ -522,6 +552,13 @@ export function MatchScreen({
                         <span className="w-11 text-right text-[11px] font-black text-white/80">{pct(w.prob, 1)}</span>
                       </div>
                     ))}
+                    <p className="text-[8.5px] leading-relaxed text-white/35">
+                      {pred.firstGoalTiming[0]?.basis === "equipes"
+                        ? `Calcul sur les minutes de buts réellement observées des ${detail.home.name} et ${detail.away.name} (${pred.firstGoalTiming[0]?.sampleGoals ?? 0} buts, summaries ESPN) fondues avec le profil de ligue.`
+                        : pred.firstGoalTiming[0]?.basis === "ligue"
+                          ? "Minutes de buts des équipes indisponibles chez ESPN : calcul sur le profil empirique de ligue (échantillon documenté dans le moteur)."
+                          : "Estimation Poisson homogène (minutes de buts des équipes et profil indisponibles)."}
+                    </p>
                     <div className="mt-2 grid grid-cols-3 gap-2">
                       {[
                         { k: detail.home.name, v: pred.firstToScore.home },

@@ -25,7 +25,13 @@ import {
 } from "./mma/types";
 import { computeExpressPrediction } from "./mma/prediction";
 import { loadFightAnalysis } from "./mma/loaders";
-import type { FightAnalysis, FighterView } from "./mma/analysis";
+import {
+  fetchUfcRoundPrior,
+  fuseRoundDistribution,
+  peekRoundPrior,
+  personalRoundRates,
+} from "./mma/rounds";
+import type { DerivedResult, FightAnalysis, FighterView } from "./mma/analysis";
 import type { PredictionView } from "./mma/prediction";
 import type {
   MmaEventGroup,
@@ -143,7 +149,10 @@ function recText(r: { wins: number | null; losses: number | null; draws: number 
 export { recText };
 
 /* ============================================================
-   Journée MMA : événements du jour (UFC, PFL) + détails
+   Événements UFC à venir — catégories de l'accueil
+   (directive produit 2026-11-09 : UFC uniquement, un événement
+   = une catégorie : UFC 334, UFC FN 21.11, ... + « Combats
+   perspectifs » = adversaires non annoncés, données ESPN réelles)
    ============================================================ */
 
 function localDateKey(iso: string): string {
@@ -152,27 +161,49 @@ function localDateKey(iso: string): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
-function isoShift(iso: string, days: number): string {
-  const d = new Date(`${iso}T12:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
+/** Libellé de catégorie : « UFC 334 » / « UFC FN 21.11 » / « DWCS ». */
+export function eventCategoryLabel(eventName: string, eventDate: string): string {
+  const d = new Date(eventDate);
+  const dd = String(d.getUTCDate()).padStart(2, "0");
+  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const n = eventName;
+  const numbered = n.match(/^UFC\s+(\d{3,4})/);
+  if (numbered) return `UFC ${numbered[1]}`;
+  if (/fight night/i.test(n)) return `UFC FN ${dd}.${mm}`;
+  if (/contender/i.test(n)) return "DWCS";
+  if (/road to ufc/i.test(n)) return "Road to UFC";
+  return n.split(":")[0].trim().slice(0, 18);
 }
 
-/** Charge les combats du jour : scoreboard + détails par combat (catégorie, rounds). */
-export async function loadMmaDay(dateISO: string): Promise<MmaEventsResponse> {
-  const from = new Date(`${isoShift(dateISO, -1)}T00:00:00Z`);
-  const to = new Date(`${isoShift(dateISO, +1)}T23:59:59Z`);
+/**
+ * Charge les événements UFC à venir (fenêtre : hier -> +120 jours).
+ * Chaque événement forme une catégorie ; les combats à adversaire non
+ * annoncé (TBD ESPN) alimentent en outre la catégorie « Combats
+ * perspectifs ». Les événements d'hier terminés restent visibles
+ * (résultats), puis disparaissent au fil des jours.
+ */
+export async function loadMmaUpcoming(): Promise<MmaEventsResponse> {
+  const now = new Date();
+  const from = new Date(now.getTime() - 1 * 86400000);
+  const to = new Date(now.getTime() + 120 * 86400000);
 
   const boards = await mapLimited(ACTIVE_ORGS, 2, (org) =>
     getScoreboard(org, from, to).catch(() => [] as ScoreboardEventDTO[]),
   );
   const events = boards
     .flat()
-    .filter((e) => localDateKey(e.date) === dateISO)
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
+  if (events.length === 0 && ACTIVE_ORGS.length > 0) {
+    // Aucun événement UFC dans la fenêtre : réseau bloqué ? On remonte
+    // l'erreur pour le bouton Réessayer plutôt que d'afficher « vide ».
+    throw new Error(
+      "Impossible de joindre les serveurs ESPN depuis votre navigateur (réseau indisponible ou temporairement bloqué). Réessayez dans un instant.",
+    );
+  }
+
   const groups: MmaEventGroup[] = [];
-  const quickPreds: MmaQuickPred[] = [];
+  const prospectFights: MmaFight[] = [];
 
   for (const ev of events) {
     const org = (LEAGUE_TO_ORG[ev.league] ?? ev.organization).toUpperCase();
@@ -181,6 +212,7 @@ export async function loadMmaDay(dateISO: string): Promise<MmaEventsResponse> {
     const detail = await loadEventDetail(ev).catch(() => null);
 
     const fights: MmaFight[] = [];
+    let hasProspects = false;
     ev.fights.forEach((f, idx) => {
       const fd = detail?.fights[idx] ?? null;
       const dStatus = fd?.status ?? f.status;
@@ -188,25 +220,33 @@ export async function loadMmaDay(dateISO: string): Promise<MmaEventsResponse> {
       const b = f.fighters[1];
       if (!a || !b) return;
 
+      const placeholderA = isPlaceholderFighter(a.fullName);
+      const placeholderB = isPlaceholderFighter(b.fullName);
+      const prospect = placeholderA || placeholderB;
+      if (prospect) hasProspects = true;
+
       const toListItem = (
         x: typeof a,
+        placeholder: boolean,
       ): MmaListItemFighter => ({
         id: x.externalId,
         espnAthleteId: x.espnAthleteId,
-        name: x.fullName,
-        shortName: shortNameOf(x.fullName),
+        name: placeholder ? "Adversaire à confirmer" : x.fullName,
+        shortName: placeholder ? "TBD" : shortNameOf(x.fullName),
         headshotUrl: null,
         flagUrl: null,
-        record: {
-          wins: parseRecord(x.recordAtFight)?.wins ?? null,
-          losses: parseRecord(x.recordAtFight)?.losses ?? null,
-          draws: parseRecord(x.recordAtFight)?.draws ?? null,
-        },
+        record: placeholder
+          ? { wins: null, losses: null, draws: null }
+          : {
+              wins: parseRecord(x.recordAtFight)?.wins ?? null,
+              losses: parseRecord(x.recordAtFight)?.losses ?? null,
+              draws: parseRecord(x.recordAtFight)?.draws ?? null,
+            },
         form: null,
-        isWinner: x.isWinner,
+        isWinner: placeholder ? null : x.isWinner,
       });
 
-      const winner = f.fighters.find((x) => x.isWinner === true);
+      const winner = prospect ? null : f.fighters.find((x) => x.isWinner === true);
       const method =
         fd?.resultDetail ??
         (fd?.resultMethod === "KO_TKO"
@@ -217,7 +257,7 @@ export async function loadMmaDay(dateISO: string): Promise<MmaEventsResponse> {
               ? "Décision"
               : null);
 
-      fights.push({
+      const fight: MmaFight = {
         id: f.externalId,
         org,
         orgShort: ev.shortName ?? ev.name,
@@ -229,21 +269,24 @@ export async function loadMmaDay(dateISO: string): Promise<MmaEventsResponse> {
         date: f.date,
         status: statusToApp(dStatus),
         statusDetail: statusDetailFr(dStatus, f.rawStatus),
-        fighterA: toListItem(a),
-        fighterB: toListItem(b),
+        fighterA: toListItem(a, placeholderA),
+        fighterB: toListItem(b, placeholderB),
         winner:
           winner == null
             ? null
             : winner.externalId === a.externalId
               ? "A"
               : "B",
-        method,
+        method: prospect ? null : method,
         venue: {
           name: ev.venueName,
           city: ev.city,
           country: ev.country,
         },
-      });
+        prospect,
+      };
+      fights.push(fight);
+      if (prospect) prospectFights.push(fight);
 
       /* registre pour la navigation vers le détail */
       fightRefs.set(f.externalId, {
@@ -273,13 +316,33 @@ export async function loadMmaDay(dateISO: string): Promise<MmaEventsResponse> {
         eventName: ev.name,
         region: ev.country ?? "",
         fights,
+        eventId: ev.espnEventId,
+        eventDate: ev.date,
+        hasProspects,
       });
     }
   }
 
+  /* catégorie « Combats perspectifs » : adversaires non annoncés */
+  if (prospectFights.length > 0) {
+    groups.push({
+      org: "UFC",
+      orgShort: "Perspectifs",
+      eventName: "Combats perspectifs",
+      region: "",
+      fights: prospectFights,
+      eventId: "prospect",
+      eventDate: prospectFights[0]?.date ?? new Date().toISOString(),
+      hasProspects: true,
+    });
+  }
+
   return {
-    date: dateISO,
-    totalFights: groups.reduce((n, g) => n + g.fights.length, 0),
+    date: localDateKey(now.toISOString()),
+    totalFights: groups.reduce(
+      (n, g) => n + (g.eventId === "prospect" ? 0 : g.fights.length),
+      0,
+    ),
     events: groups,
   };
 }
@@ -509,6 +572,14 @@ function toMmaFighter(view: FighterView): MmaFighter {
     koWins: ko,
     subWins: sub,
     decWins: dec,
+    koLosses: view.record.tkoLosses,
+    subLosses: view.record.submissionLosses,
+    decLosses:
+      view.record.losses != null &&
+      view.record.tkoLosses != null &&
+      view.record.submissionLosses != null
+        ? Math.max(0, view.record.losses - view.record.tkoLosses - view.record.submissionLosses)
+        : null,
     totalFights: view.totalFights,
     strikesLandedPerMin: view.stats?.sigStrikesLandedPerMin ?? null,
     strikingAccuracy: view.stats?.strikingAccuracy ?? null,
@@ -523,65 +594,79 @@ function toMmaFighter(view: FighterView): MmaFighter {
   };
 }
 
-/* ---------- Modèle de rounds (prior public, étiqueté) ---------- */
+/* ============================================================
+   Méthodes de victoire & modèle de rounds — corrections audit
+   2026-11-09 (agent B, points A2/A3/B1) :
+   - byMethod : victoires du combattant FONDUES avec les méthodes de
+     défaite de l'adversaire (records/0 ESPN). Triple complet ou rien :
+     JAMAIS de renormalisation de taux partiels (une donnée manquante
+     ne devient pas une certitude).
+   - goesToDecision : decA + decB directement (l'ancien code
+     multipliait DEUX FOIS par la probabilité de victoire et
+     divisait ~par 2 la probabilité de décision).
+   - rounds : rounds de fin RÉELS d'ESPN (status.period), collectés
+     par la fenêtre dérivée de chaque combattant, fondus avec un
+     prior UFC CALCULÉ (6 derniers événements terminés, cache 7 j).
+     Les constantes 40/33/27 et 33/28/21/12/6 sont retirées.
+   ============================================================ */
 
-/** Répartition des fins de combat par round — base UFC (part des fins par round). */
-const ROUND_PRIOR_3: number[] = [0.4, 0.33, 0.27];
-const ROUND_PRIOR_5: number[] = [0.33, 0.28, 0.21, 0.12, 0.06];
+type MethodShares = { ko: number; sub: number; dec: number };
 
-const ROUND_MODEL_NOTE =
-  "Répartition par round estimée : ESPN ne publie pas le round de fin des combats passés. " +
-  "Le moteur répartit la probabilité d'arrêt selon les taux de base observés en UFC " +
-  "(40/33/27 % pour 3 rounds ; 33/28/21/12/6 % pour 5 rounds).";
-
-/* ---------- Méthodes de victoire (dérivées des carrières observées) ---------- */
-
-function methodRates(f: MmaFighter): { ko: number | null; sub: number | null; dec: number | null; basis: string[] } {
-  const basis: string[] = [];
-  const rates: { ko: number | null; sub: number | null; dec: number | null } = { ko: null, sub: null, dec: null };
-  const wins = f.record.wins;
-
-  if (wins != null && wins > 0) {
-    const ko = f.koWins != null ? f.koWins / wins : null;
-    const sub = f.subWins != null ? f.subWins / wins : null;
-    const dec = f.decWins != null ? f.decWins / wins : null;
-    if (ko != null || sub != null || dec != null) {
-      rates.ko = ko;
-      rates.sub = sub;
-      rates.dec = dec;
-      basis.push("palmarès ESPN");
-    }
-  }
-  return { ...rates, basis };
+/** Répartition des VICTOIRES de f par méthode (triple complet ou null). */
+function winShares(f: MmaFighter): MethodShares | null {
+  const w = f.record.wins;
+  if (w == null || w <= 0 || f.koWins == null || f.subWins == null) return null;
+  const ko = f.koWins / w;
+  const sub = f.subWins / w;
+  return { ko, sub, dec: Math.max(0, 1 - ko - sub) };
 }
 
-function blendRates(a: MmaFighter, pWin: number, finishTotal: number): MmaMethodMix {
-  const r = methodRates(a);
-  if (r.ko == null && r.sub == null && r.dec == null) return { ko: null, sub: null, dec: null };
-  let ko = r.ko ?? 0;
-  let sub = r.sub ?? 0;
-  let dec = r.dec ?? 0;
-  const sum = ko + sub + dec;
-  if (sum <= 0) return { ko: null, sub: null, dec: null };
-  ko /= sum;
-  sub /= sum;
-  dec /= sum;
-  void finishTotal;
-  return {
-    ko: pWin * ko,
-    sub: pWin * sub,
-    dec: pWin * dec,
-  };
+/** Répartition des DÉFAITES de f par méthode (triple complet ou null). */
+function lossShares(f: MmaFighter): MethodShares | null {
+  const l = f.record.losses;
+  if (l == null || l <= 0 || f.koLosses == null || f.subLosses == null) return null;
+  const ko = f.koLosses / l;
+  const sub = f.subLosses / l;
+  return { ko, sub, dec: Math.max(0, 1 - ko - sub) };
+}
+
+/**
+ * Parts de méthode pour « X bat Y » : comment X gagne (victoires)
+ * croisé avec comment Y perd (défaites). Les deux signaux sont
+ * moyennés quand ils existent tous les deux ; sinon le seul
+ * disponible ; sinon null (aucune invention).
+ */
+function methodSharesFor(winner: MmaFighter, loser: MmaFighter): MethodShares | null {
+  const w = winShares(winner);
+  const l = lossShares(loser);
+  if (w && l) {
+    return { ko: (w.ko + l.ko) / 2, sub: (w.sub + l.sub) / 2, dec: (w.dec + l.dec) / 2 };
+  }
+  return w ?? l ?? null;
 }
 
 /* ---------- Mapping prédiction moteur → UI ---------- */
 
-function mapPrediction(
+function roundModelNoteOf(priorSample: number | null): string {
+  return priorSample != null
+    ? `Rounds de fin réels collectés sur les derniers combats de chaque combattant (ESPN · status.period), ` +
+        `fondus par rétrécissement bayésien avec un prior UFC calculé sur ${priorSample} combats terminés ` +
+        `(6 derniers événements, cache local 7 jours).`
+    : `Rounds de fin réels collectés sur les derniers combats de chaque combattant (ESPN · status.period). ` +
+        `Le prior UFC de référence se construit en arrière-plan au premier affichage — réouvrez le combat dans un instant pour la version complète.`;
+}
+
+async function mapPrediction(
   pred: PredictionView,
   a: MmaFighter,
   b: MmaFighter,
   scheduledRounds: number | null,
+  fightsA: DerivedResult["fights"] | null,
+  fightsB: DerivedResult["fights"] | null,
 ) {
+  const prior = peekRoundPrior();
+  const note = roundModelNoteOf(prior?.fightsSampled ?? null);
+
   if (!pred.available || pred.probabilityA == null || pred.probabilityB == null) {
     return {
       available: false as const,
@@ -597,9 +682,10 @@ function mapPrediction(
       method: null,
       byMethod: { a: { ko: null, sub: null, dec: null }, b: { ko: null, sub: null, dec: null } },
       roundFinish: [],
-      goesToDecision: 0,
+      goesToDecision: null,
       totalRoundsExpected: null,
-      roundModelNote: ROUND_MODEL_NOTE,
+      roundModelNote: note,
+      roundBasis: null,
       recommendedBets: [],
       keyFactors: [],
       watchOuts: [],
@@ -611,34 +697,36 @@ function mapPrediction(
   const pA = pred.probabilityA / 100;
   const pB = pred.probabilityB / 100;
 
-  /* méthodes de victoire : répartition des victoires observées */
+  /* méthodes de victoire : victoires de l'un × défaites de l'autre */
+  const sharesA = methodSharesFor(a, b);
+  const sharesB = methodSharesFor(b, a);
   const byMethod = {
-    a: blendRates(a, pA, 1 - 0),
-    b: blendRates(b, pB, 1 - 0),
+    a: sharesA ? { ko: pA * sharesA.ko, sub: pA * sharesA.sub, dec: pA * sharesA.dec } : { ko: null, sub: null, dec: null },
+    b: sharesB ? { ko: pB * sharesB.ko, sub: pB * sharesB.sub, dec: pB * sharesB.dec } : { ko: null, sub: null, dec: null },
   };
 
-  /* décision : part des victoires obtenues aux points, côté de chaque combattant */
-  const decA = byMethod.a.dec;
-  const decB = byMethod.b.dec;
-  let goesToDecision = 0.5;
-  if (decA != null && decB != null) {
-    goesToDecision = Math.min(0.8, Math.max(0.2, pA * decA + pB * decB));
-  } else if (decA != null) {
-    goesToDecision = Math.min(0.8, Math.max(0.2, decA));
-  } else if (decB != null) {
-    goesToDecision = Math.min(0.8, Math.max(0.2, decB));
-  }
-  const finishProb = 1 - goesToDecision;
+  /* rounds personnalisés : taux réels par combattant, fusionnés */
+  const rounds: 3 | 5 = scheduledRounds === 5 ? 5 : 3;
+  const ratesA = personalRoundRates(fightsA, prior, rounds);
+  const ratesB = personalRoundRates(fightsB, prior, rounds);
+  const fused = fuseRoundDistribution(pA, ratesA, pB, ratesB, rounds);
 
-  /* rounds : prior public appliqué à la probabilité d'arrêt */
-  const rounds = scheduledRounds === 5 ? 5 : 3;
-  const prior = rounds === 5 ? ROUND_PRIOR_5 : ROUND_PRIOR_3;
-  const roundFinish = prior.slice(0, rounds).map((p, i) => ({
-    round: i + 1,
-    prob: finishProb * p,
-  }));
+  /* décision : priorité au modèle de rounds (fenêtre réelle + prior),
+     repli sur la lecture carrière (byMethod), sinon indisponible. */
+  let goesToDecision: number | null = null;
+  if (fused) {
+    goesToDecision = Math.min(0.95, Math.max(0.05, fused.decisionShare));
+  } else if (byMethod.a.dec != null && byMethod.b.dec != null) {
+    goesToDecision = Math.min(0.95, Math.max(0.05, byMethod.a.dec + byMethod.b.dec));
+  }
+
+  const roundFinish = fused
+    ? fused.finishByRound.map((p, i) => ({ round: i + 1, prob: p }))
+    : [];
   const totalRoundsExpected =
-    roundFinish.reduce((acc, r) => acc + r.round * r.prob, 0) + rounds * goesToDecision;
+    fused && goesToDecision != null
+      ? roundFinish.reduce((acc, r) => acc + r.round * r.prob, 0) + rounds * goesToDecision
+      : null;
 
   /* lectures recommandées (informatives — aucune cote éditée) */
   const favName = pred.favoriteName ?? "";
@@ -651,23 +739,36 @@ function mapPrediction(
       note: `${pred.marginLabel} — base : ${pred.model.factors.length} dimensions observées`,
     });
   }
-  if (pred.method && pred.method.share != null) {
+  const scenarii: Array<{ label: string; p: number }> = [
+    { label: `${a.shortName} par KO/TKO`, p: byMethod.a.ko ?? -1 },
+    { label: `${a.shortName} par soumission`, p: byMethod.a.sub ?? -1 },
+    { label: `${a.shortName} par décision`, p: byMethod.a.dec ?? -1 },
+    { label: `${b.shortName} par KO/TKO`, p: byMethod.b.ko ?? -1 },
+    { label: `${b.shortName} par soumission`, p: byMethod.b.sub ?? -1 },
+    { label: `${b.shortName} par décision`, p: byMethod.b.dec ?? -1 },
+  ].filter((s) => s.p >= 0);
+  if (scenarii.length > 0) {
+    const top = scenarii.sort((x, y) => y.p - x.p)[0];
     recommended.push({
       market: "Méthode",
-      pick: pred.method.label,
-      prob: pred.method.share,
-      note: pred.method.detail,
+      pick: top.label,
+      prob: top.p,
+      note: "Victoires du combattant fondues avec les méthodes de défaite de l'adversaire (palmarès ESPN)",
     });
   }
-  recommended.push({
-    market: "Distance",
-    pick: goesToDecision >= 0.5 ? "Va jusqu'à la décision" : "Ne passe pas la distance",
-    prob: goesToDecision >= 0.5 ? goesToDecision : 1 - goesToDecision,
-    note: "Dérivé de la répartition des victoires observées des deux combattants",
-  });
+  if (goesToDecision != null) {
+    recommended.push({
+      market: "Distance",
+      pick: goesToDecision >= 0.5 ? "Va jusqu'à la décision" : "Ne passe pas la distance",
+      prob: goesToDecision >= 0.5 ? goesToDecision : 1 - goesToDecision,
+      note: fused
+        ? "Dérivé des rounds de fin réels des deux combattants (fenêtre 8 combats + prior UFC)"
+        : "Dérivé de la répartition des victoires et défaites observées (carrière)",
+    });
+  }
 
   const conf = pred.confidence;
-  const stars = conf ? (conf.score >= 60 ? 4 : conf.score >= 35 ? 3 : 2) : 2;
+  const stars = conf ? (conf.score >= 70 ? 5 : conf.score >= 50 ? 4 : conf.score >= 35 ? 3 : 2) : 2;
 
   return {
     available: true as const,
@@ -685,7 +786,14 @@ function mapPrediction(
     roundFinish,
     goesToDecision,
     totalRoundsExpected,
-    roundModelNote: ROUND_MODEL_NOTE,
+    roundModelNote: note,
+    roundBasis: {
+      priorSample: prior?.fightsSampled ?? null,
+      documentedWinsA: ratesA?.documentedWins ?? null,
+      documentedWinsB: ratesB?.documentedWins ?? null,
+      priorWeightA: ratesA?.priorWeight ?? null,
+      priorWeightB: ratesB?.priorWeight ?? null,
+    },
     recommendedBets: recommended,
     keyFactors: pred.keyFactors,
     watchOuts: pred.watchOuts,
@@ -765,6 +873,14 @@ export async function loadMmaFightDetail(fightId: string) {
   const fighterB = toMmaFighter(analysis.fighters[1]);
   const scheduledRounds = analysis.fight.scheduledRounds;
 
+  /* Fenêtres dérivées (rounds de fin réels) ; amorçage du prior UFC en
+   * arrière-plan au premier affichage (scan une fois par semaine, caché). */
+  const fightsA: DerivedResult["fights"] | null = analysis.fighters[0].derived?.fights ?? null;
+  const fightsB: DerivedResult["fights"] | null = analysis.fighters[1].derived?.fights ?? null;
+  if (!peekRoundPrior()) {
+    void fetchUfcRoundPrior().catch(() => null);
+  }
+
   const winnerExt = analysis.fight.winner;
   const winner: "A" | "B" | null =
     winnerExt == null
@@ -814,6 +930,7 @@ export async function loadMmaFightDetail(fightId: string) {
     winner,
     method: analysis.fight.resultDetail,
     venue: ref.venue,
+    prospect: false,
   };
 
   const h2h = await computeH2h(
@@ -828,7 +945,14 @@ export async function loadMmaFightDetail(fightId: string) {
     fight,
     fighterA,
     fighterB,
-    prediction: mapPrediction(analysis.prediction, fighterA, fighterB, scheduledRounds),
+    prediction: await mapPrediction(
+      analysis.prediction,
+      fighterA,
+      fighterB,
+      scheduledRounds,
+      fightsA,
+      fightsB,
+    ),
     h2h,
     dimensions: analysis.dimensions,
     sources: analysis.sources,

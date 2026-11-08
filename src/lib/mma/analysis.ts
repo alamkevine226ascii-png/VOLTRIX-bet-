@@ -23,6 +23,7 @@ import {
   getFightStatsFor,
   parseFightUid,
 } from './espn'
+import { persistGet, persistSet } from '../persist'
 import {
   formScore,
   inchesToCm,
@@ -53,7 +54,7 @@ export interface FighterView {
   weightClass: string | null
   stance: string | null
   fightingStyle: string | null
-  record: { wins: number | null; losses: number | null; draws: number | null; noContests: number | null; winsByKo: number | null; winsBySub: number | null }
+  record: { wins: number | null; losses: number | null; draws: number | null; noContests: number | null; winsByKo: number | null; winsBySub: number | null; tkoLosses: number | null; submissionLosses: number | null }
   lastResults: string[]
   totalFights: number | null
   stats: {
@@ -67,16 +68,7 @@ export interface FighterView {
     decisionPercentage: number | null
     syncedAt: string | null
   } | null
-  derived: {
-    windowSize: number
-    sigStrikesAbsorbedPerMin: number | null
-    strikingDefense: number | null
-    takedownDefense: number | null
-    avgFightSeconds: number | null
-    fightsUsed: number
-    fightsSkipped: number
-    computedAt: string
-  } | null
+  derived: DerivedResult | null
   recentHistory: {
     eventDate: string
     eventName: string | null
@@ -200,6 +192,8 @@ export function toFighterView(bundle: FighterBundle): FighterView {
       noContests: record?.noContests ?? null,
       winsByKo: record?.winsByKo ?? null,
       winsBySub: record?.winsBySub ?? null,
+      tkoLosses: record?.tkoLosses ?? null,
+      submissionLosses: record?.submissionLosses ?? null,
     },
     lastResults: lastResults ? lastResults.split(',') : [],
     totalFights,
@@ -242,22 +236,46 @@ export interface DerivedResult {
   fightsUsed: number
   fightsSkipped: number
   computedAt: string
+  /**
+   * Combats documentés de la fenêtre, avec le round de fin PUBLIÉ PAR ESPN
+   * (`status.period`) et la méthode (KO/SUB/DÉCISION/NC). Base du modèle de
+   * rounds personnalisé — les statuts sont déjà récupérés par le calcul des
+   * dérivés, donc cette collecte ne coûte AUCUNE requête supplémentaire.
+   * `result` est corrigé : un no-contest étiqueté « D » par l'historique
+   * ESPN devient « NC » ici (vérifié : Gane–Aspinall 2025).
+   */
+  fights: {
+    eventDate: string
+    result: 'W' | 'L' | 'D' | 'NC'
+    method: 'KO_TKO' | 'SOUMISSION' | 'DECISION' | null
+    period: number | null
+  }[]
 }
 
-const DERIVED_SS_PREFIX = 'voltrix:derived:'
+// v2 : invalidation des caches calculés avec l'ancienne formule de durée
+// (temps intra-round inversé — audit 2026-11-09). Stockage PERSISTANT
+// (localStorage) : survit à la fermeture de l'App (exigence 10 min min).
+const DERIVED_SS_PREFIX = 'voltrix:derived:v2:'
 const derivedInFlight = new Map<string, Promise<DerivedResult | null>>()
 
 function readDerivedCache(athleteId: string): DerivedResult | null {
   try {
-    if (typeof sessionStorage === 'undefined') return null
-    const raw = sessionStorage.getItem(DERIVED_SS_PREFIX + athleteId)
-    if (!raw) return null
-    const d = JSON.parse(raw) as DerivedResult
+    const raw = persistGet<{ v?: unknown } | DerivedResult>(DERIVED_SS_PREFIX + athleteId)
+    const d = unwrapDerived(raw)
+    if (!d) return null
     if (Date.now() - new Date(d.computedAt).getTime() > 12 * 60 * 60 * 1000) return null
     return d
   } catch {
     return null
   }
+}
+
+/** Tolère les anciens formats d'enveloppe ({v, exp} ou valeur directe). */
+function unwrapDerived(raw: unknown): DerivedResult | null {
+  if (!raw || typeof raw !== 'object') return null
+  const w = raw as { v?: unknown }
+  const d = (w.v ?? raw) as DerivedResult
+  return Array.isArray(d.fights) ? d : null
 }
 
 /** Lecture du cache dérivé sans déclencher de calcul (utilisé par les loaders). */
@@ -266,33 +284,22 @@ export function peekDerivedCache(athleteId: string): DerivedResult | null {
 }
 
 function writeDerivedCache(athleteId: string, d: DerivedResult): void {
-  try {
-    if (typeof sessionStorage !== 'undefined') {
-      sessionStorage.setItem(DERIVED_SS_PREFIX + athleteId, JSON.stringify(d))
-    }
-  } catch {
-    /* quota : cache mémoire seulement */
-  }
+  persistSet(DERIVED_SS_PREFIX + athleteId, d, 12 * 60 * 60 * 1000)
 }
 
 /** Marque un calcul dérivé terminé sans résultat (évite de re-poler indéfiniment). */
 function markDerivedFailed(athleteId: string): void {
-  try {
-    if (typeof sessionStorage !== 'undefined') {
-      sessionStorage.setItem(DERIVED_SS_PREFIX + 'none:' + athleteId, Date.now().toString())
-    }
-  } catch {
-    /* ignore */
-  }
+  persistSet(DERIVED_SS_PREFIX + 'none:' + athleteId, { at: Date.now() }, 12 * 60 * 60 * 1000)
 }
 
 /** Un calcul dérivé a-t-il déjà été tenté sans résultat (TTL 12 h) ? */
 export function hasDerivedFailed(athleteId: string): boolean {
   try {
-    if (typeof sessionStorage === 'undefined') return false
-    const raw = sessionStorage.getItem(DERIVED_SS_PREFIX + 'none:' + athleteId)
+    const raw = persistGet<{ v?: { at?: number } } | { at?: number }>(DERIVED_SS_PREFIX + 'none:' + athleteId)
     if (!raw) return false
-    return Date.now() - Number(raw) < 12 * 60 * 60 * 1000
+    const at = (raw as { v?: { at?: number } }).v?.at ?? (raw as { at?: number }).at
+    if (!at) return false
+    return Date.now() - Number(at) < 12 * 60 * 60 * 1000
   } catch {
     return false
   }
@@ -334,6 +341,10 @@ export function computeDerivedStats(
     let totalSeconds = 0
     let fightsUsed = 0
     let fightsSkipped = 0
+    // Collecte des combats documentés (résultat corrigé NC, méthode, round
+    // de fin) pour le modèle de rounds personnalisé — statuts DÉJÀ récupérés
+    // ci-dessous, donc coût réseau nul.
+    const fights: DerivedResult['fights'] = []
 
     for (let i = 0; i < usable.length; i++) {
       const h = usable[i]
@@ -344,6 +355,24 @@ export function computeDerivedStats(
           getFightStatsFor(h.espnEventId as string, h.espnCompetitionId as string, oppId, league),
           getCompetitionStatus(league, h.espnEventId as string, h.espnCompetitionId as string),
         ])
+        // Correction NC : l'historique ESPN étiquette « D » un no-contest
+        // (vérifié : Gane–Aspinall 2025, result.name = 'no-contest').
+        const isNc = status?.resultName?.toLowerCase().includes('no-contest') === true
+        const correctedResult = isNc ? 'NC' : h.result
+        const method =
+          status?.resultMethod === 'KO_TKO'
+            ? 'KO_TKO'
+            : status?.resultMethod === 'SOUMISSION'
+              ? 'SOUMISSION'
+              : status?.resultMethod === 'DECISION'
+                ? 'DECISION'
+                : null
+        fights.push({
+          eventDate: h.eventDate,
+          result: correctedResult as 'W' | 'L' | 'D' | 'NC',
+          method: isNc ? null : method,
+          period: status?.period ?? null,
+        })
         const duration = status?.durationSeconds ?? null
         const ok =
           oppStats?.sigStrikesLanded != null &&
@@ -383,6 +412,7 @@ export function computeDerivedStats(
       fightsUsed,
       fightsSkipped,
       computedAt: new Date().toISOString(),
+      fights,
     }
     writeDerivedCache(espnAthleteId, result)
     return result
@@ -465,11 +495,34 @@ export function formatDuration(seconds: number): string {
 // Dimensions d'interprétation
 // ---------------------------------------------------------------------------
 
-function edge(a: number | null, b: number | null, lowerBetter = false): { scoreA: number | null; scoreB: number | null; advantage: 'A' | 'B' | '=' | null } {
+/**
+ * Indice relatif 0-100 entre deux valeurs observées.
+ *
+ * Audit 2026-11-09 (agent B, point A4) : l'ancienne normalisation x/(x+y)
+ * transformait du bruit en signaux massifs (SLpM 0,1 vs 0,15 → 40/60 ;
+ * TD 0 vs 0,5 → 0/100). Nouvelle règle, amortie et gardée :
+ *  - score = 50 + 50·(x−y)/(x+y+ε) : l'écart est RAMENÉ à l'échelle réelle
+ *    de la dimension (ε = plancher de bruit, calibré par dimension) ;
+ *  - si les DEUX valeurs sont sous le plancher absolu `floor`, la dimension
+ *    est déclarée indisponible : l'absence d'activité n'est pas une faiblesse
+ *    (un pur striker sans takedown n'est pas « mauvais en lutte », c'est un
+ *    style — l'indice ne doit pas le prétendre).
+ */
+function edge(
+  a: number | null,
+  b: number | null,
+  lowerBetter = false,
+  epsilon = 0,
+  floor = 0
+): { scoreA: number | null; scoreB: number | null; advantage: 'A' | 'B' | '=' | null } {
   if (a == null || b == null) return { scoreA: null, scoreB: null, advantage: null }
+  if (floor > 0 && Math.max(a, b) < floor) {
+    return { scoreA: null, scoreB: null, advantage: null }
+  }
   if (a === 0 && b === 0) return { scoreA: 50, scoreB: 50, advantage: '=' }
   const [x, y] = lowerBetter ? [b, a] : [a, b]
-  const shareX = x + y === 0 ? 50 : (x / (x + y)) * 100
+  const denom = x + y + epsilon
+  const shareX = denom <= 0 ? 50 : 50 + (50 * (x - y)) / denom
   const scoreA = lowerBetter ? 100 - shareX : shareX
   const scoreB = 100 - scoreA
   const advantage = Math.abs(scoreA - scoreB) < 6 ? '=' : scoreA > scoreB ? 'A' : 'B'
@@ -478,6 +531,9 @@ function edge(a: number | null, b: number | null, lowerBetter = false): { scoreA
 
 export function buildDimensions(a: FighterView, b: FighterView): DimensionScore[] {
   const dims: DimensionScore[] = []
+  // Amortissement (ε) et plancher (floor) par dimension — valeurs calibrées
+  // sur les échelles réelles des statistiques ESPN (audit 2026-11-09) :
+  // ε ≈ l'écart typique sous lequel deux carrières ne se distinguent pas.
   const add = (
     key: string,
     label: string,
@@ -485,9 +541,10 @@ export function buildDimensions(a: FighterView, b: FighterView): DimensionScore[
     vb: number | null,
     detail: (sa: number | null, sb: number | null) => string,
     basis: string,
-    lowerBetter = false
+    lowerBetter = false,
+    damping: { epsilon?: number; floor?: number } = {}
   ) => {
-    const e = edge(va, vb, lowerBetter)
+    const e = edge(va, vb, lowerBetter, damping.epsilon ?? 0, damping.floor ?? 0)
     dims.push({
       key,
       label,
@@ -507,37 +564,37 @@ export function buildDimensions(a: FighterView, b: FighterView): DimensionScore[
     (x, y) => `Forme sur 5 combats : ${pct(x)} contre ${pct(y)}`, 'Historique (ESPN)')
 
   add('volume', 'Volume de frappes', a.stats?.sigStrikesLandedPerMin ?? null, b.stats?.sigStrikesLandedPerMin ?? null,
-    (x, y) => `${fmt(x)} frappe(s) significative(s) par minute contre ${fmt(y)}`, career)
+    (x, y) => `${fmt(x)} frappe(s) significative(s) par minute contre ${fmt(y)}`, career, false, { epsilon: 2 })
 
   add('precision', 'Précision des frappes', a.stats?.strikingAccuracy ?? null, b.stats?.strikingAccuracy ?? null,
-    (x, y) => `Précision : ${fmt(x, '%', 1)} contre ${fmt(y, '%', 1)}`, career)
+    (x, y) => `Précision : ${fmt(x, '%', 1)} contre ${fmt(y, '%', 1)}`, career, false, { epsilon: 20 })
 
   add('absorption', 'Frappes absorbées', a.derived?.sigStrikesAbsorbedPerMin ?? null, b.derived?.sigStrikesAbsorbedPerMin ?? null,
-    (x, y) => `${fmt(x)} frappe(s) reçue(s) par minute contre ${fmt(y)} (moins = mieux)`, derivedBasis, true)
+    (x, y) => `${fmt(x)} frappe(s) reçue(s) par minute contre ${fmt(y)} (moins = mieux)`, derivedBasis, true, { epsilon: 2 })
 
   add('defense-frappes', 'Défense contre les frappes', a.derived?.strikingDefense ?? null, b.derived?.strikingDefense ?? null,
-    (x, y) => `Défense : ${fmt(x, '%', 1)} contre ${fmt(y, '%', 1)}`, derivedBasis)
+    (x, y) => `Défense : ${fmt(x, '%', 1)} contre ${fmt(y, '%', 1)}`, derivedBasis, false, { epsilon: 20 })
 
   add('lutte', 'Lutte (takedowns)', a.stats?.takedownsPer15Min ?? null, b.stats?.takedownsPer15Min ?? null,
-    (x, y) => `${fmt(x)} takedown(s) par 15 min contre ${fmt(y)}`, career)
+    (x, y) => `${fmt(x)} takedown(s) par 15 min contre ${fmt(y)}`, career, false, { epsilon: 1.5, floor: 0.3 })
 
   add('defense-takedown', 'Défense contre les takedowns', a.derived?.takedownDefense ?? null, b.derived?.takedownDefense ?? null,
-    (x, y) => `Défense : ${fmt(x, '%', 1)} contre ${fmt(y, '%', 1)}`, derivedBasis)
+    (x, y) => `Défense : ${fmt(x, '%', 1)} contre ${fmt(y, '%', 1)}`, derivedBasis, false, { epsilon: 20 })
 
   add('sol', 'Soumissions', a.stats?.submissionsPer15Min ?? null, b.stats?.submissionsPer15Min ?? null,
-    (x, y) => `${fmt(x)} soumission(s) tentée(s) par 15 min contre ${fmt(y)}`, career)
+    (x, y) => `${fmt(x)} soumission(s) tentée(s) par 15 min contre ${fmt(y)}`, career, false, { epsilon: 0.8, floor: 0.15 })
 
   add('puissance', 'Pouvoir de finition', a.stats ? (a.stats.koPercentage ?? 0) + (a.stats.tkoPercentage ?? 0) : null,
     b.stats ? (b.stats.koPercentage ?? 0) + (b.stats.tkoPercentage ?? 0) : null,
-    (x, y) => `${fmt(x, '%', 1)} des combats finis par KO/TKO contre ${fmt(y, '%', 1)}`, career)
+    (x, y) => `${fmt(x, '%', 1)} des combats finis par KO/TKO contre ${fmt(y, '%', 1)}`, career, false, { epsilon: 25 })
 
   add('experience', 'Expérience', a.totalFights, b.totalFights,
-    (x, y) => `${x ?? '?'} combat(s) disputé(s) contre ${y ?? '?'}`, 'Palmarès (ESPN)')
+    (x, y) => `${x ?? '?'} combat(s) disputé(s) contre ${y ?? '?'}`, 'Palmarès (ESPN)', false, { epsilon: 6 })
 
   add('physique', 'Envergure physique',
     a.reachCm != null && b.reachCm != null ? a.reachCm : null,
     a.reachCm != null && b.reachCm != null ? b.reachCm : null,
-    (x, y) => `Allonge : ${fmt(x, 'cm', 1)} contre ${fmt(y, 'cm', 1)}`, 'Fiche (ESPN)')
+    (x, y) => `Allonge : ${fmt(x, 'cm', 1)} contre ${fmt(y, 'cm', 1)}`, 'Fiche (ESPN)', false, { epsilon: 10 })
 
   return dims
 }

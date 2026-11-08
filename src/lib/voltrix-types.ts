@@ -149,7 +149,15 @@ export interface MatchDetailDTO {
       btts: { yes: number; no: number };
     };
     topScores: Array<{ score: string; prob: number }>;
-    firstGoalTiming: Array<{ window: string; label: string; prob: number }>;
+    firstGoalTiming: Array<{
+      window: string;
+      label: string;
+      prob: number;
+      /** Source du calcul : minutes de buts réelles des équipes, profil de
+       * ligue empirique, ou repli modèle (Poisson homogène). */
+      basis?: "equipes" | "ligue" | "modele";
+      sampleGoals?: number;
+    }>;
     firstToScore: { home: number; away: number; noGoal: number };
     lambda: { home: number; away: number; total: number };
     confidence: number; // 1..5

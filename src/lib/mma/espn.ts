@@ -48,8 +48,13 @@ export const ESPN_LEAGUES: Record<string, string> = {
   BELLATOR: 'bellator',
 }
 
-/** Organisations actives côté liste d'événements (Bellator : historique seul). */
-export const ACTIVE_ORGS: string[] = ['UFC', 'PFL']
+/**
+ * Organisations actives côté liste d'événements. Directive produit
+ * (2026-11-09) : l'analyse MMA se focalise sur l'UFC UNIQUEMENT.
+ * PFL/Bellator restent décodables (historiques croisés) mais ne sont
+ * plus scannés pour les listes d'événements ni les pronos.
+ */
+export const ACTIVE_ORGS: string[] = ['UFC']
 
 export function parseFightUid(uid: string): { leagueId: string; eventId: string; competitionId: string } | null {
   const m = uid.match(/~l:(\d+)~e:(\d+)~c:(\d+)/)
@@ -75,32 +80,37 @@ interface CacheEntry {
   expiresAt: number
 }
 
+import { persistGet, persistSet } from '../persist'
+
 const SS_PREFIX = 'voltrix:espn:'
 const memory = new Map<string, CacheEntry>()
 
 function loadSession(key: string): CacheEntry | null {
-  try {
-    if (typeof sessionStorage === 'undefined') return null
-    const raw = sessionStorage.getItem(SS_PREFIX + key)
-    if (!raw) return null
-    const entry = JSON.parse(raw) as CacheEntry
-    if (entry.expiresAt < Date.now()) {
-      sessionStorage.removeItem(SS_PREFIX + key)
-      return null
-    }
-    return entry
-  } catch {
+  const mem = memory.get(key)
+  if (mem && mem.expiresAt > Date.now()) return mem
+  const stored = persistGet<CacheEntry>(SS_PREFIX + key)
+  if (!stored) return null
+  if (stored.expiresAt < Date.now()) {
+    persistRemoveKey(SS_PREFIX + key)
     return null
+  }
+  memory.set(key, stored)
+  return stored
+}
+
+function persistRemoveKey(fullKey: string): void {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) return
+    window.localStorage.removeItem(fullKey)
+  } catch {
+    /* ignore */
   }
 }
 
 function saveSession(key: string, entry: CacheEntry): void {
-  try {
-    if (typeof sessionStorage === 'undefined') return
-    sessionStorage.setItem(SS_PREFIX + key, JSON.stringify(entry))
-  } catch {
-    // quota dépassé ou stockage indisponible : le cache mémoire suffit
-  }
+  // Cache PERSISTANT (localStorage) : survit à la fermeture de l'App —
+  // retour au moins 10 min sans recalcul réseau (exigence produit).
+  persistSet(SS_PREFIX + key, entry, Math.max(0, entry.expiresAt - Date.now()))
 }
 
 export interface CacheStats {
@@ -142,17 +152,17 @@ export function getCacheStats(): CacheStats {
   }
 }
 
-/** Vide entièrement le cache local (mémoire + sessionStorage). */
+/** Vide entièrement le cache local (mémoire + stockage persistant). */
 export function clearCache(): void {
   memory.clear()
   try {
-    if (typeof sessionStorage === 'undefined') return
+    if (typeof window === 'undefined' || !window.localStorage) return
     const toRemove: string[] = []
-    for (let i = 0; i < sessionStorage.length; i++) {
-      const k = sessionStorage.key(i)
+    for (let i = 0; i < window.localStorage.length; i++) {
+      const k = window.localStorage.key(i)
       if (k && (k.startsWith(SS_PREFIX) || k.startsWith('voltrix:derived:'))) toRemove.push(k)
     }
-    for (const k of toRemove) sessionStorage.removeItem(k)
+    for (const k of toRemove) window.localStorage.removeItem(k)
   } catch {
     /* ignore */
   }
@@ -207,10 +217,15 @@ export async function espnFetch<T>(
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), 15000)
   try {
-    let res = await fetch(url, { signal: controller.signal, cache: 'no-store' })
+    // User-Agent explicite : hors navigateur (scripts, SSR), le CDN ESPN
+    // rejette les clients inconnus (403 — vérifié à l'audit ; Bun envoie
+    // « Bun/x.y »). Dans un vrai navigateur, cet en-tête est interdit et
+    // donc silencieusement ignoré — aucun effet de bord.
+    const headers: Record<string, string> = { 'User-Agent': 'Mozilla/5.0 (VOLTRIX)' }
+    let res = await fetch(url, { signal: controller.signal, cache: 'no-store', headers })
     if (res.status === 403 || res.status === 429) {
       await sleep(2500)
-      res = await fetch(url, { signal: controller.signal, cache: 'no-store' })
+      res = await fetch(url, { signal: controller.signal, cache: 'no-store', headers })
     }
     if (res.status === 404) return null
     if (!res.ok) throw new Error(`ESPN HTTP ${res.status} — ${new URL(url).host}`)
@@ -434,6 +449,11 @@ export interface FighterRecordDTO {
   winsByKo: number | null
   winsBySub: number | null
   titleWins: number | null
+  /** Méthodes de DÉFAITE (records/0) — base du byMethod « adversaire ».
+   *  Vérifié sur Gane : tkoLosses=0, submissionLosses=1 ; decisionLosses
+   *  n'est pas publié = losses − tkoLosses − submissionLosses. */
+  tkoLosses: number | null
+  submissionLosses: number | null
 }
 
 export interface FightHistoryEntryDTO {
@@ -642,6 +662,8 @@ export async function getAthleteRecord(espnAthleteId: string): Promise<FighterRe
     winsByKo: get('tkos'),
     winsBySub: get('submissions'),
     titleWins: get('titleWins'),
+    tkoLosses: get('tkoLosses'),
+    submissionLosses: get('submissionLosses'),
   }
 }
 
@@ -708,7 +730,7 @@ export async function getFightStatsFor(
   }
 }
 
-/** Statut d'une compétition (durée + méthode de victoire). */
+/** Statut d'une compétition (durée + méthode de victoire + round de fin). */
 export async function getCompetitionStatus(
   league: string,
   espnEventId: string,
@@ -717,12 +739,21 @@ export async function getCompetitionStatus(
   durationSeconds: number | null
   resultMethod: string | null
   resultDetail: string | null
+  /** Round de fin PUBLIÉ PAR ESPN (`status.period`) — audité 2026-11-09 :
+   *  présent sur tous les combats terminés testés (fins comme décisions). */
+  period: number | null
+  /** Nom brut du résultat ESPN (ex: "kotko", "no-contest") — distingue
+   *  un no-contest d'un nul dans l'historique. */
+  resultName: string | null
   raw: { clock: number | null; period: number | null }
 } | null> {
   const url = `${CORE_LEAGUES}/${league}/events/${espnEventId}/competitions/${espnCompetitionId}/status?lang=en&region=us`
   const status = await espnFetch<EspnStatus>(url, {
     cacheKey: `espn:core:competition-status:${espnCompetitionId}`,
-    ttlMs: CACHE_TTL.competition,
+    // TTL court (60 s) : suit le round courant d'un combat EN COURS ; les
+    // consommateurs de plus haut niveau (dérivés, prior rounds) cachent
+    // leurs propres agrégats, donc ce TTL ne multiplie pas les requêtes.
+    ttlMs: 60 * 1000,
   })
   if (!status) return null
   const { method, detail } = resultMethodDetail(status.result ?? null)
@@ -730,6 +761,8 @@ export async function getCompetitionStatus(
     durationSeconds: fightDurationSeconds(status),
     resultMethod: method,
     resultDetail: detail,
+    period: Number.isFinite(Number(status.period)) ? Number(status.period) : null,
+    resultName: status.result?.name ?? null,
     raw: { clock: status.clock ?? null, period: status.period ?? null },
   }
 }

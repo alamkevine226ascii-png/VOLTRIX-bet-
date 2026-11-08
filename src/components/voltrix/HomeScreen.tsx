@@ -21,9 +21,10 @@ import {
   type DayProgress,
 } from "@/lib/foot/bridge";
 import {
-  loadMmaDay,
+  loadMmaUpcoming,
   hydrateMmaHeadshots,
   hydrateMmaForms,
+  eventCategoryLabel,
 } from "@/lib/mma-bridge";
 import type { LightMatch, MatchesResponse, QuickPred } from "@/lib/voltrix-types";
 import type { MmaEventsResponse, MmaFight, MmaQuickPred } from "@/lib/mma-types";
@@ -271,8 +272,10 @@ function FightCard({
 
   return (
     <article
-      onClick={onOpen}
-      className={`cursor-pointer rounded-[24px] bg-panel p-4 pb-3.5 shadow-[0_10px_24px_rgba(0,0,0,0.35)] transition-transform duration-150 ease-out active:scale-[0.97] sm:hover:scale-[1.015] ${done ? "opacity-80" : ""}`}
+      onClick={fight.prospect ? undefined : onOpen}
+      className={`rounded-[24px] bg-panel p-4 pb-3.5 shadow-[0_10px_24px_rgba(0,0,0,0.35)] transition-transform duration-150 ease-out ${
+        fight.prospect ? "" : "cursor-pointer active:scale-[0.97] sm:hover:scale-[1.015]"
+      } ${done ? "opacity-80" : ""}`}
     >
       <div className="grid grid-cols-[1fr_auto_1fr] items-start gap-1">
         {/* combattant A */}
@@ -331,7 +334,11 @@ function FightCard({
         <span className="shrink-0 rounded-full bg-white px-2.5 py-[3px] text-[8px] font-extrabold uppercase tracking-wider text-black shadow-sm">
           {fight.weightClassShort ?? fight.org}
         </span>
-        {pred ? (
+        {fight.prospect ? (
+          <span className="text-[9px] font-bold uppercase tracking-wider text-black/35">
+            Adversaire à confirmer
+          </span>
+        ) : pred ? (
           <MmaProbsStrip pred={pred} aShort={fight.fighterA.shortName} bShort={fight.fighterB.shortName} />
         ) : (
           <span className="text-[9px] font-bold uppercase tracking-wider text-black/35">Analyse…</span>
@@ -392,26 +399,39 @@ export function HomeScreen({
     setHeaderCollapsed(false);
   }, []);
 
-  /* ---------- chargement de la journée (foot + MMA) ---------- */
+  /* ---------- chargement : football par date, MMA par événements UFC ---------- */
+  const loadMma = useCallback(async (run: number) => {
+    try {
+      const res = await loadMmaUpcoming();
+      if (run !== abortRef.current) return;
+      setMmaData(res);
+
+      const withHeads = await hydrateMmaHeadshots(res).catch(() => res);
+      if (run !== abortRef.current) return;
+      setMmaData(withHeads);
+
+      const { res: withForms, preds } = await hydrateMmaForms(withHeads).catch(
+        () => ({ res: withHeads, preds: {} as Record<string, MmaQuickPred> }),
+      );
+      if (run !== abortRef.current) return;
+      setMmaData(withForms);
+      setMmaPreds(preds);
+    } catch {
+      /* réseau indisponible : les sections MMA disparaissent, le foot continue */
+      if (run === abortRef.current) setMmaData(null);
+    }
+  }, []);
+
   const load = useCallback(async (d: string) => {
     const run = ++abortRef.current;
     setLoading(true);
     setError(null);
     setFootData(null);
-    setMmaData(null);
     setPreds({});
-    setMmaPreds({});
 
-    let footDone = false;
-    let mmaDone = false;
-    const maybeFinish = () => {
-      if (footDone && mmaDone && run === abortRef.current) setLoading(false);
-    };
-
-    /* football : scan progressif par vague de priorité */
+    /* football : scan progressif par vague de priorité (dépend de la date) */
     void loadFootballDay(d, (p: DayProgress) => {
       if (run !== abortRef.current) return;
-      footDone = false;
       setFootData({
         date: d,
         totalMatches: p.leagues.reduce((n, l) => n + l.matches.length, 0),
@@ -422,40 +442,16 @@ export function HomeScreen({
       .then((res) => {
         if (run !== abortRef.current) return;
         setFootData(res);
-        footDone = true;
-        maybeFinish();
+        setLoading(false);
       })
       .catch(() => {
         if (run !== abortRef.current) return;
-        footDone = true;
-        maybeFinish();
+        setLoading(false);
       });
 
-    /* MMA : scoreboard + détails, puis têtes + formes en enrichissement */
-    void loadMmaDay(d)
-      .then(async (res) => {
-        if (run !== abortRef.current) return;
-        setMmaData(res);
-        mmaDone = true;
-        maybeFinish();
-
-        const withHeads = await hydrateMmaHeadshots(res).catch(() => res);
-        if (run !== abortRef.current) return;
-        setMmaData(withHeads);
-
-        const { res: withForms, preds } = await hydrateMmaForms(withHeads).catch(
-          () => ({ res: withHeads, preds: {} as Record<string, MmaQuickPred> }),
-        );
-        if (run !== abortRef.current) return;
-        setMmaData(withForms);
-        setMmaPreds(preds);
-      })
-      .catch(() => {
-        if (run !== abortRef.current) return;
-        mmaDone = true;
-        maybeFinish();
-      });
-  }, []);
+    /* MMA : événements UFC à venir (indépendants de la date) */
+    void loadMma(run);
+  }, [loadMma]);
 
   useEffect(() => {
     void load(date);
@@ -523,10 +519,18 @@ export function HomeScreen({
 
   const orgChips = useMemo(() => {
     if (!mmaData) return [];
-    const seen = new Set<string>();
     return mmaData.events
-      .filter((e) => (seen.has(e.org) ? false : (seen.add(e.org), true)))
-      .map((e) => ({ code: `mma:${e.org}`, label: e.org, name: e.eventName }));
+      .filter((e) => e.eventId !== "prospect")
+      .map((e) => ({
+        code: `mma:${e.eventId}`,
+        label: eventCategoryLabel(e.eventName, e.eventDate),
+        name: e.eventName,
+      }))
+      .concat(
+        mmaData.events.some((e) => e.eventId === "prospect")
+          ? [{ code: "mma:prospect", label: "Perspectifs", name: "Combats perspectifs" }]
+          : [],
+      );
   }, [mmaData]);
 
   const groups = useMemo(() => {
@@ -541,13 +545,11 @@ export function HomeScreen({
 
   const eventGroups = useMemo(() => {
     if (!mmaData) return [];
-    if (activeFilter === "all" || activeFilter.startsWith("mma:") === false) {
-      if (activeFilter !== "all") return [];
-    }
     if (activeFilter.startsWith("mma:")) {
-      const org = activeFilter.slice(4);
-      return mmaData.events.filter((e) => e.org === org);
+      const eventId = activeFilter.slice(4);
+      return mmaData.events.filter((e) => e.eventId === eventId);
     }
+    if (activeFilter !== "all") return [];
     return mmaData.events;
   }, [mmaData, activeFilter]);
 
@@ -635,22 +637,26 @@ export function HomeScreen({
               </section>
             ))}
 
-            {/* ---------- sections MMA ---------- */}
+            {/* ---------- sections MMA (catégories d'événements UFC) ---------- */}
             {eventGroups.map((ev) => (
-              <section key={`${ev.org}-${ev.eventName}`} aria-label={ev.eventName}>
+              <section key={ev.eventId} aria-label={ev.eventName}>
                 <div className="mb-2.5 flex items-center gap-2">
                   <span className="h-[3px] w-4 rounded-full bg-neon" />
-                  <h2 className="text-[11px] font-black uppercase tracking-[0.14em] text-white/70">
-                    {ev.eventName}
+                  <h2 className="min-w-0 flex-1 truncate text-[11px] font-black uppercase tracking-[0.14em] text-white/70">
+                    {ev.eventId === "prospect" ? "Arts martiaux mixtes · Combats perspectifs" : ev.eventName}
                   </h2>
-                  <span className="text-[9.5px] font-bold text-white/30">{ev.fights.length}</span>
+                  <span className="shrink-0 text-[9px] font-bold text-white/30">
+                    {ev.eventId === "prospect"
+                      ? `${ev.fights.length}`
+                      : `${new Date(ev.eventDate).toLocaleDateString("fr-FR", { day: "2-digit", month: "short" })} · ${ev.fights.length}`}
+                  </span>
                 </div>
                 <div className="space-y-4">
                   {ev.fights.map((f) => (
                     <FightCard
-                      key={f.id}
+                      key={`${ev.eventId}-${f.id}`}
                       fight={f}
-                      pred={mmaPreds[f.id]}
+                      pred={f.prospect ? undefined : mmaPreds[f.id]}
                       onOpen={() => onOpenFight(f.id)}
                     />
                   ))}

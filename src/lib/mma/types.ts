@@ -125,9 +125,16 @@ export function resultMethodDetail(result?: { name?: string | null; description?
 
 /**
  * Durée d'un combat terminé, en secondes.
- * Formule VALIDÉE sur données réelles (4 combats vérifiés) :
- *  - horloge < 300 s : (period - 1) * 300 + (300 - clock)
- *  - horloge = 300 s : period * 300
+ * Formule VALIDÉE sur données réelles (audit 2026-11-09, 8 combats de
+ * référence vérifiés contre ESPN : Masvidal–Askren KO R1 0:05 → 5 s ;
+ * McGregor–Aldo 0:13 → 13 s ; Khabib–McGregor R4 3:03 → 1083 s ;
+ * Gaethje–Ferguson R5 3:39 → 1419 s ; décisions → R×300) :
+ *  - `clock` est le temps ÉCOULÉ dans le round final (pas le temps restant) ;
+ *  - horloge < 300 s : (period - 1) * 300 + clock
+ *  - horloge = 300 s (décision au terme du round) : period * 300
+ * L'ancienne formule (300 - clock) inversait le temps intra-round et
+ * multipliait les durées jusqu'à ×59 — elle corrompait SApM et le temps
+ * moyen de combat des indicateurs dérivés.
  * Retourne null si les données sont insuffisantes.
  */
 export function fightDurationSeconds(status?: { clock?: number | null; period?: number | null } | null): number | null {
@@ -137,7 +144,7 @@ export function fightDurationSeconds(status?: { clock?: number | null; period?: 
   if (!Number.isFinite(clock) || !Number.isFinite(period) || period < 1) return null
   const ROUND = 300
   if (clock >= ROUND) return period * ROUND
-  return (period - 1) * ROUND + (ROUND - clock)
+  return (period - 1) * ROUND + clock
 }
 
 /** Palmarès "10-2-0" -> { wins: 10, losses: 2, draws: 0 } ; null si non analysable. */
