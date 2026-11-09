@@ -60,9 +60,18 @@ async function main() {
     }
     console.log(`  analyse en ${Date.now() - t0} ms`);
     const fg = res.prediction.firstGoalTiming;
+    const headline = res.prediction.firstGoalHeadline;
     const windows = fg.slice(0, 6);
     const argmax = windows.reduce((best, w, i) => (w.prob > windows[best].prob ? i : best), 0);
-    console.log(`  Premier but — basis=${fg[0]?.basis} sampleGoals=${fg[0]?.sampleGoals}`);
+    console.log(
+      `  Premier but — basis=${fg[0]?.basis} sampleMatches=${fg[0]?.sampleMatches} λscale=${headline.lambdaScale}`,
+    );
+    console.log(
+      `  >>> 1er BUT ATTENDU VERS LA ${headline.expectedMinute ?? "— (P(0-0) ≥ 50 %)"}e MINUTE`,
+    );
+    console.log(
+      `  >>> tempo médian : ${headline.homeMedianMinute ?? "?"}e (dom) / ${headline.awayMedianMinute ?? "?"}e (ext)`,
+    );
     for (const w of fg) console.log(`    ${w.label.padEnd(24)} ${fmtPct(w.prob)}`);
     console.log(`  >>> FENÊTRE MAX = ${windows[argmax].label} (${fmtPct(windows[argmax].prob)})`);
     console.log(`  λ total = ${res.prediction.lambda.total.toFixed(2)}`);
