@@ -5,8 +5,8 @@
    ------------------------------------------------------------
    Demandé explicitement : « crée un moteur à part avec pour
    unique but de calculer à quel minute aura lieu le premier but ».
-   Séparé du moteur de prédiction principal (prediction.ts) et du
-   moteur de compositions (lineups.ts) — celui-ci ne fait QUE ça.
+   Séparé du moteur de prédiction principal (prediction.ts) —
+   celui-ci ne fait QUE ça.
 
    PRINCIPE (règle d'honnêteté : aucune donnée inventée) :
    1. La quantité prédite est la minute du 1er but D'UN MATCH.
@@ -164,7 +164,7 @@ interface RawGoalSummary {
 /**
  * Historique des minutes du 1er but d'une équipe : les 12 derniers
  * matchs TERMINÉS avant `beforeISO`, lus dans les summaries ESPN
- * (cache PARTAGÉ avec lineups.ts, clé `foot:summary:{ligue}:{eventId}`,
+ * (clé de cache `foot:summary:{ligue}:{eventId}`,
  * TTL 6 h). Pour chaque match : le PLUS PETIT but du match (toutes
  * équipes confondues) = minute du 1er but ; 0-0 → null (compté quand
  * même : un match sans but informe la survie). Un match sans summary

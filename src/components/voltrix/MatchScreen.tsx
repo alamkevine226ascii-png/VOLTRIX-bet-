@@ -7,11 +7,9 @@
    logos + heure — prend le relais.
    Analyse 100 % locale : moteur Poisson/Elo/Forme du dépôt
    VOLTRIX-bet, alimenté en direct par ESPN (aucune base).
-   Compos : réelles si publiées, sinon celles du match précédent
-   de chaque équipe — jamais inventées.
    ============================================================ */
 
-import { useCallback, useEffect, useMemo, useRef, useState, type UIEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type UIEvent } from "react";
 import { motion } from "framer-motion";
 import {
   ChevronDown,
@@ -24,11 +22,6 @@ import {
 } from "lucide-react";
 import { oddsFmt, pct, timeLabel } from "@/lib/voltrix";
 import { analyzeFootballMatch, type FootballDetail } from "@/lib/foot/bridge";
-import {
-  loadMatchLineups,
-  type MatchLineups,
-  type TeamLineup,
-} from "@/lib/foot/lineups";
 import { stadiumImageFor } from "@/lib/stadiums";
 import type { LightMatch } from "@/lib/voltrix-types";
 import { TeamBadge } from "./TeamBadge";
@@ -43,14 +36,13 @@ import {
   confidenceStars,
 } from "./ui-bits";
 
-type TabId = "synthese" | "marches" | "h2h" | "contexte" | "compos";
+type TabId = "synthese" | "marches" | "h2h" | "contexte";
 
 const TABS: Array<{ id: TabId; label: string }> = [
   { id: "synthese", label: "Synthèse" },
   { id: "marches", label: "Marchés" },
   { id: "h2h", label: "H2H" },
   { id: "contexte", label: "Contexte" },
-  { id: "compos", label: "Compos" },
 ];
 
 /* Seuil de défilement (px) au-delà duquel le héros est considéré
@@ -76,46 +68,6 @@ function ComponentRow({ name, probs, note }: { name: string; probs: { home: numb
   );
 }
 
-/* ---------- Terrain (Compos) ---------- */
-function Pitch({ team }: { team: TeamLineup }) {
-  const rows: Record<string, TeamLineup["starters"][number][]> = { G: [], D: [], M: [], F: [] };
-  team.starters.forEach((p) => {
-    const k = p.position ?? "M";
-    if (!rows[k]) rows[k] = [];
-    rows[k].push(p);
-  });
-  const order = ["F", "M", "D", "G"];
-  return (
-    <div className="rounded-3xl bg-pitch p-3 ring-1 ring-white/10">
-      <div className="relative flex aspect-[3/4] w-full flex-col justify-between rounded-2xl border-2 border-pitch-line bg-[linear-gradient(rgba(255,255,255,0.045)_1px,transparent_1px)] bg-[length:100%_12.5%]">
-        <div className="absolute inset-x-0 top-1/2 h-[2px] bg-pitch-line" />
-        <div className="absolute left-1/2 top-1/2 h-14 w-14 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-pitch-line" />
-        <div className="absolute inset-x-[22%] top-0 h-10 border-x-2 border-b-2 border-pitch-line" />
-        <div className="absolute inset-x-[22%] bottom-0 h-10 border-x-2 border-t-2 border-pitch-line" />
-
-        {order.map((k) => {
-          const players = rows[k];
-          if (players.length === 0) return null;
-          return (
-            <div key={k} className="relative z-10 flex items-start justify-center gap-1 px-2">
-              {players.map((p) => (
-                <div key={p.athleteId} className="flex w-[52px] flex-col items-center">
-                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-neon text-[11px] font-black text-black ring-2 ring-black/30">
-                    {p.jersey ?? "?"}
-                  </span>
-                  <span className="mt-1 max-w-full truncate rounded bg-black/60 px-1 py-[1px] text-[7.5px] font-bold uppercase tracking-wide text-white/85">
-                    {p.shortName ?? p.name}
-                  </span>
-                </div>
-              ))}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 /* ---------- Écran ---------- */
 export function MatchScreen({
   matchId,
@@ -134,8 +86,6 @@ export function MatchScreen({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<TabId>("synthese");
-  const [lineups, setLineups] = useState<MatchLineups | null>(null);
-  const [lineupsLoading, setLineupsLoading] = useState(false);
 
   /* héros parti → barre compacte visible */
   const [compact, setCompact] = useState(false);
@@ -160,63 +110,6 @@ export function MatchScreen({
   useEffect(() => {
     void load();
   }, [load]);
-
-  /* compos : réelles si publiées, sinon celles du match précédent.
-     Règle produit (2026-11-09) : après le coup d'envoi, on RECHERCHE
-     les compositions officielles — l'état « match précédent » est
-     invalidé dès que le match passe en direct/terminé, et l'onglet
-     re-consulté relance la lecture (polling 60 s pendant le direct). */
-  const lineupsStartedRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (tab !== "compos" || !detail) return;
-    /* clé d'invalidation : match + phase (pré-match vs après coup d'envoi) */
-    const phase = detail.status === "pre" ? "pre" : "live";
-    const key = `${matchId}:${phase}`;
-    if (lineupsStartedRef.current === key) return;
-    lineupsStartedRef.current = key;
-    setLineupsLoading(true);
-    const ctx = {
-      matchDate: detail.matchDate,
-      homeTeamId: detail.home.id,
-      awayTeamId: detail.away.id,
-      homeName: detail.home.name,
-      awayName: detail.away.name,
-      homeLogo: detail.home.logo,
-      awayLogo: detail.away.logo,
-    };
-    loadMatchLineups(matchId, leagueCode, ctx)
-      .then((r) => setLineups(r))
-      .catch(() => setLineups(null))
-      .finally(() => setLineupsLoading(false));
-  }, [tab, detail, matchId, leagueCode]);
-
-  /* pendant un match EN DIRECT avec compos non publiées : re-vérification
-     toutes les 60 s tant que l'onglet Compos est ouvert (les onze
-     officiels tombent généralement 20-40 min avant le coup d'envoi, mais
-     ESPN peut publier en retard) */
-  useEffect(() => {
-    if (tab !== "compos" || detail?.status !== "in" || lineups?.published || !detail) return;
-    const t = setInterval(() => {
-      const ctx = {
-        matchDate: detail.matchDate,
-        homeTeamId: detail.home.id,
-        awayTeamId: detail.away.id,
-        homeName: detail.home.name,
-        awayName: detail.away.name,
-        homeLogo: detail.home.logo,
-        awayLogo: detail.away.logo,
-      };
-      loadMatchLineups(matchId, leagueCode, ctx)
-        .then((r) => {
-          if (r?.published) setLineups(r); // seul l'OFFICIEL remplace l'affichage
-        })
-        .catch(() => null);
-    }, 60000);
-    return () => clearInterval(t);
-  }, [tab, detail, matchId, leagueCode, lineups?.published]);
-
-  /* Onglet Compos : équipe affichée */
-  const [composSide, setComposSide] = useState<"home" | "away">("home");
 
   const pred = detail?.prediction;
   const bestPick = useMemo(() => pred?.recommendedBets[0] ?? null, [pred]);
@@ -895,96 +788,6 @@ export function MatchScreen({
                       </p>
                     </div>
                   </div>
-                </div>
-              ) : null}
-
-              {/* ---------------- COMPOS (réelles ou match précédent) ---------------- */}
-              {tab === "compos" ? (
-                <div>
-                  {lineupsLoading ? (
-                    <LoadingPanel label="Lecture des compositions sur ESPN…" />
-                  ) : !lineups || (!lineups.home && !lineups.away) ? (
-                    <ErrorPanel message="Compositions indisponibles : ni publiées pour ce match, ni trouvées dans le dernier match de chaque équipe." />
-                  ) : (
-                    <div>
-                      {/* bannière d'honnêteté */}
-                      {lineups.published ? (
-                        <p className="mt-2 rounded-2xl bg-neon/10 px-3.5 py-2.5 text-[9.5px] font-semibold leading-relaxed text-neon ring-1 ring-neon/30">
-                          Compositions officielles publiées par ESPN pour ce match.
-                        </p>
-                      ) : (
-                        <p className="mt-2 rounded-2xl bg-black/50 px-3.5 py-2.5 text-[9.5px] font-semibold leading-relaxed text-white/55 ring-1 ring-white/10">
-                          Compositions du match non encore publiées par ESPN (environ 20 à 40 minutes avant le coup
-                          d&apos;envoi). En attente, VOLTRIX affiche celles du <span className="text-white">match
-                          précédent</span> de chaque équipe — aucune n&apos;est inventée.
-                        </p>
-                      )}
-
-                      <div className="mt-3 flex gap-1.5 rounded-full bg-ink-3 p-1">
-                        {(["home", "away"] as const).map((s) => {
-                          const t = s === "home" ? lineups.home : lineups.away;
-                          return (
-                            <button
-                              key={s}
-                              onClick={() => setComposSide(s)}
-                              aria-pressed={composSide === s}
-                              className={`flex-1 truncate rounded-full px-3 py-1.5 text-[10px] font-black uppercase tracking-wide transition-colors ${
-                                composSide === s ? "bg-neon text-black" : "text-white/60"
-                              }`}
-                            >
-                              {t?.name ?? s}
-                            </button>
-                          );
-                        })}
-                      </div>
-
-                      {(() => {
-                        const t = composSide === "home" ? lineups.home : lineups.away;
-                        if (!t) return null;
-                        return (
-                          <div className="mt-3">
-                            <div className="mb-2.5 flex items-center justify-between gap-2">
-                              <span className="text-[10px] font-black uppercase tracking-widest text-white/60">
-                                {t.formation ? `Formation ${t.formation}` : "Formation non publiée"}
-                              </span>
-                              {t.source === "previous" && t.previousLabel ? (
-                                <span className="max-w-[190px] truncate rounded-full bg-ink-3 px-2.5 py-1 text-[8.5px] font-black uppercase tracking-wide text-white/50" title={t.previousLabel}>
-                                  Match préc. · {t.previousLabel}
-                                </span>
-                              ) : null}
-                            </div>
-                            {t.starters.length > 0 ? (
-                              <Pitch team={t} />
-                            ) : (
-                              <p className="rounded-2xl bg-ink-3 px-4 py-3 text-[10.5px] font-semibold text-white/45">
-                                Onze de départ introuvable pour cette équipe.
-                              </p>
-                            )}
-
-                            {t.bench.length > 0 ? (
-                              <>
-                                <SectionTitle>Banc ({t.bench.length})</SectionTitle>
-                                <div className="grid grid-cols-2 gap-1.5">
-                                  {t.bench.map((p) => (
-                                    <div key={p.athleteId} className="flex items-center gap-2 rounded-xl bg-ink-3 px-2.5 py-2">
-                                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/10 text-[9.5px] font-black text-white/70">
-                                        {p.jersey ?? "?"}
-                                      </span>
-                                      <span className="min-w-0 flex-1 truncate text-[10px] font-bold text-white/80">{p.shortName ?? p.name}</span>
-                                    </div>
-                                  ))}
-                                </div>
-                              </>
-                            ) : null}
-
-                            <p className="mt-3 text-center text-[8.5px] font-bold uppercase tracking-widest text-white/25">
-                              Source : ESPN · {t.source === "published" ? "compos du match" : "compos du match précédent"}
-                            </p>
-                          </div>
-                        );
-                      })()}
-                    </div>
-                  )}
                 </div>
               ) : null}
             </motion.div>

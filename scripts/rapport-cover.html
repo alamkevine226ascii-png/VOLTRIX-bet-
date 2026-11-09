@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;900&family=Noto+Sans+SC:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+  <style>
+    @page { size: 794px 1123px; margin: 0; }
+    :root {
+      --c-bg: #f6f6f7;
+      --c-accent: #3895c3;
+      --c-text: #222526;
+      --c-muted: #767d80;
+      --c-mid: #384a52;
+      --c-surface: #eceeef;
+    }
+    html, body {
+      margin: 0; padding: 0;
+      width: 794px; height: 1123px;
+      background: var(--c-bg);
+      font-family: 'Inter', 'Noto Sans SC', sans-serif;
+      color: var(--c-text);
+    }
+    @media screen {
+      html { height: auto; display: flex; justify-content: center; min-height: 100vh; background: var(--c-bg); }
+      body { transform-origin: top center; scale: min(1, calc(100vw / 794), calc(100vh / 1123)); margin: 0 auto; box-shadow: 0 0 60px rgba(0,0,0,0.15); }
+    }
+    .cover { width: 794px; height: 1123px; position: relative; border: none; outline: none; box-shadow: none; }
+
+    /* Layer 1 — fond quadrillé (clip obligatoire) */
+    .layer-1 { position: absolute; inset: 0; overflow: hidden; z-index: 1; }
+    .grid-bg {
+      position: absolute; inset: 0;
+      background-image:
+        linear-gradient(rgba(56, 74, 82, 0.05) 0.5px, transparent 0.5px),
+        linear-gradient(90deg, rgba(56, 74, 82, 0.05) 0.5px, transparent 0.5px);
+      background-size: 50px 50px;
+    }
+
+    /* Layer 2 — ligne d'ancrage verticale épaisse */
+    .layer-2 { position: absolute; inset: 0; z-index: 2; }
+    .anchor-line {
+      position: absolute;
+      left: 95px;              /* 0.12 * W */
+      top: 112px;              /* 0.10 * H */
+      bottom: 112px;           /* 0.90 * H */
+      width: 6px;
+      background: var(--c-accent);
+    }
+
+    /* Layer 3 — contenu */
+    .layer-3 { position: absolute; inset: 0; z-index: 3; }
+    .kicker {
+      position: absolute; left: 145px; top: 168px;   /* 0.15 * H */
+      font-size: 16pt; font-weight: 400;
+      letter-spacing: 3pt; text-transform: uppercase;
+      color: var(--c-text); opacity: 0.6;
+      max-width: 560px;
+    }
+    .hero-l1 {
+      position: absolute; left: 145px; top: 320px;
+      font-size: 48pt; font-weight: 900; line-height: 1.15;
+      color: var(--c-text);
+      max-width: 580px;
+    }
+    .hero-l2 {
+      position: absolute; left: 145px; top: 414px;
+      font-size: 48pt; font-weight: 900; line-height: 1.15;
+      color: var(--c-accent);
+      max-width: 580px;
+    }
+    .summary {
+      position: absolute; left: 145px; top: 600px;
+      font-size: 16.5pt; font-weight: 400; line-height: 1.6;
+      color: var(--c-text); opacity: 0.85;
+      max-width: 476px;                               /* W * 0.6 */
+    }
+    .meta {
+      position: absolute; left: 145px; top: 842px;   /* 0.75 * H */
+      font-size: 16pt; font-weight: 400; line-height: 1.75;
+      color: var(--c-muted);
+    }
+    .meta .strong { color: var(--c-text); font-weight: 600; }
+    .footer {
+      position: absolute; left: 145px; bottom: 60px;
+      font-size: 16pt; font-weight: 400;
+      letter-spacing: 3pt; text-transform: uppercase;
+      color: var(--c-text); opacity: 0.6;
+    }
+  </style>
+</head>
+<body>
+  <div class="cover">
+    <div class="layer-1"><div class="grid-bg"></div></div>
+    <div class="layer-2"><div class="anchor-line"></div></div>
+    <div class="layer-3">
+      <div class="kicker">Rapport technique &amp; test complet</div>
+      <div class="hero-l1">VOLTRIX</div>
+      <div class="hero-l2">Moteurs de pronostics</div>
+      <div class="summary">
+        Fonctionnement de l&rsquo;application, collecte des donn&eacute;es ESPN,
+        formules math&eacute;matiques des pronostics football et MMA, test
+        utilisateur r&eacute;alis&eacute; comme un vrai utilisateur, et points
+        &agrave; revoir.
+      </div>
+      <div class="meta">
+        <span class="strong">Football&nbsp;:</span> Poisson &middot; Elo &middot; Forme &middot; 140 ligues<br>
+        <span class="strong">MMA&nbsp;:</span> voltrix-mma-v1 &middot; UFC<br>
+        <span class="strong">Date&nbsp;:</span> 9 novembre 2026
+      </div>
+      <div class="footer">Document technique &middot; usage personnel</div>
+    </div>
+  </div>
+</body>
+</html>

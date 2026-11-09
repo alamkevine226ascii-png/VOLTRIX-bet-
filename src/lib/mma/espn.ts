@@ -215,7 +215,11 @@ export async function espnFetch<T>(
 
   await acquire()
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), 15000)
+  /* 45 s (audit 2026-11-09) : les grands scans (prior rounds UFC :
+     ~130 requêtes) passent par le relai même-origine qui débite limite
+     les appels pour éviter les 403 en rafale du CDN ESPN — une requête
+     peut légitimement patienter en file > 15 s. */
+  const timer = setTimeout(() => controller.abort(), 45000)
   try {
     // User-Agent explicite : hors navigateur (scripts, SSR), le CDN ESPN
     // rejette les clients inconnus (403 — vérifié à l'audit ; Bun envoie
@@ -296,6 +300,7 @@ interface EspnCompetition {
   id?: string
   date?: string
   status?: EspnStatus
+  format?: { regulation?: { periods?: number } }
   competitors?: EspnCompetitor[]
 }
 interface EspnEvent {
@@ -371,6 +376,13 @@ export interface ScoreboardFightDTO {
   status: string
   rawStatus: string | null
   date: string
+  /** Round de fin tel que publié dans le scoreboard (status.period). */
+  statusPeriod: number | null
+  /** Rounds prévus (format.regulation.periods) — 3 ou 5. */
+  scheduledRounds: number | null
+  /** Secondes écoulées dans le round de fin (status.clock) — sert à
+   *  distinguer une décision (round complet) d'une fin anticipée. */
+  clockSeconds: number | null
   fighters: {
     externalId: string
     espnAthleteId: string
@@ -554,6 +566,10 @@ function mapCompetition(c: EspnCompetition, eventDate: Date): ScoreboardFightDTO
     status: mapEspnStatus(c.status?.type, date),
     rawStatus: c.status?.type?.state ?? null,
     date: date.toISOString(),
+    statusPeriod: Number.isFinite(Number(c.status?.period)) ? Number(c.status?.period) : null,
+    scheduledRounds:
+      c.format?.regulation?.periods === 5 ? 5 : c.format?.regulation?.periods === 3 ? 3 : null,
+    clockSeconds: Number.isFinite(Number(c.status?.clock)) ? Number(c.status?.clock) : null,
     fighters,
   }
 }

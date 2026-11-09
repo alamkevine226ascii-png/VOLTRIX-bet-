@@ -22,7 +22,7 @@
  *    (n0 = 6 pseudo-victoires). Moins de 3 victoires documentées →
  *    le taux rejoint le prior, et l'étiquette l'indique honnêtement.
  */
-import { getCompetitionDetail, getCompetitionStatus, getScoreboard, mapLimited } from './espn'
+import { getScoreboard } from './espn'
 import { persistGet, persistSet } from '../persist'
 import type { DerivedResult } from './analysis'
 
@@ -65,6 +65,16 @@ export function peekRoundPrior(): RoundPrior | null {
 /**
  * Prior UFC : distribution des fins par round (et part des décisions),
  * par format de combat, calculée sur les 6 derniers événements terminés.
+ *
+ * Audit 2026-11-09 (test utilisateur) : le scoreboard site.api.espn.com
+ * publie DÉJÀ par combat le round de fin (status.period), les rounds
+ * prévus (format.regulation.periods) et l'horloge du round de fin
+ * (status.clock). Le prior se calcule donc SANS AUCUN appel à
+ * sports.core.api.espn.com (dont le CDN bloque en rafale /competitions
+ * et /status — 403 massifs) : 6 requêtes scoreboard au lieu de ~130.
+ * Une décision s'identifie par « dernier round prévu atteint + horloge
+ * pleine » (round de 5 min = 300 s ; marge 295 s pour les arrondis
+ * d'horloge) ; tout autre cas avec period ≤ rounds est une fin.
  */
 export async function fetchUfcRoundPrior(): Promise<RoundPrior | null> {
   const cached = peekRoundPrior()
@@ -88,23 +98,24 @@ export async function fetchUfcRoundPrior(): Promise<RoundPrior | null> {
 
   for (const ev of done) {
     eventNames.push(ev.name)
-    await mapLimited(ev.fights, 3, async (f) => {
-      const detail = await getCompetitionDetail(ev.league, ev.espnEventId, f.espnCompetitionId).catch(() => null)
-      const status = await getCompetitionStatus(ev.league, ev.espnEventId, f.espnCompetitionId).catch(() => null)
-      if (!detail || !status || f.status !== 'TERMINE') return
-      const rounds = detail.scheduledRounds === 5 ? 5 : detail.scheduledRounds === 3 ? 3 : null
-      const period = status.period
-      if (rounds == null || period == null || period < 1) return
-      if (status.resultName?.toLowerCase().includes('no-contest')) return
+    for (const f of ev.fights) {
+      if (f.status !== 'TERMINE') continue
+      const rounds = f.scheduledRounds
+      const period = f.statusPeriod
+      if (rounds == null || period == null || period < 1) continue
+      /* décision ⟺ dernier round prévu mené à son terme (horloge pleine) */
+      const wentTheDistance =
+        period === rounds && (f.clockSeconds == null || f.clockSeconds >= 295)
+      if (!wentTheDistance && period > rounds) continue // données incohérentes : ignorées
       sampled++
-      if (status.resultMethod === 'DECISION') {
+      if (wentTheDistance) {
         if (rounds === 5) dec5++
         else dec3++
-      } else if (period <= rounds) {
+      } else {
         if (rounds === 5) finish5[period - 1]++
         else finish3[Math.min(period, 3) - 1]++
       }
-    })
+    }
   }
 
   if (sampled < 20) return null // échantillon insuffisant : pas de prior fabriqué

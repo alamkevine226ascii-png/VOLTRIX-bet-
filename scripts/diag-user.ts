@@ -2,7 +2,6 @@
    Diagnostic utilisateur — rejoue ce que l'App affiche vraiment :
    1. matchs à venir (status pre) des top ligues
    2. analyse complète (analyzeMatch) → marché « Premier but »
-   3. compos (loadMatchLineups) → joueurs/formations/sources
    Exécution : bun run scripts/diag-user.ts
    ============================================================ */
 
@@ -15,7 +14,6 @@ globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
 
 import { fetchScoreboard } from "../src/lib/foot/espn";
 import { analyzeMatch } from "../src/lib/foot/analyze";
-import { loadMatchLineups } from "../src/lib/foot/lineups";
 import { LEAGUES } from "../src/lib/foot/leagues";
 
 function fmtPct(p: number): string {
@@ -77,35 +75,6 @@ async function main() {
     console.log(`  λ total = ${res.prediction.lambda.total.toFixed(2)}`);
     console.log(`  Paris recommandés : ${res.prediction.recommendedBets.map((b) => `${b.market}:${b.pick}(${fmtPct(b.prob)})`).join(" | ")}`);
     void m;
-
-    /* 3. Compos */
-    console.log(`  --- COMPOS ---`);
-    const ctx = {
-      matchDate: res.matchDate,
-      homeTeamId: res.home.id,
-      awayTeamId: res.away.id,
-      homeName: res.home.name,
-      awayName: res.away.name,
-      homeLogo: res.home.logo,
-      awayLogo: res.away.logo,
-    };
-    const lu = await loadMatchLineups(m.id, m.leagueCode, ctx);
-    if (!lu) {
-      console.log("  loadMatchLineups → null");
-      continue;
-    }
-    console.log(`  published=${lu.published}`);
-    for (const side of ["home", "away"] as const) {
-      const t = lu[side];
-      if (!t) {
-        console.log(`  ${side}: null`);
-        continue;
-      }
-      console.log(
-        `  ${side}: ${t.name} | ${t.formation ?? "formation ?"} | source=${t.source} | prev=${t.previousLabel ?? "-"} | ${t.starters.length} titulaires`,
-      );
-      console.log(`     titulaires: ${t.starters.slice(0, 5).map((p) => `${p.jersey ?? "?"} ${p.name} (${p.positionDetail ?? "?"})`).join(", ")}`);
-    }
   }
 }
 

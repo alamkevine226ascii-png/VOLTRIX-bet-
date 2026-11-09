@@ -20,6 +20,29 @@ const HOSTS: Record<string, string> = {
 
 const UA = "Mozilla/5.0 (compatible; VOLTRIX-App/1.0; +local)";
 
+/* Débit limité global (audit 2026-11-09) : le CDN ESPN bloque l'IP en
+   rafale sur /competitions et /status (403 massifs dès ~3 requêtes
+   simultanées). On sérialise TOUTES les requêtes relai avec un espacement
+   minimum — indispensable en environnement de test où tout passe par une
+   seule IP ; sans effet sur un déploiement où le navigateur appelle ESPN
+   directement. */
+const MIN_SPACING_MS = 250;
+let lastStart = 0;
+let chain: Promise<void> = Promise.resolve();
+
+function enqueue<T>(task: () => Promise<T>): Promise<T> {
+  const run = chain.then(async () => {
+    const wait = Math.max(0, lastStart + MIN_SPACING_MS - Date.now());
+    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+    lastStart = Date.now();
+  });
+  chain = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run.then(task);
+}
+
 async function handler(req: NextRequest, ctx: { params: Promise<{ path: string[] }> }) {
   const { path } = await ctx.params;
   const first = path[0];
@@ -30,14 +53,32 @@ async function handler(req: NextRequest, ctx: { params: Promise<{ path: string[]
   }
   const url = `${target}/${rest.join("/")}${req.nextUrl.search}`;
   try {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 15000);
-    const res = await fetch(url, {
-      headers: { "User-Agent": UA, Accept: "application/json" },
-      signal: ctrl.signal,
-      cache: "no-store",
+    /* Audit 2026-11-09 (test utilisateur) : sports.core.api.espn.com
+       bloque INTERMITTEMMENT (403 aléatoires, CDN type Akamai) certaines
+       ressources (/competitions, /status) même avec Referer espn.com.
+       Rejouées jusqu'à 4 fois avec pause croissante, et débit limité
+       globalement (voir enqueue plus haut). */
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    const res = await enqueue(async () => {
+      let r: Response | null = null;
+      for (let attempt = 0; attempt < 4; attempt++) {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 15000);
+        r = await fetch(url, {
+          headers: {
+            "User-Agent": UA,
+            Accept: "application/json",
+            Referer: "https://www.espn.com/",
+          },
+          signal: ctrl.signal,
+          cache: "no-store",
+        });
+        clearTimeout(timer);
+        if (r.status !== 403 && r.status !== 429) break;
+        await sleep(350 + attempt * 350);
+      }
+      return r!;
     });
-    clearTimeout(timer);
     const body = await res.text();
     return new NextResponse(body, {
       status: res.status,

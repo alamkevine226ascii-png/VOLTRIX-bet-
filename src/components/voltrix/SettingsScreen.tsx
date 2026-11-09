@@ -131,7 +131,7 @@ export function SettingsScreen({ headerSlot }: { headerSlot?: ReactNode }) {
               <ul className="mt-2 space-y-1.5 text-[9.5px] font-semibold text-white/45">
                 <li className="break-all">
                   <span className="text-white/70">Football :</span> site.api.espn.com/…/soccer/&#123;ligue&#125;/scoreboard ·
-                  /teams/&#123;id&#125;/schedule · /standings · /injuries · /summary (compos)
+                  /teams/&#123;id&#125;/schedule · /standings · /injuries · /summary (1er but)
                 </li>
                 <li className="break-all">
                   <span className="text-white/70">UFC :</span> site.api.espn.com/…/mma/ufc/scoreboard ·
@@ -258,8 +258,7 @@ export function SettingsScreen({ headerSlot }: { headerSlot?: ReactNode }) {
         <div className="rounded-[26px] bg-ink-2 p-4 text-[9.5px] font-semibold leading-relaxed text-white/45 ring-1 ring-white/5">
           <p>
             <span className="text-neon">Rien d&apos;inventé :</span> une donnée absente chez ESPN est affichée
-            « — » ou refuse le prono. Les compositions non publiées montrent celles du match précédent, en attendant
-            les vraies. Les probabilités MMA sont volontairement bornées entre 25 et 75 % — aucun combat n&apos;est
+            « — » ou refuse le prono. Les probabilités MMA sont volontairement bornées entre 25 et 75 % — aucun combat n&apos;est
             une certitude statistique.
           </p>
           <p className="mt-2 text-white/30">

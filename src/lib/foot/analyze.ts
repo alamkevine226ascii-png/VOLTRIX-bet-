@@ -204,15 +204,15 @@ export async function analyzeMatch(
   /* 2. Historiques des 2 équipes (saison courante + précédente).
      Audit 2026-11-09 (agent A) : l'ancien [PREV_SEASON, season] avec
      constante fixe dupliquait les matchs quand les deux coincideaient —
-     [season - 1, season] comme lineups.ts. */
+     dorénavant [season - 1, season]. */
   const seasons = [season - 1, season].filter((s) => s > 0);
   const [homeSchedule, awaySchedule, firstGoalsHome, firstGoalsAway] = await Promise.all([
     fetchTeamSchedule(leagueCode, event.home.team.id, seasons).catch(() => [] as EspnScheduleGame[]),
     fetchTeamSchedule(leagueCode, event.away.team.id, seasons).catch(() => [] as EspnScheduleGame[]),
     /* minutes RÉELLES des 1ers buts (12 derniers matchs par équipe) —
      * moteur dédié first-goal.ts, uniquement pour l'analyse complète
-     * (page détail) : les summaries sont mis en cache et partagés avec
-     * l'onglet Compos. */
+     * (page détail) : les summaries sont mis en cache (clé
+     * `foot:summary:{ligue}:{eventId}`). */
     opts.light
       ? Promise.resolve(null)
       : fetchTeamFirstGoals(leagueCode, event.home.team.id, seasons, event.date).catch(() => null),

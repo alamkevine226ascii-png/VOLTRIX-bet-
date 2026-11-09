@@ -327,51 +327,6 @@ export interface CalibrationBucket {
   actual?: number;
 }
 
-// ---------- GET /api/match/[id]/lineups ----------
-
-export interface PlayerLineupsDTO {
-  athleteId: string;
-  name: string;
-  shortName: string | null;
-  jersey: string | null;
-  position: string | null;
-  positionDetail: string | null;
-  starter: boolean;
-  formationPlace: number | null;
-  age: number | null;
-  heightCm: number | null;
-  weightKg: number | null;
-  nationality: string | null;
-  espnHeadshot: string | null;
-  tm: { valueEur: number; contractUntil: string | null; foot: string | null; photoUrl: string | null; approx: boolean } | null;
-}
-
-export interface TeamLineupsDTO {
-  teamId: string;
-  name: string;
-  shortName: string | null;
-  logo: string | null;
-  formation: { text: string; source: 'published' | 'deduced' } | null;
-  lineupsPublished: boolean;
-  coach: string | null;
-  starters: PlayerLineupsDTO[];
-  bench: PlayerLineupsDTO[];
-  squad: PlayerLineupsDTO[];
-  squadValueEur: number | null;
-  profile: { rank: number | null; gamesPlayed: number | null; goalsForPerMatch: number | null; goalsAgainstPerMatch: number | null } | null;
-}
-
-export interface LineupsResponse {
-  matchId: string;
-  leagueCode: string;
-  seasonYear: number | null;
-  venue: { name: string | null; city: string | null; country: string | null };
-  attendance: number | null;
-  weather: { description?: string; tempC?: number } | null;
-  home: TeamLineupsDTO | null;
-  away: TeamLineupsDTO | null;
-}
-
 // ---------- POST /api/cashout ----------
 
 export interface CashoutResponse {
