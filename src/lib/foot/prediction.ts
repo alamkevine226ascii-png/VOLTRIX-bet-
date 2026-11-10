@@ -1,20 +1,35 @@
 // ============================================================
 // VOLTRIX bet — Moteur de prédiction
-// Ensemble : Poisson (45%) + Elo (30%) + Forme (25%)
+// Ensemble : Poisson bivarié (45%) + Elo (30%) + Forme (25%)
 // Marchés : 1X2, Double Chance, O/U 1.5/2.5/3.5, BTTS,
 //           Moment du 1er but (hazard par morceaux calé sur les
 //           minutes de buts réelles d'ESPN — goal-timing.ts —,
 //           repli Poisson homogène si aucune donnée),
 //           Équipe à marquer en 1er
+// Nov. 2026 — implémentation n°1 : les marchés de buts sortent
+// désormais de la GRILLE CONJOINTE EXACTE du Poisson bivarié
+// (montecarlo.ts, composante partagée λ3 = ρ·√(λH·λA)), validée
+// par 10 000 simulations Monte Carlo déterministes. L'ancien
+// poissonModel() (indépendance) reste exporté comme référence
+// de comparaison pour les backtests.
 // ============================================================
 
 import type { EspnScheduleGame, EspnStandingsTeam, EspnOdds, EspnInjury } from './espn';
 // market-odds.ts est un module de math pures (aucun import) : aucun cycle.
-// bttsProb = forme fermée BTTS partagée (cohérence inter-écrans, audit 21-b FIX 2) ;
-// deMarginOverUnder + calibrateTotals = calibration marché (audit 21-b FIX 1) ;
-// overProb + totalGoalsDist = proba brute du modèle à UNE ligne donnée
-// (value bets O/U quand la ligne du marché n'est pas 1.5/2.5/3.5).
-import { bttsProb, calibrateTotals, deMarginOverUnder, overProb, totalGoalsDist } from './market-odds';
+// deMarginOverUnder = dé-margage des cotes O/U (calibration, audit 21-b FIX 1) ;
+// bttsProb = forme fermée BTTS indépendante (référence/legacy poissonModel).
+// Les probas de buts du moteur passent désormais par la grille bivariée
+// (montecarlo.ts, nov. 2026).
+import { bttsProb, deMarginOverUnder } from './market-odds';
+import {
+  BIVARIATE_RHO,
+  MC_ITERATIONS,
+  calibrateBivariate,
+  overAtLine,
+  simulateMatch,
+  type JointGrid,
+  type McMatchResult,
+} from './montecarlo';
 // goal-timing.ts est remplacé par first-goal.ts : MOTEUR DÉDIÉ à la
 // minute du premier but (demande explicite 2026-11-09). Il prédit
 // directement la quantité demandée à partir des minutes RÉELLES des
@@ -60,7 +75,9 @@ export interface TeamAnalysis {
 export interface MatchPrediction {
   // 1X2 final (ensemble)
   probs: { home: number; draw: number; away: number };
-  // décomposition des modèles
+  // décomposition des modèles — « poisson » = composante BIVARIÉE
+  // (nov. 2026) : grille conjointe exacte avec corrélation λ3, plus
+  // 10 000 simulations Monte Carlo de contrôle (voir `mc`).
   poisson: { home: number; draw: number; away: number };
   elo: { home: number; draw: number; away: number };
   form: { home: number; draw: number; away: number };
@@ -103,6 +120,22 @@ export interface MatchPrediction {
   valueBets: Array<{ market: string; pick: string; modelProb: number; odds: number; edge: number; kelly: number }>;
   oddsMovement: string | null;
   recommendedBets: Array<{ market: string; pick: string; prob: number; note: string }>;
+  // Diagnostics Poisson bivarié + Monte Carlo (implémentation n°1,
+  // nov. 2026). OPTIONNEL : les analyses issues du cache antérieur à
+  // la mise à jour ne l'ont pas — l'UI doit tester sa présence.
+  mc?: {
+    model: 'bivariate-poisson';
+    rho: number;
+    lambda3: number;
+    iterations: number;
+    seed: number;
+    /** Écart max |grille exacte − Monte Carlo| sur les probas clés. */
+    agreement: number;
+    medianGoals: number;
+    /** P(total = t) pour t = 0..9, dernière barre = P(total ≥ 10). Somme 1. */
+    totalGoalsHist: number[];
+    winToNil: { home: number; away: number };
+  };
 }
 
 export interface MatchAnalysis {
@@ -418,11 +451,13 @@ interface PoissonResult {
 // Probabilités INCONDITIONNELLES (home + away + noGoal = 1 exactement) :
 // « 1ère équipe à marquer » = qui ouvre le score × P(qu'un but soit marqué).
 // L'ancienne version inline sommait home + away + noGoal à 1 + e^-λ (> 1).
-export function firstToScoreProbs(lambdaHome: number, lambdaAway: number): { home: number; away: number; noGoal: number } {
+export function firstToScoreProbs(lambdaHome: number, lambdaAway: number, pNoGoal?: number): { home: number; away: number; noGoal: number } {
   // Garde-fous anti-NaN (λ invalides → quasi-aucun but attendu)
   const lh = Number.isFinite(lambdaHome) && lambdaHome > 0 ? lambdaHome : 0.02;
   const la = Number.isFinite(lambdaAway) && lambdaAway > 0 ? lambdaAway : 0.02;
-  const noGoal = Math.exp(-(lh + la));
+  // P(0-0) : valeur EXACTE de la grille bivariée si fournie (supérieure
+  // au cas indépendant dès que λ3 > 0), sinon forme fermée indépendante.
+  const noGoal = pNoGoal != null && Number.isFinite(pNoGoal) && pNoGoal >= 0 ? pNoGoal : Math.exp(-(lh + la));
   const goalShare = 1 - noGoal;
   const total = lh + la;
   const home = round((lh / total) * goalShare, 4);
@@ -505,7 +540,10 @@ function buildValueBets(
     btts: { yes: number; no: number };
   },
   odds: EspnOdds | null,
-  lambdaTotal: number
+  // Nov. 2026 : grille conjointe BIVARIÉE du match — sert au calcul
+  // exact des P(over) des lignes exotiques (remplace lambdaTotal
+  // et son approximation 1D indépendante).
+  grid: JointGrid
 ): MatchPrediction['valueBets'] {
   if (!odds?.hasOdds) return [];
   const bets: MatchPrediction['valueBets'] = [];
@@ -540,7 +578,9 @@ function buildValueBets(
     // L'ancien code retombait silencieusement sur la ligne 2.5 et comparait
     // P(over 2.5) aux cotes d'une ligne 4.5 — edge faux.
     const exact = prediction.overUnder.find((o) => o.line === ouLine);
-    const overModel = exact ? exact.over : overProb(totalGoalsDist(lambdaTotal), ouLine);
+    // Nov. 2026 : ligne exotique → P(over) sur la GRILLE BIVARIÉE exacte
+    // (l'ancienne approximation 1D totalGoalsDist supposait l'indépendance).
+    const overModel = exact ? exact.over : overAtLine(grid, ouLine);
     const underModel = exact ? exact.under : 1 - overModel;
     add(`Over/Under ${ouLine}`, `Plus de ${ouLine}`, overModel, dec(odds.total.over.closeOdds, odds.total.over.openOdds));
     add(`Over/Under ${ouLine}`, `Moins de ${ouLine}`, underModel, dec(odds.total.under.closeOdds, odds.total.under.openOdds));
@@ -603,12 +643,14 @@ export interface EngineInput {
   //           (fatigue ×0.94, blessures ×[0.92..1], derby ×0.92 neutralisés).
   //           Blend des 3 modèles, calibration, marchés : inchangés.
   contextMode?: 'full' | 'mix';
-  // Minute du 1er but — données RÉELLES (moteur dédié first-goal.ts) :
-  // minutes des 1ers buts des 12 derniers matchs terminés de chaque
-  // équipe, extraites des summaries ESPN par fetchTeamFirstGoals.
-  // OPTIONNEL et rétrocompatible : absent/null → profil de ligue
-  // empirique, étiqueté 'ligue'.
+  // Minute du 1er but — OPTIONNEL et rétrocompatible : absent/null → profil
+  // de ligue empirique, étiqueté 'ligue'.
   firstGoals?: { home: TeamFirstGoals | null; away: TeamFirstGoals | null } | null;
+  // Altitude du stade (mètres, nov. 2026 — modificateur environnemental
+  // inspiré du moteur WC2026 d'AmirMotefaker) : au-dessus de 1 500 m,
+  // l'effet physiologique documenté accélère le tempo (buts). Dormant
+  // pour les ligues européennes couvertes (aucun stade > 1 500 m).
+  venueAltitudeM?: number | null;
 }
 
 export function runEngine(input: EngineInput): MatchAnalysis {
@@ -750,6 +792,17 @@ export function runEngine(input: EngineInput): MatchAnalysis {
     lambdaAway *= 0.92;
   }
 
+  // Altitude (nov. 2026, implémentation n°1) : au-dessus de 1 500 m,
+  // l'effet physiologique documenté (aérobie réduite, ballon plus vif)
+  // accélère le tempo — modificateur borné à +8 %, appliqué au TOTAL
+  // (ratio dom/ext préservé). Dormant pour les ligues européennes
+  // couvertes ; calibration fine prévue au backtest n°2.
+  if (input.venueAltitudeM != null && input.venueAltitudeM > 1500) {
+    const altFactor = 1 + Math.min(2, (input.venueAltitudeM - 1500) / 1000) * 0.04;
+    lambdaHome *= altFactor;
+    lambdaAway *= altFactor;
+  }
+
   // Météo (audit 21-b FIX 5) : influence RETIRÉE des λ en attendant une
   // validation hors-échantillon — la donnée Open-Meteo est « current » (et non
   // les conditions au coup d'envoi) et les règles fixes −5 %/−3 % n'étaient
@@ -790,7 +843,23 @@ export function runEngine(input: EngineInput): MatchAnalysis {
   lambdaAway = round(lambdaAway, 2);
 
   // --- Modèles individuels ---
-  const poissonRes = poissonModel(lambdaHome, lambdaAway);
+  // Implémentation n°1 (nov. 2026) : la composante « Poisson » du blend
+  // sort désormais du modèle BIVARIÉ — grille conjointe exacte avec
+  // composante partagée λ3 (corrélation des buts) + 10 000 simulations
+  // Monte Carlo déterministes de contrôle. poissonModel() (indépendance)
+  // reste l'étalon de comparaison pour les backtests.
+  const mcSim: McMatchResult = simulateMatch(lambdaHome, lambdaAway, {
+    rho: BIVARIATE_RHO,
+    iterations: MC_ITERATIONS,
+  });
+  const poissonRes: PoissonResult = {
+    probs: mcSim.exact.probs,
+    overUnder: mcSim.exact.overUnder,
+    btts: mcSim.exact.btts,
+    topScores: mcSim.exact.topScores,
+    lambdaHome,
+    lambdaAway,
+  };
   const eloProbs = eloToProbs(eloHome, eloAway);
   const formProbs = formToProbs(home.formScore, away.formScore);
 
@@ -858,7 +927,10 @@ export function runEngine(input: EngineInput): MatchAnalysis {
   if (anchorLine !== null && marketOverOdds !== null && marketUnderOdds !== null) {
     const dm = deMarginOverUnder(marketOverOdds, marketUnderOdds);
     if (dm) {
-      const cal = calibrateTotals(lambdaHome, lambdaAway, anchorLine, dm.pOver, [1.5, 2.5, 3.5]);
+      // Nov. 2026 : la calibration passe par la grille BIVARIÉE — la
+      // corrélation λ3 est recalculée à chaque pas de dichotomie, le
+      // modèle reste cohérent avec lui-même après ancrage marché.
+      const cal = calibrateBivariate(lambdaHome, lambdaAway, BIVARIATE_RHO, anchorLine, dm.pOver, [1.5, 2.5, 3.5]);
       finalOverUnder = [1.5, 2.5, 3.5].map((line) => {
         const o = round(cal.over[line], 4);
         return { line, over: o, under: round(1 - o, 4) }; // over + under ≡ 1 exactement
@@ -874,7 +946,7 @@ export function runEngine(input: EngineInput): MatchAnalysis {
   const valueBets = buildValueBets(
     { probs: finalProbs, overUnder: rawOverUnder, btts: rawBtts },
     odds,
-    lambdaHome + lambdaAway
+    mcSim.exact.grid
   );
   const oddsMovement = oddsMovementNote(odds);
 
@@ -1011,13 +1083,33 @@ export function runEngine(input: EngineInput): MatchAnalysis {
       topScores: poissonRes.topScores,
       firstGoalTiming,
       firstGoalHeadline,
-      firstToScore: firstToScoreProbs(lambdaHome, lambdaAway),
+      firstToScore: firstToScoreProbs(lambdaHome, lambdaAway, mcSim.exact.noGoal),
       lambda: { home: lambdaHome, away: lambdaAway, total: round(lambdaHome + lambdaAway, 2) },
       confidence: conf,
       confidenceLabel: confidenceLabel,
       valueBets,
       oddsMovement,
       recommendedBets,
+      mc: {
+        model: 'bivariate-poisson',
+        rho: mcSim.rho,
+        lambda3: mcSim.lambda3,
+        iterations: mcSim.iterations,
+        seed: mcSim.seed,
+        agreement: round(mcSim.agreement, 4),
+        medianGoals: mcSim.mc.medianGoals,
+        // Barres 0..9 + dernière barre « 10+ » (absorbe l'arrondi → somme 1)
+        totalGoalsHist: (() => {
+          const full = mcSim.exact.totalGoalsHist;
+          const head = full.slice(0, 10).map((p) => round(p, 4));
+          const tail = round(1 - head.reduce((s, v) => s + v, 0), 4);
+          return [...head, tail];
+        })(),
+        winToNil: {
+          home: round(mcSim.exact.winToNil.home, 4),
+          away: round(mcSim.exact.winToNil.away, 4),
+        },
+      },
     },
     h2h,
     h2hSummary: { homeWins: h2hHomeWins, draws: h2hDraws, awayWins: h2hAwayWins, total: h2h.length },

@@ -549,7 +549,7 @@ export function MatchScreen({
                     </summary>
                     <div className="space-y-2.5 px-3 pb-3">
                       <ComponentRow name="VOLTRIX (final)" probs={pred.probs} note="calibré" />
-                      <ComponentRow name="Poisson" probs={pred.poisson} note="buts attendus" />
+                      <ComponentRow name="Poisson" probs={pred.poisson} note={pred.mc ? "bivarié + MC" : "buts attendus"} />
                       <ComponentRow name="Elo" probs={pred.elo} note="force relative" />
                       <ComponentRow name="Forme" probs={pred.form} note="5 derniers" />
                       <div className="grid grid-cols-3 gap-2">
@@ -635,6 +635,43 @@ export function MatchScreen({
                       );
                     })}
                   </div>
+
+                  {/* Distribution du total de buts — Poisson bivarié + Monte Carlo (nov. 2026) */}
+                  {pred.mc ? (
+                    <div className="rounded-2xl bg-ink-3 px-3.5 py-3">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="text-[11px] font-black text-white">Distribution des buts</span>
+                        <span className="text-[8px] font-bold uppercase tracking-wider text-white/35">
+                          {pred.mc.iterations.toLocaleString("fr-FR")} sim. MC · écart {pct(pred.mc.agreement, 1)}
+                        </span>
+                      </div>
+                      <div className="mt-2.5 flex h-14 items-end gap-1">
+                        {(() => {
+                          const hist = pred.mc.totalGoalsHist;
+                          const max = Math.max(...hist);
+                          return hist.map((p, t) => (
+                            <div
+                              key={t}
+                              className="flex-1 rounded-t-[3px] bg-neon/85"
+                              style={{ height: `${Math.max(3, (p / max) * 100)}%` }}
+                              title={`${t} but${t > 1 ? "s" : ""} : ${pct(p, 1)}`}
+                            />
+                          ));
+                        })()}
+                      </div>
+                      <div className="mt-1 flex gap-1">
+                        {pred.mc.totalGoalsHist.map((_, t) => (
+                          <span key={t} className="flex-1 text-center text-[8px] font-bold text-white/35">
+                            {t}
+                          </span>
+                        ))}
+                      </div>
+                      <p className="mt-2 text-[9px] leading-relaxed text-white/40">
+                        Poisson bivarié (λ³ {pred.mc.lambda3.toFixed(2)} · seed {pred.mc.seed}) · médiane {pred.mc.medianGoals} buts · victoire sans encaisser :{" "}
+                        {pct(pred.mc.winToNil.home, 1)} / {pct(pred.mc.winToNil.away, 1)}
+                      </p>
+                    </div>
+                  ) : null}
 
                   <SectionTitle>Les deux équipes marquent</SectionTitle>
                   <div className="grid grid-cols-2 gap-2">

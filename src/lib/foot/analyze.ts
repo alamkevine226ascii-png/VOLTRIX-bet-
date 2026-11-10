@@ -23,6 +23,45 @@ import { fetchTeamFirstGoals } from "./first-goal";
 import { getLeague } from "./leagues";
 import { persistGet, persistSet } from "../persist";
 
+/* Altitude des villes de football connues au-dessus de ~1 500 m
+ * (nov. 2026, modificateur environnemental du moteur — implémentation
+ * n°1). Les ligues européennes couvertes par l'app n'en contiennent
+ * AUCUNE : ce mappe est dormant, il ne s'active que pour des
+ * compétitions futures à domicile en altitude (qualifications
+ * Coupe du monde, Libertadores…). Sources : élévations usuelles.
+ */
+const VENUE_ALTITUDE_M: Record<string, number> = {
+  "mexico city": 2240,
+  "mexico": 2240,
+  guadalajara: 1566,
+  toluca: 2667,
+  puebla: 2135,
+  quito: 2850,
+  bogota: 2640,
+  "bogotá": 2640,
+  "la paz": 3640,
+  cuzco: 3400,
+  cusco: 3400,
+  johannesburg: 1753,
+  pretoria: 1339, // < 1 500 m : inertant, conservé pour mémoire
+  nairobi: 1795,
+  "addis ababa": 2355,
+  denver: 1609,
+  "sana'a": 2250,
+  sanaa: 2250,
+  "salt lake city": 1288, // < 1 500 m : inertant
+};
+
+function cityAltitude(city: string | null): number | null {
+  if (!city) return null;
+  const key = city
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+  return VENUE_ALTITUDE_M[key] ?? null;
+}
+
 export interface AnalyzeRequest {
   matchId: string;
   leagueCode: string;
@@ -255,6 +294,7 @@ export async function analyzeMatch(
     nowMs: Date.now(),
     leagueTeamsCount: standings.length || 20,
     firstGoals: { home: firstGoalsHome, away: firstGoalsAway },
+    venueAltitudeM: cityAltitude(event.venue.city),
   });
 
   /* H2H : sortie BILATÉRALE du moteur (union des deux calendriers,
