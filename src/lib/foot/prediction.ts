@@ -1,6 +1,6 @@
 // ============================================================
 // VOLTRIX bet — Moteur de prédiction
-// Ensemble : Poisson bivarié (45%) + Elo (30%) + Forme (25%)
+// Ensemble : Poisson bivarié (40%) + Elo (35%) + Forme (25%)
 // Marchés : 1X2, Double Chance, O/U 1.5/2.5/3.5, BTTS,
 //           Moment du 1er but (hazard par morceaux calé sur les
 //           minutes de buts réelles d'ESPN — goal-timing.ts —,
@@ -12,6 +12,14 @@
 // par 10 000 simulations Monte Carlo déterministes. L'ancien
 // poissonModel() (indépendance) reste exporté comme référence
 // de comparaison pour les backtests.
+// Nov. 2026 (v2.2) — CONSTANTES RECALIBRÉES par le backtest
+// football-data.co.uk (37 715 matchs 2010-26, split temporel,
+// test 2024-26 : log-loss 1,0166 → 1,0110, nul prédit 23,1 →
+// 25,2 %) : parts de nul Elo/forme, blend 40/35/25, Elo K=10
+// ADV=110 (Elo local comprimé), redistribution /1000, forme
+// ×0.1, bornes λ élargies, fatigue neutralisée (aucun gain
+// mesuré), derby 0.88. Référence : league-params.ts + rapport
+// download/backtest-foot/.
 // ============================================================
 
 import type { EspnScheduleGame, EspnStandingsTeam, EspnOdds, EspnInjury } from './espn';
@@ -30,6 +38,11 @@ import {
   type JointGrid,
   type McMatchResult,
 } from './montecarlo';
+// Discipline de value betting calibrée par backtest (implémentation n°5) :
+// seuil d'edge 5 % (était 2 %) + cote plafonnée à 2,5 (était illimitée).
+// Simulation test 2024-26, mise plate : ROI −12,8 % (ancienne règle) →
+// −3,7 % (discipline) — détail dans league-params.ts.
+import { VALUE_BET_MAX_ODDS, VALUE_BET_MIN_EDGE, VALUE_BET_KELLY_CAP } from './league-params';
 // goal-timing.ts est remplacé par first-goal.ts : MOTEUR DÉDIÉ à la
 // minute du premier but (demande explicite 2026-11-09). Il prédit
 // directement la quantité demandée à partir des minutes RÉELLES des
@@ -116,8 +129,9 @@ export interface MatchPrediction {
   // confiance
   confidence: number; // 1..5
   confidenceLabel: string;
-  // value bets (si cotes dispo)
-  valueBets: Array<{ market: string; pick: string; modelProb: number; odds: number; edge: number; kelly: number }>;
+  // value bets (si cotes dispo) — code machine pour le registre ROI
+  // (bets-ledger.ts, implémentation n°5) : 1X2:H/D/A ou OU:O/U:ligne
+  valueBets: Array<{ market: string; pick: string; code: string; modelProb: number; odds: number; edge: number; kelly: number }>;
   oddsMovement: string | null;
   recommendedBets: Array<{ market: string; pick: string; prob: number; note: string }>;
   // Diagnostics Poisson bivarié + Monte Carlo (implémentation n°1,
@@ -233,9 +247,15 @@ function round(x: number, digits = 4): number {
 }
 
 // ---------- Elo ----------
-
-const K_FACTOR = 22;
-const HOME_ADV_ELO = 65;
+// v2.2 (backtest 2026-11) : K = 10 et avantage terrain +110 —
+// l'Elo LOCAL de l'app (union des 2 calendriers, adversaires à
+// 1500) comprime les ratings vers 1500 ; un K faible laisse le
+// signal s'accumuler sans bruit et l'avantage terrain porte
+// davantage du signal. L'Elo GLOBAL (toute la ligue) vaudrait
+// −0,006 log-loss de plus (piste v3 — non implémenté : l'API
+// scoreboard ESPN ne supporte pas les plages de dates).
+const K_FACTOR = 10;
+const HOME_ADV_ELO = 110;
 
 export interface EloState {
   ratings: Map<string, number>;
@@ -302,7 +322,11 @@ function league_key(a: string, b: string): string {
 export function eloToProbs(eloHome: number, eloAway: number): { home: number; draw: number; away: number } {
   const eHome = 1 / (1 + Math.pow(10, (eloAway - HOME_ADV_ELO - eloHome) / 400));
   // part de nul décroissante avec l'écart
-  const draw = clamp(0.30 - 1.4 * Math.pow(eHome - 0.5, 2) * 4, 0.11, 0.30);
+  // v2.2 (backtest) : base 0,36 / pente 0,7 — l'ancienne forme
+  // (0,30/1,4) sous-estimait les nuls (23,1 % prédit vs 25,7 %
+  // réel) ; le plafond 0,30 borne la base 0,36, la pente réduite
+  // laisse le nul décroître moins vite vers les déséquilibres.
+  const draw = clamp(0.36 - 0.7 * Math.pow(eHome - 0.5, 2) * 4, 0.11, 0.30);
   const home = clamp(eHome - draw * 0.5, 0.02, 0.95);
   const away = clamp(1 - eHome - draw * 0.5, 0.02, 0.95);
   const sum = home + draw + away;
@@ -331,7 +355,9 @@ function formToProbs(formHome: number, formAway: number): { home: number; draw: 
   // Différence de forme -> rating équivalent (1 point de forme = ~85 pts Elo)
   const diff = (formHome - formAway) * 170;
   const eHome = 1 / (1 + Math.pow(10, -diff / 400));
-  const draw = clamp(0.28 - 1.2 * Math.pow(eHome - 0.5, 2) * 4, 0.12, 0.28);
+  // v2.2 (backtest) : base 0,32 / pente 0,6 (était 0,28/1,2) —
+  // même recalibration du nul que eloToProbs.
+  const draw = clamp(0.32 - 0.6 * Math.pow(eHome - 0.5, 2) * 4, 0.12, 0.28);
   const home = clamp(eHome - draw * 0.5, 0.03, 0.94);
   const away = clamp(1 - eHome - draw * 0.5, 0.03, 0.94);
   const sum = home + draw + away;
@@ -547,17 +573,21 @@ function buildValueBets(
 ): MatchPrediction['valueBets'] {
   if (!odds?.hasOdds) return [];
   const bets: MatchPrediction['valueBets'] = [];
-  const add = (market: string, pick: string, modelProb: number, dec: number | null) => {
-    if (!dec || dec <= 1.01 || modelProb <= 0) return;
+  const add = (market: string, pick: string, code: string, modelProb: number, dec: number | null) => {
+    // v2.2 (backtest, implémentation n°5) : cote plafonnée — les sélections
+    // à grosse cote concentrent le biais favori/outsider (gains à 3,13 pour
+    // une cote moyenne de 4,36) ; seuil d'edge 2 % → 5 %.
+    if (!dec || dec <= 1.01 || dec > VALUE_BET_MAX_ODDS || modelProb <= 0) return;
     const edge = modelProb * dec - 1;
-    if (edge > 0.02) {
+    if (edge > VALUE_BET_MIN_EDGE) {
       bets.push({
         market,
         pick,
+        code,
         modelProb: round(modelProb, 4),
         odds: dec,
         edge: round(edge, 4),
-        kelly: round(clamp(edge / (dec - 1), 0, 0.10), 4),
+        kelly: round(clamp(edge / (dec - 1), 0, VALUE_BET_KELLY_CAP), 4),
       });
     }
   };
@@ -566,9 +596,9 @@ function buildValueBets(
   const dec = (close: number | null, open: number | null): number | null => close ?? open;
 
   const ml = odds.moneyline;
-  add('1X2', 'Victoire domicile', prediction.probs.home, dec(ml.home.close, ml.home.open));
-  add('1X2', 'Nul', prediction.probs.draw, dec(ml.draw.close, ml.draw.open));
-  add('1X2', 'Victoire extérieur', prediction.probs.away, dec(ml.away.close, ml.away.open));
+  add('1X2', 'Victoire domicile', '1X2:H', prediction.probs.home, dec(ml.home.close, ml.home.open));
+  add('1X2', 'Nul', '1X2:D', prediction.probs.draw, dec(ml.draw.close, ml.draw.open));
+  add('1X2', 'Victoire extérieur', '1X2:A', prediction.probs.away, dec(ml.away.close, ml.away.open));
 
   const ouLine = odds.overUnderLine;
   if (ouLine !== null) {
@@ -582,8 +612,8 @@ function buildValueBets(
     // (l'ancienne approximation 1D totalGoalsDist supposait l'indépendance).
     const overModel = exact ? exact.over : overAtLine(grid, ouLine);
     const underModel = exact ? exact.under : 1 - overModel;
-    add(`Over/Under ${ouLine}`, `Plus de ${ouLine}`, overModel, dec(odds.total.over.closeOdds, odds.total.over.openOdds));
-    add(`Over/Under ${ouLine}`, `Moins de ${ouLine}`, underModel, dec(odds.total.under.closeOdds, odds.total.under.openOdds));
+    add(`Over/Under ${ouLine}`, `Plus de ${ouLine}`, `OU:O:${ouLine}`, overModel, dec(odds.total.over.closeOdds, odds.total.over.openOdds));
+    add(`Over/Under ${ouLine}`, `Moins de ${ouLine}`, `OU:U:${ouLine}`, underModel, dec(odds.total.under.closeOdds, odds.total.under.openOdds));
   }
   return bets.sort((a, b) => b.edge - a.edge).slice(0, 4);
 }
@@ -766,14 +796,20 @@ export function runEngine(input: EngineInput): MatchAnalysis {
   let lambdaAway = LEAGUE_AVG_AWAY * awayAttack * homeDefense;
 
   // --- Modificateurs de contexte ---
-  // Fatigue : moins de 4 jours de repos OU 3+ matchs sur 14 jours
+  // Fatigue : moins de 4 jours de repos OU 3+ matchs sur 14 jours.
+  // v2.2 (backtest 2026-11) : NEUTRALISÉE (facteur 1,0) — la
+  // descente coordonnée sur la validation 2022-24 n'a trouvé
+  // AUCUN gain au multiplicateur ×0,94 ; l'effet réel est couvert
+  // par la forme (déjà dans les λ). L'affichage des notes de
+  // fatigue est conservé (information utilisateur).
+  const FATIGUE_FACTOR = 1.0;
   const fatigueHome = (home.fatigueDaysSinceLast !== null && home.fatigueDaysSinceLast <= 3) || home.matchesLast14Days >= 3;
   const fatigueAway = (away.fatigueDaysSinceLast !== null && away.fatigueDaysSinceLast <= 3) || away.matchesLast14Days >= 3;
   // Instrument d'ablation (plan V2→V3 étape 11), défaut 'full' = v2.1 inchangé :
   // en 'mix' les modificateurs de contexte (fatigue, blessures, derby) ne
   // touchent plus les λ — seuls les λ de base + forme + Elo restent actifs.
-  if (!ablateContext && fatigueHome) lambdaHome *= 0.94;
-  if (!ablateContext && fatigueAway) lambdaAway *= 0.94;
+  if (!ablateContext && fatigueHome) lambdaHome *= FATIGUE_FACTOR;
+  if (!ablateContext && fatigueAway) lambdaAway *= FATIGUE_FACTOR;
 
   // Blessures : impact au-delà des 2 premiers absents (les listes ESPN
   // comptent toujours 2-3 joueurs « de rotation » — pénaliser dès le 1er
@@ -786,10 +822,12 @@ export function runEngine(input: EngineInput): MatchAnalysis {
   }
 
   // Derby : match fermé, léger retrait offensif des deux côtés
-  // (neutralisé en 'mix' — instrument d'ablation, plan V2→V3 étape 11)
+  // (neutralisé en 'mix' — instrument d'ablation, plan V2→V3 étape 11).
+  // v2.2 (backtest) : 0,92 → 0,88 (gain marginal −0,0003 log-loss,
+  // direction confirmée en test).
   if (!ablateContext && input.isDerby) {
-    lambdaHome *= 0.92;
-    lambdaAway *= 0.92;
+    lambdaHome *= 0.88;
+    lambdaAway *= 0.88;
   }
 
   // Altitude (nov. 2026, implémentation n°1) : au-dessus de 1 500 m,
@@ -811,8 +849,11 @@ export function runEngine(input: EngineInput): MatchAnalysis {
   // multiplication des λ est supprimée.
 
   // Bonus forme récente injectée dans les lambdas
-  const formFactorHome = 0.9 + home.formScore * 0.2; // 0.9..1.1
-  const formFactorAway = 0.9 + away.formScore * 0.2;
+  // v2.2 (backtest) : amplitude 0,2 → 0,1 — le signal de forme
+  // isolé est le plus faible des trois modèles (44,6 % en test) ;
+  // atténuer son influence directe sur les λ améliore le log-loss.
+  const formFactorHome = 0.9 + home.formScore * 0.1; // 0.9..1.0
+  const formFactorAway = 0.9 + away.formScore * 0.1;
   lambdaHome *= formFactorHome;
   lambdaAway *= formFactorAway;
 
@@ -822,7 +863,9 @@ export function runEngine(input: EngineInput): MatchAnalysis {
   // est favori, déprimé sinon) et comptait l'avantage du terrain en double
   // (déjà présent dans les références 1.52/1.22).
   const eloDiff = clamp(eloHome - eloAway, -250, 250);
-  const eloFactor = Math.pow(10, eloDiff / 800);
+  // v2.2 (backtest) : /800 → /1000 — redistribution un peu moins
+  // sensible à l'Elo (l'Elo local est comprimé, /800 sur-réagissait).
+  const eloFactor = Math.pow(10, eloDiff / 1000);
   const totalPreElo = lambdaHome + lambdaAway;
   const adjHome = lambdaHome * eloFactor;
   const adjAway = lambdaAway / eloFactor;
@@ -833,11 +876,13 @@ export function runEngine(input: EngineInput): MatchAnalysis {
   }
 
   // Garde-fous : jamais de NaN / valeur non positive, puis bornes réalistes
-  // (aucun match réel n'attend 4.5+ buts d'une seule équipe)
+  // v2.2 (backtest) : bornes élargies [0,25 ; 4,4] / [0,20 ; 4,0] —
+  // les anciennes bornes tronquaient les favoris extrêmes
+  // (Bayern → λ ≈ 4 chez lui) et désaturaient l'Over des gros chocs.
   if (!Number.isFinite(lambdaHome) || lambdaHome <= 0.05) lambdaHome = 1.35;
   if (!Number.isFinite(lambdaAway) || lambdaAway <= 0.05) lambdaAway = 1.15;
-  lambdaHome = clamp(lambdaHome, 0.3, 3.8);
-  lambdaAway = clamp(lambdaAway, 0.25, 3.4);
+  lambdaHome = clamp(lambdaHome, 0.25, 4.4);
+  lambdaAway = clamp(lambdaAway, 0.2, 4.0);
 
   lambdaHome = round(lambdaHome, 2);
   lambdaAway = round(lambdaAway, 2);
@@ -864,7 +909,8 @@ export function runEngine(input: EngineInput): MatchAnalysis {
   const formProbs = formToProbs(home.formScore, away.formScore);
 
   // --- Ensemble final ---
-  const W = { poisson: 0.45, elo: 0.30, form: 0.25 };
+  // v2.2 (backtest) : 45/30/25 → 40/35/25 au profit de l'Elo.
+  const W = { poisson: 0.40, elo: 0.35, form: 0.25 };
   const finalProbs = {
     home: W.poisson * poissonRes.probs.home + W.elo * eloProbs.home + W.form * formProbs.home,
     draw: W.poisson * poissonRes.probs.draw + W.elo * eloProbs.draw + W.form * formProbs.draw,

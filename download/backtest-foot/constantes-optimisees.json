@@ -1,0 +1,226 @@
+{
+  "version": "voltrix-foot-v2 (backtest 2026-11)",
+  "source": "football-data.co.uk — 6 ligues, 37 715 matchs 2010-26, split temporel train 2010-22 / validation 2022-24 / test 2024-26",
+  "applique_dans_l_app": {
+    "elo_draw_base": 0.36,
+    "elo_draw_slope": 0.7,
+    "form_draw_base": 0.32,
+    "form_draw_slope": 0.6,
+    "w_poisson": 0.4,
+    "w_elo": 0.35,
+    "w_form": 0.25,
+    "k_factor": 10,
+    "home_adv_elo": 110,
+    "elo_factor_div": 1000,
+    "form_factor_span": 0.1,
+    "lam_home_bounds": [
+      0.25,
+      4.4
+    ],
+    "lam_away_bounds": [
+      0.2,
+      4.0
+    ],
+    "fatigue_factor": 1.0,
+    "derby_factor": 0.88,
+    "per_league_avgs_pour_marches_de_buts": true
+  },
+  "piste_v3_non_appliquee": {
+    "elo_global": "log-loss TEST 1,0053 vs 1,0110 (Elo local optimisé) — nécessite le chargement de toute la ligue, non implémenté car l'API ESPN scoreboard ne supporte pas les plages de dates"
+  },
+  "league_params": {
+    "E0": {
+      "home": 1.513,
+      "away": 1.421,
+      "total": 2.934
+    },
+    "E1": {
+      "home": 1.435,
+      "away": 1.016,
+      "total": 2.451
+    },
+    "SP1": {
+      "home": 1.453,
+      "away": 1.166,
+      "total": 2.618
+    },
+    "D1": {
+      "home": 1.631,
+      "away": 1.503,
+      "total": 3.134
+    },
+    "I1": {
+      "home": 1.339,
+      "away": 1.221,
+      "total": 2.561
+    },
+    "F1": {
+      "home": 1.608,
+      "away": 1.369,
+      "total": 2.977
+    },
+    "E2": {
+      "home": 1.404,
+      "away": 1.181,
+      "total": 2.585
+    },
+    "E3": {
+      "home": 1.371,
+      "away": 1.123,
+      "total": 2.495
+    },
+    "EC": {
+      "home": 1.496,
+      "away": 1.199,
+      "total": 2.696
+    },
+    "SC0": {
+      "home": 1.693,
+      "away": 1.268,
+      "total": 2.961
+    },
+    "SC1": {
+      "home": 1.428,
+      "away": 1.083,
+      "total": 2.511
+    },
+    "SP2": {
+      "home": 1.45,
+      "away": 1.08,
+      "total": 2.53
+    },
+    "I2": {
+      "home": 1.355,
+      "away": 1.108,
+      "total": 2.463
+    },
+    "D2": {
+      "home": 1.637,
+      "away": 1.386,
+      "total": 3.023
+    },
+    "F2": {
+      "home": 1.507,
+      "away": 1.072,
+      "total": 2.578
+    },
+    "N1": {
+      "home": 1.696,
+      "away": 1.291,
+      "total": 2.987
+    },
+    "B1": {
+      "home": 1.593,
+      "away": 1.163,
+      "total": 2.756
+    },
+    "P1": {
+      "home": 1.402,
+      "away": 1.167,
+      "total": 2.569
+    },
+    "T1": {
+      "home": 1.667,
+      "away": 1.269,
+      "total": 2.936
+    },
+    "G1": {
+      "home": 1.283,
+      "away": 1.159,
+      "total": 2.442
+    }
+  },
+  "evaluation_finale": {
+    "as-built (local)|TRAIN": {
+      "acc": 0.4990325417766051,
+      "logloss": 1.0127340973409849,
+      "brier": 0.605449698317846,
+      "rps": 0.20781033178814468,
+      "draw_pred": 0.2341579674446974
+    },
+    "as-built (local)|VAL": {
+      "acc": 0.5044852627082443,
+      "logloss": 1.0099127604894718,
+      "brier": 0.6034588030867665,
+      "rps": 0.20725581679692548,
+      "draw_pred": 0.2305034503357175
+    },
+    "as-built (local)|TEST": {
+      "acc": 0.5008680555555556,
+      "logloss": 1.0166042449402743,
+      "brier": 0.6082491827264851,
+      "rps": 0.20837871904460076,
+      "draw_pred": 0.2308964055475008
+    },
+    "opt-local|TRAIN": {
+      "acc": 0.5017062445030783,
+      "logloss": 1.0078485956431484,
+      "brier": 0.6025881635853496,
+      "rps": 0.20671720853167413,
+      "draw_pred": 0.25474428960981493
+    },
+    "opt-local|VAL": {
+      "acc": 0.5074754378470739,
+      "logloss": 1.0049298350732039,
+      "brier": 0.6007643979842111,
+      "rps": 0.20655010187410325,
+      "draw_pred": 0.25179756390691244
+    },
+    "opt-local|TEST": {
+      "acc": 0.5013020833333334,
+      "logloss": 1.010967359356811,
+      "brier": 0.6052724543043442,
+      "rps": 0.20762847007320073,
+      "draw_pred": 0.25198029191113935
+    },
+    "opt-global|TRAIN": {
+      "acc": 0.5067018469656992,
+      "logloss": 1.0039007130753903,
+      "brier": 0.5997805754965355,
+      "rps": 0.20536207828037897,
+      "draw_pred": 0.2579123286098955
+    },
+    "opt-global|VAL": {
+      "acc": 0.5164459632635626,
+      "logloss": 0.9987748023362724,
+      "brier": 0.5964923284172697,
+      "rps": 0.20461963754388526,
+      "draw_pred": 0.2500339732602339
+    },
+    "opt-global|TEST": {
+      "acc": 0.5028211805555556,
+      "logloss": 1.0053191678899824,
+      "brier": 0.6011612150117299,
+      "rps": 0.20566822243072716,
+      "draw_pred": 0.25053507031528327
+    },
+    "marche-B365|VAL": {
+      "acc": 0.528193079880393,
+      "logloss": 0.983317496044282,
+      "brier": 0.5861388080177351,
+      "rps": 0.19955165396658678,
+      "draw_pred": 0.25222420494125347
+    },
+    "marche-B365|TEST": {
+      "acc": 0.5186631944444444,
+      "logloss": 0.9872950359406752,
+      "brier": 0.5891093747720555,
+      "rps": 0.20010113720551123,
+      "draw_pred": 0.2526451549910032
+    },
+    "hybride-65/35|VAL": {
+      "acc": 0.5258436565570269,
+      "logloss": 0.9858606082798302,
+      "brier": 0.5877957884842541,
+      "rps": 0.20043282432535142,
+      "draw_pred": 0.2514576238528966
+    },
+    "hybride-65/35|TEST": {
+      "acc": 0.5145399305555556,
+      "logloss": 0.9907981268719604,
+      "brier": 0.5913994707883528,
+      "rps": 0.2011767199629825,
+      "draw_pred": 0.25190662535450126
+    }
+  }
+}

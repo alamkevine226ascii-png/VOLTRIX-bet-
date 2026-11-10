@@ -1,0 +1,194 @@
+{
+  "params_optimises": {
+    "league_avg_home": 1.52,
+    "league_avg_away": 1.22,
+    "per_league_avgs": false,
+    "shrink_k": 10.0,
+    "ctx_weight_div": 6.0,
+    "k_factor": 14,
+    "home_adv_elo": 95,
+    "elo_factor_div": 800.0,
+    "elo_diff_cap": 250.0,
+    "form_elo_scale": 170.0,
+    "form_factor_lo": 0.9,
+    "form_factor_span": 0.2,
+    "fatigue_factor": 1.0,
+    "derby_factor": 0.88,
+    "lam_home_bounds": [
+      0.25,
+      4.4
+    ],
+    "lam_away_bounds": [
+      0.2,
+      4.0
+    ],
+    "w_poisson": 0.5,
+    "w_elo": 0.3,
+    "w_form": 0.2,
+    "elo_draw_base": 0.34,
+    "elo_draw_slope": 0.7,
+    "form_draw_base": 0.32,
+    "form_draw_slope": 0.6,
+    "rho": 0.1,
+    "grid_max": 12
+  },
+  "progression": [
+    {
+      "passe": 1,
+      "groupe": "blend",
+      "choix": {
+        "w_poisson": 0.5,
+        "w_elo": 0.25,
+        "w_form": 0.25
+      },
+      "val_logloss": 1.00985552263502
+    },
+    {
+      "passe": 1,
+      "groupe": "elo",
+      "choix": {
+        "k_factor": 14,
+        "home_adv_elo": 95
+      },
+      "val_logloss": 1.0081109282727732
+    },
+    {
+      "passe": 1,
+      "groupe": "nul-elo",
+      "choix": {
+        "elo_draw_base": 0.34,
+        "elo_draw_slope": 0.7
+      },
+      "val_logloss": 1.0062943626404222
+    },
+    {
+      "passe": 1,
+      "groupe": "nul-forme",
+      "choix": {
+        "form_draw_base": 0.32,
+        "form_draw_slope": 0.6
+      },
+      "val_logloss": 1.0054108152112828
+    },
+    {
+      "passe": 1,
+      "groupe": "bornes-lambda",
+      "choix": {
+        "lam_home_bounds": [
+          0.25,
+          4.4
+        ],
+        "lam_away_bounds": [
+          0.2,
+          4.0
+        ]
+      },
+      "val_logloss": 1.0053920130211418
+    },
+    {
+      "passe": 1,
+      "groupe": "fatigue-derby",
+      "choix": {
+        "fatigue_factor": 1.0,
+        "derby_factor": 0.88
+      },
+      "val_logloss": 1.0051239474951024
+    },
+    {
+      "passe": 2,
+      "groupe": "blend",
+      "choix": {
+        "w_poisson": 0.5,
+        "w_elo": 0.3,
+        "w_form": 0.2
+      },
+      "val_logloss": 1.0049298350732039
+    }
+  ],
+  "evaluation_finale": {
+    "as-built|TRAIN": {
+      "acc": 0.4990325417766051,
+      "logloss": 1.0127340973409849,
+      "brier": 0.605449698317846,
+      "rps": 0.20781033178814468,
+      "draw_pred": 0.2341579674446974
+    },
+    "as-built|VALIDATION": {
+      "acc": 0.5044852627082443,
+      "logloss": 1.0099127604894718,
+      "brier": 0.6034588030867665,
+      "rps": 0.20725581679692548,
+      "draw_pred": 0.2305034503357175
+    },
+    "as-built|TEST": {
+      "acc": 0.5008680555555556,
+      "logloss": 1.0166042449402743,
+      "brier": 0.6082491827264851,
+      "rps": 0.20837871904460076,
+      "draw_pred": 0.2308964055475008
+    },
+    "optimisé|TRAIN": {
+      "acc": 0.5017062445030783,
+      "logloss": 1.0078485956431484,
+      "brier": 0.6025881635853496,
+      "rps": 0.20671720853167413,
+      "draw_pred": 0.25474428960981493
+    },
+    "optimisé|VALIDATION": {
+      "acc": 0.5074754378470739,
+      "logloss": 1.0049298350732039,
+      "brier": 0.6007643979842111,
+      "rps": 0.20655010187410325,
+      "draw_pred": 0.25179756390691244
+    },
+    "optimisé|TEST": {
+      "acc": 0.5013020833333334,
+      "logloss": 1.010967359356811,
+      "brier": 0.6052724543043442,
+      "rps": 0.20762847007320073,
+      "draw_pred": 0.25198029191113935
+    },
+    "elo-global-K22-A65|VALIDATION": {
+      "acc": 0.5433575395130287,
+      "logloss": 0.9633823564244567,
+      "brier": 0.5724256324796727,
+      "rps": 0.19273592409254975,
+      "draw_pred": 0.23731147231569336
+    },
+    "elo-global-K22-A65|TEST": {
+      "acc": 0.5388454861111112,
+      "logloss": 0.9684896428118647,
+      "brier": 0.5761944089359741,
+      "rps": 0.1933560830820872,
+      "draw_pred": 0.2379543980762896
+    },
+    "elo-global-K14-A95|VALIDATION": {
+      "acc": 0.5363092695429303,
+      "logloss": 0.9756945785481771,
+      "brier": 0.5808066179527668,
+      "rps": 0.1968695578381722,
+      "draw_pred": 0.2366961884903423
+    },
+    "elo-global-K14-A95|TEST": {
+      "acc": 0.5243055555555556,
+      "logloss": 0.9817344668601728,
+      "brier": 0.5851468595416301,
+      "rps": 0.1976984140669328,
+      "draw_pred": 0.23732839682348844
+    }
+  },
+  "config": {
+    "train_end": "2122",
+    "val_end": "2324",
+    "ligues": [
+      "E0",
+      "E1",
+      "SP1",
+      "D1",
+      "I1",
+      "F1"
+    ],
+    "saisons": "1011→2526",
+    "n": 37715
+  }
+}

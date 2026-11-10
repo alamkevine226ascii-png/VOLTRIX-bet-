@@ -21,6 +21,13 @@ import {
 import { runEngine, type MatchAnalysis } from "./prediction";
 import { fetchTeamFirstGoals } from "./first-goal";
 import { getLeague } from "./leagues";
+// Implémentation n°2 (backtest 2026-11) : moyennes de buts EMPIRIQUES
+// par championnat (saison précédente, football-data.co.uk — zéro
+// fuite) injectées dans le moteur. Effet mesuré (val+test) :
+// +0,3 pt de précision O/U 2,5, log-loss O/U −0,0013, neutre 1X2.
+// Ligue non couverte → null → constantes globales (v2.1 inchangé).
+import { leagueGoalAverages } from "./league-params";
+import { recordValueBets } from "./bets-ledger";
 import { persistGet, persistSet } from "../persist";
 
 /* Altitude des villes de football connues au-dessus de ~1 500 m
@@ -295,6 +302,8 @@ export async function analyzeMatch(
     leagueTeamsCount: standings.length || 20,
     firstGoals: { home: firstGoalsHome, away: firstGoalsAway },
     venueAltitudeM: cityAltitude(event.venue.city),
+    // Implémentation n°2 : moyennes de buts par ligue (league-params.ts).
+    leagueGoalAverages: leagueGoalAverages(leagueCode),
   });
 
   /* H2H : sortie BILATÉRALE du moteur (union des deux calendriers,
@@ -318,6 +327,18 @@ export async function analyzeMatch(
     h2h,
     h2hSummary,
   };
+
+  // Implémentation n°5 : enregistrement des value bets dans le registre
+  // persistant ROI/Brier (bets-ledger.ts) — idempotent, best-effort,
+  // jamais bloquant pour l'analyse. Résolu quand le match sera terminé.
+  recordValueBets({
+    matchId,
+    leagueCode,
+    matchDate: event.date,
+    homeName: event.home.team.displayName,
+    awayName: event.away.team.displayName,
+    valueBets: analysis.prediction.valueBets,
+  });
 
   cacheSet(key, result, ttl);
   return result;
