@@ -56,3 +56,4 @@ server.log
 # artefacts internes
 tool-results/
 upload/
+scripts/backtest-mma/data/

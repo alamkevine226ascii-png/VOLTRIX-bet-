@@ -17,11 +17,23 @@ import { formScore, parseRecord } from './types'
 
 export const MODEL_VERSION = 'voltrix-mma-v1'
 
-/** Bornes de probabilité : au-delà, le modèle mentirait sur sa précision. */
+/**
+ * Bornes de probabilité : au-delà, le modèle mentirait sur sa précision.
+ * Validées par backtest 2026-11-11 (DanMcInerney/mma-ai, 7 704 combats
+ * UFC 1998-2026, rejeu anti-fuite) : élargir à [10,90] ne change pas le
+ * log-loss — l'amortissement des dimensions compresse déjà les probabilités.
+ * Rapport : download/backtest-mma/rapport-backtest-mma.pdf.
+ */
 export const P_MIN = 25
 export const P_MAX = 75
 
-/** Pente de la logistique. */
+/**
+ * Pente de la logistique — VALIDÉE par backtest : le log-loss de
+ * validation est minimal exactement à K = 2,6 (grille 2,6 → 12), et les
+ * pentes plus agressives dégradent systématiquement la calibration.
+ * Précision mesurée du moteur : 56,5 % en test 2025-26 (n = 563),
+ * 55,8 % sur 2010-2026 (n = 5 053). Référence marché : 71 %.
+ */
 const K_LOGISTIC = 2.6
 
 /** Dimensions minimales pour émettre un pronostic. */
@@ -35,6 +47,8 @@ const CORE_DIMENSIONS = ['forme', 'volume', 'precision', 'absorption', 'lutte', 
  * Justification : les échanges debout décident la majorité des combats
  * (volume + précision + absorption), la forme récente est le meilleur signal
  * simple disponible, la lutte conditionne le choix du terrain.
+ * Backtest 2026-11-11 : porter le poids de la forme à 2,5 ne gagne que
+ * 0,4 pt en validation (< ¼ d'erreur-type) — inchangés par prudence.
  */
 export const DIMENSION_WEIGHTS: Record<string, number> = {
   forme: 1.5,
