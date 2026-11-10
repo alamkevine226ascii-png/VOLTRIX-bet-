@@ -489,6 +489,19 @@ export interface FightStatsBreakdown {
   submissions: number | null
   knockdowns: number | null
   controlSeconds: number | null
+  /**
+   * Enrichissement (implémentation n°4, backtest MMA 2026-11-11) :
+   * frappes significatives par cible et par position. L'API core fournit
+   * les 9 croisements (distance/clinch/sol × tête/corps/jambes) — on
+   * agrège par cible et par position. Null si l'endpoint ne les publie
+   * pas (combats anciens ou hors UFC).
+   */
+  headStrikesLanded: number | null
+  bodyStrikesLanded: number | null
+  legStrikesLanded: number | null
+  distanceStrikesLanded: number | null
+  clinchStrikesLanded: number | null
+  groundStrikesLanded: number | null
 }
 
 // Import des mappages purs (statuts, durées, méthodes) — voir mma/types.ts.
@@ -735,6 +748,20 @@ export async function getFightStatsFor(
     const m = control.match(/^(\d+):(\d{2})$/)
     if (m) controlSeconds = Number(m[1]) * 60 + Number(m[2])
   }
+  // Cibles et positions — sommation des 9 croisements publiés par l'API
+  // (sigDistanceHeadStrikesLanded, sigClinchBodyStrikesLanded, etc.).
+  const sum3 = (base: string): number | null => {
+    const a = num(`${base}HeadStrikesLanded`)
+    const b = num(`${base}BodyStrikesLanded`)
+    const c = num(`${base}LegStrikesLanded`)
+    if (a == null && b == null && c == null) return null
+    return (a ?? 0) + (b ?? 0) + (c ?? 0)
+  }
+  const sumByTarget = (target: 'Head' | 'Body' | 'Leg'): number | null => {
+    const vals = ['sigDistance', 'sigClinch', 'sigGround'].map((p) => num(`${p}${target}StrikesLanded`))
+    if (vals.every((v) => v == null)) return null
+    return vals.reduce<number>((acc, v) => acc + (v ?? 0), 0)
+  }
   return {
     sigStrikesLanded: num('sigStrikesLanded'),
     sigStrikesAttempted: num('sigStrikesAttempted'),
@@ -743,6 +770,12 @@ export async function getFightStatsFor(
     submissions: num('submissions'),
     knockdowns: num('knockDowns'),
     controlSeconds,
+    headStrikesLanded: sumByTarget('Head'),
+    bodyStrikesLanded: sumByTarget('Body'),
+    legStrikesLanded: sumByTarget('Leg'),
+    distanceStrikesLanded: sum3('sigDistance'),
+    clinchStrikesLanded: sum3('sigClinch'),
+    groundStrikesLanded: sum3('sigGround'),
   }
 }
 

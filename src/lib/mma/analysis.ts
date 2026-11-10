@@ -237,6 +237,16 @@ export interface DerivedResult {
   fightsSkipped: number
   computedAt: string
   /**
+   * Enrichissement n°4 (backtest MMA 2026-11-11) — stats PROPRES du
+   * combattant sur la fenêtre de 8 combats (source : mêmes appels
+   * statistics ESPN, champ combattant au lieu de l'adversaire).
+   * Disponibles seulement pour l'UFC récent (l'API publie les cibles/
+   * positions depuis quelques années) — null sinon.
+   */
+  groundStrikesPerMin: number | null
+  knockdownsPer15: number | null
+  controlPerMin: number | null
+  /**
    * Combats documentés de la fenêtre, avec le round de fin PUBLIÉ PAR ESPN
    * (`status.period`) et la méthode (KO/SUB/DÉCISION/NC). Base du modèle de
    * rounds personnalisé — les statuts sont déjà récupérés par le calcul des
@@ -252,10 +262,11 @@ export interface DerivedResult {
   }[]
 }
 
-// v2 : invalidation des caches calculés avec l'ancienne formule de durée
-// (temps intra-round inversé — audit 2026-11-09). Stockage PERSISTANT
-// (localStorage) : survit à la fermeture de l'App (exigence 10 min min).
-const DERIVED_SS_PREFIX = 'voltrix:derived:v2:'
+// v3 : + champs d'enrichissement n°4 (cibles/positions/knockdowns de la
+// fenêtre). v2 : invalidation des caches calculés avec l'ancienne formule
+// de durée (temps intra-round inversé — audit 2026-11-09). Stockage
+// PERSISTANT (localStorage) : survit à la fermeture de l'App (10 min min).
+const DERIVED_SS_PREFIX = 'voltrix:derived:v3:'
 const derivedInFlight = new Map<string, Promise<DerivedResult | null>>()
 
 function readDerivedCache(athleteId: string): DerivedResult | null {
@@ -341,6 +352,12 @@ export function computeDerivedStats(
     let totalSeconds = 0
     let fightsUsed = 0
     let fightsSkipped = 0
+    // Enrichissement n°4 — stats propres (fenêtre 8 combats)
+    let ownGround = 0
+    let ownKd = 0
+    let ownCtrl = 0
+    let ownSecondsWithBreakdown = 0
+    let ownFightsWithBreakdown = 0
     // Collecte des combats documentés (résultat corrigé NC, méthode, round
     // de fin) pour le modèle de rounds personnalisé — statuts DÉJÀ récupérés
     // ci-dessous, donc coût réseau nul.
@@ -351,8 +368,9 @@ export function computeDerivedStats(
       const league = ESPN_LEAGUE_UIDS[h.espnLeagueId as string]
       const oppId = (h.opponentExternalId as string).split(':').pop() as string
       try {
-        const [oppStats, status] = await Promise.all([
+        const [oppStats, ownStats, status] = await Promise.all([
           getFightStatsFor(h.espnEventId as string, h.espnCompetitionId as string, oppId, league),
+          getFightStatsFor(h.espnEventId as string, h.espnCompetitionId as string, espnAthleteId, league),
           getCompetitionStatus(league, h.espnEventId as string, h.espnCompetitionId as string),
         ])
         // Correction NC : l'historique ESPN étiquette « D » un no-contest
@@ -388,6 +406,14 @@ export function computeDerivedStats(
           oppTda += oppStats?.takedownsAttempted ?? 0
           totalSeconds += duration as number
           fightsUsed++
+          // Enrichissement : cibles/positions de ce combat (si publié)
+          if (ownStats?.groundStrikesLanded != null && duration > 0) {
+            ownGround += ownStats.groundStrikesLanded
+            ownKd += ownStats.knockdowns ?? 0
+            ownCtrl += ownStats.controlSeconds ?? 0
+            ownSecondsWithBreakdown += duration
+            ownFightsWithBreakdown++
+          }
         }
       } catch {
         fightsSkipped++
@@ -403,6 +429,7 @@ export function computeDerivedStats(
     }
 
     const totalMinutes = totalSeconds / 60
+    const ownMinutes = ownSecondsWithBreakdown / 60
     const result: DerivedResult = {
       windowSize: DERIVED_WINDOW,
       sigStrikesAbsorbedPerMin: round2(oppSigLanded / totalMinutes),
@@ -412,6 +439,12 @@ export function computeDerivedStats(
       fightsUsed,
       fightsSkipped,
       computedAt: new Date().toISOString(),
+      groundStrikesPerMin:
+        ownMinutes > 0 && ownFightsWithBreakdown > 0 ? round2(ownGround / ownMinutes) : null,
+      knockdownsPer15:
+        ownMinutes > 0 && ownFightsWithBreakdown > 0 ? round2((15 * ownKd) / ownMinutes) : null,
+      controlPerMin:
+        ownMinutes > 0 && ownFightsWithBreakdown > 0 ? round2(ownCtrl / ownMinutes) : null,
       fights,
     }
     writeDerivedCache(espnAthleteId, result)
@@ -476,6 +509,11 @@ export function buildObservedTable(a: FighterView, b: FighterView): ObservedRow[
   push('Défense contre les frappes', fmt(dA?.strikingDefense, '%', 1), fmt(dB?.strikingDefense, '%', 1), 'derived', derivedLabel)
   push('Défense contre les takedowns', fmt(dA?.takedownDefense, '%', 1), fmt(dB?.takedownDefense, '%', 1), 'derived', derivedLabel)
   push('Temps moyen de combat', dA?.avgFightSeconds != null ? formatDuration(dA.avgFightSeconds) : 'Non disponible', dB?.avgFightSeconds != null ? formatDuration(dB.avgFightSeconds) : 'Non disponible', 'derived', derivedLabel)
+  // Enrichissement n°4 — cibles, positions et finition (fenêtre 8 combats)
+  const enrichLabel = `Calcul VOLTRIX · ${DERIVED_WINDOW} derniers combats (cibles/positions ESPN)`
+  push('Frappes au sol / min', fmt(dA?.groundStrikesPerMin), fmt(dB?.groundStrikesPerMin), 'derived', enrichLabel)
+  push('Knockdowns / 15 min', fmt(dA?.knockdownsPer15), fmt(dB?.knockdownsPer15), 'derived', enrichLabel)
+  push('Temps de contrôle / min', fmt(dA?.controlPerMin, ' min', 2), fmt(dB?.controlPerMin, ' min', 2), 'derived', enrichLabel)
   return rows
 }
 
@@ -583,6 +621,13 @@ export function buildDimensions(a: FighterView, b: FighterView): DimensionScore[
 
   add('sol', 'Soumissions', a.stats?.submissionsPer15Min ?? null, b.stats?.submissionsPer15Min ?? null,
     (x, y) => `${fmt(x)} soumission(s) tentée(s) par 15 min contre ${fmt(y)}`, career, false, { epsilon: 0.8, floor: 0.15 })
+
+  // Implémentation n°4 (backtest MMA 2026-11-11) : seule candidate de
+  // l'enrichissement à survivre aux tests — neutre-à-positive sur
+  // validation ET test (jamais nuisible), conceptuellement fondée (domination
+  // au sol = contrôle + dégâts). Poids faible 0,6 ; indisponible → moteur v1.
+  add('sol-frappes', 'Frappes au sol', a.derived?.groundStrikesPerMin ?? null, b.derived?.groundStrikesPerMin ?? null,
+    (x, y) => `${fmt(x)} frappe(s) significative(s) au sol par minute contre ${fmt(y)}`, derivedBasis, false, { epsilon: 1.5, floor: 0.2 })
 
   add('puissance', 'Pouvoir de finition', a.stats ? (a.stats.koPercentage ?? 0) + (a.stats.tkoPercentage ?? 0) : null,
     b.stats ? (b.stats.koPercentage ?? 0) + (b.stats.tkoPercentage ?? 0) : null,

@@ -59,6 +59,15 @@ export const DIMENSION_WEIGHTS: Record<string, number> = {
   lutte: 1.0,
   'defense-takedown': 1.0,
   sol: 0.8,
+  /**
+   * Implémentation n°4 (backtest MMA 2026-11-11) — seule dimension
+   * d'enrichissement validée : neutre en validation, +0,5 à +1,2 pt en
+   * test, jamais nuisible dans aucune fenêtre testée. Poids faible.
+   * Les autres candidates (frappes tête, clinch, distance, KD, contrôle,
+   * corps+jambes) ont été testées puis ÉCARTÉES : aucun gain au-delà du
+   * bruit (± 0,004 log-loss) — enrich_results.json.
+   */
+  'sol-frappes': 0.6,
   puissance: 1.0,
   experience: 0.8,
   physique: 0.6,

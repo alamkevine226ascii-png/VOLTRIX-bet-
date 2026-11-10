@@ -439,8 +439,48 @@ story.append(BUL("Les tournois des années 1990 (plusieurs combats dans la même
                  "l'ordre réel de la soirée ; l'impact est marginal et limité aux premières "
                  "années."))
 
-# ---------- 7. Conclusions ----------
-section(story, "7. Conclusions et suite appliquée")
+# ---------- 7. Tests d'enrichissement dimensionnel ----------
+section(story, "7. Tests d'enrichissement dimensionnel (implémentation n°4)")
+story.append(P(
+    "Le plan d'amélioration prévoyait d'ajouter trois à quatre dimensions construites "
+    "sur les cibles (tête/corps/jambes) et positions (distance/clinch/sol) des frappes "
+    "significatives. Sept candidates ont été testées sur ce même harnais — chaque "
+    "candidate étant ajoutée aux onze dimensions existantes avec une grille de poids, "
+    "la sélection se faisant sur la validation 2023-24 et la confirmation sur le test "
+    "2025-26 :"))
+rows_e = [
+    ["Frappes à la tête / min", "neutre", "−0,5 à −1,2 pt", "Écarté"],
+    ["Frappes au sol / min", "neutre", "+0,5 à +1,2 pt", "Retenu (poids 0,6)"],
+    ["Frappes corps + jambes / min", "+0,75 pt", "−0,2 pt", "Écarté"],
+    ["Volume en clinch / min", "neutre", "−1,6 pt", "Écarté"],
+    ["Volume à distance / min", "neutre", "neutre", "Écarté"],
+    ["Knockdowns / 15 min", "−0,8 pt", "+0,5 pt", "Écarté (incohérent)"],
+    ["Temps de contrôle / min", "−1,6 pt", "−2,8 pt", "Écarté"],
+]
+story.append(table(rows_e,
+                   ["Candidate (fenêtre 8 combats)", "Effet validation", "Effet test", "Verdict"],
+                   [0.34, 0.20, 0.20, 0.26], left_cols=(0,)))
+story.append(Paragraph("Table 3 — Sept candidates dimensionnelles testées (variantes fenêtre, "
+                       "carrière et parts de style — 30+ configurations au total). Aucun gain "
+                       "ne dépasse le bruit d'échantillonnage (± 0,004 log-loss, ± 1,9 pt).",
+                       S["caption"]))
+story.append(P(
+    "Verdict : l'hypothèse « l'enrichissement ferait passer le plafond de 56 % à "
+    "58-60 % » est réfutée. Le signal des statistiques publiques de combat est saturé "
+    "par les onze dimensions existantes ; les candidates n'apportent que du bruit à ces "
+    "tailles d'échantillon. La seule dimension retenue — les frappes au sol par minute — "
+    "est la seule à n'être jamais nuisible dans aucune fenêtre (neutre en validation, "
+    "légèrement positive en test) et à avoir une justification conceptuelle solide "
+    "(domination au sol = contrôle + dégâts). Elle est intégrée avec un poids faible de "
+    "0,6 et s'efface proprement (moteur v1 à 11 dimensions) quand l'API ne publie pas la "
+    "répartition par position. La couche de données, elle, est enrichie pour de bon : "
+    "l'application extrait désormais les neuf croisements cible × position publiés par "
+    "l'API ESPN (présents depuis au moins 2015, vérifié sur UFC 193 et UFC 249), et le "
+    "tableau des données observées affiche frappes au sol, knockdowns et temps de "
+    "contrôle."))
+
+# ---------- 8. Conclusions ----------
+section(story, "8. Conclusions et suite appliquée")
 story.append(P(
     "Ce backtest remplit sa mission : il établit la référence mesurée du moteur MMA et "
     "valide ses constantes. En synthèse : précision de 56,5 % en test (n = 563) et de "
@@ -453,11 +493,11 @@ story.append(BUL("Aucune recalibration : K = 2,6, bornes 25-75 % et poids des di
                  "le code du moteur."))
 story.append(BUL("La « méthode de victoire » reste présentée comme information de style "
                  "(mesure : aucune valeur prédictive au-delà de la fréquence de base)."))
-story.append(BUL("Priorité donnée à l'implémentation n° 4 du plan d'amélioration — "
-                 "enrichissement dimensionnel (cibles tête/corps/jambes et positions "
-                 "distance/clinch/sol, disponibles dans les mêmes sources ESPN) — car "
-                 "c'est le seul levier identifié pour élever le plafond de 56 % vers "
-                 "58-60 % sans toucher au principe « sans cotes » du moteur."))
+story.append(BUL("Enrichissement dimensionnel (implémentation n°4) livré sous sa forme "
+                 "honnête : couche de données étendue aux cibles et positions, une seule "
+                 "dimension ajoutée (frappes au sol / min, poids 0,6), les six autres "
+                 "candidates écartées faute de gain démontrable — la piste « 58-60 % "
+                 "via enrichissement » est fermée et documentée."))
 story.append(BUL("Suivi de la recommandation n° 5 : l'écran de suivi ROI/Brier déjà livré "
                  "pour le football pourra réutiliser ce même harnais de rejeu pour "
                  "surveiller la dérive du moteur MMA en production."))
