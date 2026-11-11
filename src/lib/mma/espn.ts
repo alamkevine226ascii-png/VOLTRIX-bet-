@@ -121,11 +121,14 @@ export interface CacheStats {
 
 /** Statistiques du cache local (affichées dans Paramètres). */
 export function getCacheStats(): CacheStats {
+  // Le cache persistant vit dans localStorage (persistSet, préfixe
+  // "voltrix:espn:") : c'est lui qu'on compte et qu'on pèse —
+  // sessionStorage n'est plus utilisé pour l'écriture.
   const keys = new Set<string>(memory.keys())
   try {
-    if (typeof sessionStorage !== 'undefined') {
-      for (let i = 0; i < sessionStorage.length; i++) {
-        const k = sessionStorage.key(i)
+    if (typeof window !== 'undefined' && window.localStorage) {
+      for (let i = 0; i < window.localStorage.length; i++) {
+        const k = window.localStorage.key(i)
         if (k && k.startsWith(SS_PREFIX)) keys.add(k.slice(SS_PREFIX.length))
       }
     }
@@ -136,8 +139,8 @@ export function getCacheStats(): CacheStats {
   const hosts = new Map<string, number>()
   for (const k of keys) {
     try {
-      if (typeof sessionStorage !== 'undefined') {
-        size += (sessionStorage.getItem(SS_PREFIX + k) ?? '').length
+      if (typeof window !== 'undefined' && window.localStorage) {
+        size += (window.localStorage.getItem(SS_PREFIX + k) ?? '').length
       }
     } catch {
       /* ignore */

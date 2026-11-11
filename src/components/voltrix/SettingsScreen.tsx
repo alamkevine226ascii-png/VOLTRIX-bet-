@@ -15,6 +15,7 @@ import { getCacheStats, clearCache, type CacheStats } from "@/lib/mma/espn";
 import { runModelCheck, type ModelCheckResult } from "@/lib/mma/loaders";
 import { clearFootballCache } from "@/lib/foot/analyze";
 import { LEAGUES } from "@/lib/foot/leagues";
+import { predDbClear } from "@/lib/pred-db";
 import { KpiTile, SectionTitle } from "./ui-bits";
 
 export function SettingsScreen({ headerSlot }: { headerSlot?: ReactNode }) {
@@ -59,6 +60,9 @@ export function SettingsScreen({ headerSlot }: { headerSlot?: ReactNode }) {
     try {
       clearCache();
       clearFootballCache();
+      /* base locale des pronostics (IndexedDB voltrix-pred-db + repli
+         localStorage) : vidée elle aussi pour repartir de zéro */
+      await predDbClear();
       await new Promise((r) => setTimeout(r, 350));
       refresh();
       setCleared(true);
@@ -192,7 +196,7 @@ export function SettingsScreen({ headerSlot }: { headerSlot?: ReactNode }) {
               className="mt-3 flex items-center gap-1.5 rounded-2xl bg-neon/10 px-3.5 py-2.5 text-[10px] font-bold text-neon ring-1 ring-neon/30"
             >
               <Check size={12} strokeWidth={3} />
-              Cache vidé — les prochaines lectures repartent des sources ESPN.
+              Cache et pronostics vidés — les prochaines lectures repartent des sources ESPN.
             </motion.p>
           ) : null}
         </div>

@@ -595,7 +595,9 @@ function toMmaFighter(view: FighterView): MmaFighter {
     takedownDefense: d?.takedownDefense ?? null,
     submissionAvgPer15: view.stats?.submissionsPer15Min ?? null,
     derivedWindow: d?.windowSize ?? null,
-    form: view.lastResults.length > 0 ? view.lastResults.join("") : null,
+    /* forme : plus récent à DROITE (convention UI, cf. hydrateMmaForms) —
+       lastResults est stocké plus récent d'abord, d'où l'inversion */
+    form: view.lastResults.length > 0 ? view.lastResults.slice().reverse().join("") : null,
     lastResults: view.lastResults,
   };
 }
