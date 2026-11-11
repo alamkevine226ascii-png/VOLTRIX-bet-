@@ -59,7 +59,10 @@ function isoAddDays(iso: string, days: number): string {
 }
 
 function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
+  /* Clé de jour LOCALE (fuseau du navigateur) : l'ISO UTC désigne
+     encore la veille entre minuit et 01:00 en France — l'app s'ouvrait
+     alors sur le mauvais jour. */
+  return localDateKey(new Date().toISOString());
 }
 
 /* ---------- Bandeau de dates (7 jours, compact) ---------- */
@@ -182,7 +185,9 @@ function MatchCard({
 }) {
   const live = match.status === "in";
   const done = match.status === "post";
-  const hasScore = match.home.score != null && match.away.score != null;
+  /* ESPN peut renvoyer un score 0 pour un match à venir : un score ne
+     s'affiche que si le coup d'envoi est donné. */
+  const hasScore = match.status !== "pre" && match.home.score != null && match.away.score != null;
 
   return (
     <article
@@ -214,7 +219,7 @@ function MatchCard({
           )}
           {hasScore ? (
             <span className="mt-1.5 text-[10px] font-bold uppercase tracking-wide text-black/45">
-              {match.statusDetail || "FT"}
+              {match.statusDetail || (done ? "FT" : "")}
             </span>
           ) : (
             <span className="mt-2.5 text-[20px] font-black leading-none text-black">{timeLabel(match.date)}</span>
@@ -476,6 +481,9 @@ export function HomeScreen({
       .catch(() => {
         if (run !== abortRef.current) return;
         setLoading(false);
+        /* Sans ça, seul loading est coupé : l'utilisateur voyait l'état
+           vide « Aucun match programmé » alors que le réseau avait lâché. */
+        setError("Données ESPN indisponibles — vérifie ta connexion puis réessaie.");
       });
 
     /* MMA : événements UFC à venir (indépendants de la date) */
@@ -682,7 +690,11 @@ export function HomeScreen({
             <CalendarDays size={12} strokeWidth={2.4} />
             {dt.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })}
           </p>
-          {predsBusy ? (
+          {loading && footData ? (
+            <span className="text-[9.5px] font-bold uppercase tracking-widest text-neon">
+              Scan des ligues en cours…
+            </span>
+          ) : predsBusy ? (
             <span className="text-[9.5px] font-bold uppercase tracking-widest text-neon">
               Moteur en analyse…
             </span>
@@ -696,7 +708,10 @@ export function HomeScreen({
           ) : null}
         </div>
 
-        {loading ? (
+        {/* Rendu progressif : les squelettes ne couvrent que le tout
+            début — dès la 1re vague reçue (onProgress → footData), les
+            matchs s'affichent pendant que le scan continue. */}
+        {loading && !footData ? (
           <div className="space-y-5 pt-2">
             <CardSkeleton />
             <CardSkeleton />
@@ -780,8 +795,8 @@ export function HomeScreen({
               </section>
             ))}
 
-            {/* ---------- vide ---------- */}
-            {groups.length === 0 && eventGroups.length === 0 ? (
+            {/* ---------- vide (jamais pendant le scan progressif) ---------- */}
+            {!loading && groups.length === 0 && eventGroups.length === 0 ? (
               <div className="flex flex-col items-center gap-2 py-14 text-center">
                 <span className="text-[32px]">🏟️</span>
                 <p className="text-[12px] font-semibold text-white/50">

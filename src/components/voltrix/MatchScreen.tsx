@@ -115,7 +115,9 @@ export function MatchScreen({
   const bestPick = useMemo(() => pred?.recommendedBets[0] ?? null, [pred]);
 
   const live = detail?.status === "in" || light?.status === "in";
-  const hasScore = detail && detail.homeScore != null && detail.awayScore != null;
+  /* ESPN peut renvoyer un score 0 pour un match à venir : un score ne
+     s'affiche que si le coup d'envoi est donné. */
+  const hasScore = detail && detail.status !== "pre" && detail.homeScore != null && detail.awayScore != null;
 
   const homeName = detail?.home.name ?? light?.home.name ?? "?";
   const awayName = detail?.away.name ?? light?.away.name ?? "?";
@@ -299,7 +301,7 @@ export function MatchScreen({
                     {detail!.homeScore}:{detail!.awayScore}
                   </span>
                   <span className="mt-1 block text-[8.5px] font-semibold uppercase tracking-widest text-white/50">
-                    {detail?.statusDetail || "FT"}
+                    {detail?.statusDetail || (detail?.status === "post" ? "FT" : "")}
                   </span>
                 </>
               ) : (

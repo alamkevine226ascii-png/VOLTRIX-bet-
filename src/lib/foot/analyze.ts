@@ -170,7 +170,7 @@ function cacheSet<T>(key: string, payload: T, ttlMs: number): void {
   const entry: CacheEntry<T> = { payload, expiresAt: Date.now() + ttlMs };
   memory.set(key, entry);
   // Stockage PERSISTANT : l'analyse survit à la fermeture de l'App
-  // (au moins 10 min — TTL 30 min avant match, 1 min en direct).
+  // (au moins 10 min — TTL 30 min avant match, 10 min en direct).
   persistSet(SS_PREFIX + key, entry, ttlMs);
 }
 
@@ -186,6 +186,33 @@ export function clearFootballCache(): void {
     for (const k of toRemove) window.localStorage.removeItem(k);
   } catch {
     /* ignore */
+  }
+}
+
+/* ---------- Score frais, découplé du cache d'analyse ---------- */
+
+/* Le TTL de l'analyse est volontairement long (10 min en direct) pour
+   ne jamais relancer le moteur lourd — mais il ne doit pas figer le
+   score. À chaque résultat retourné (caché ou frais), si le match
+   n'est pas terminé, on relit le scoreboard (TTL propre : 60 s le
+   jour J) et on écrase uniquement status/statusDetail/scores. Best-
+   effort : échec ou événement introuvable → valeurs existantes. */
+async function refreshLiveFields(res: AnalyzeResult): Promise<AnalyzeResult> {
+  if (res.status === "post") return res;
+  try {
+    const board = await fetchScoreboard(res.leagueCode, res.matchDate.slice(0, 10));
+    const ev = board?.events.find((e) => e.id === res.matchId);
+    if (!ev || !ev.home || !ev.away) return res;
+    return {
+      ...res,
+      status: ev.status,
+      statusDetail: ev.statusDetail,
+      // ESPN envoie "0" pour les matchs à venir → null tant que prévu
+      homeScore: ev.status === "pre" ? null : ev.home.score,
+      awayScore: ev.status === "pre" ? null : ev.away.score,
+    };
+  } catch {
+    return res;
   }
 }
 
@@ -221,7 +248,7 @@ export async function analyzeMatch(
 
   const key = `analysis:${matchId}`;
   const cachedEntry = cacheGet<AnalyzeResult>(key);
-  if (cachedEntry) return cachedEntry;
+  if (cachedEntry) return refreshLiveFields(cachedEntry);
 
   /* 1. Scoreboard de la ligue (données de base + cotes), avec dates adjacentes
      en repli si le match est classé sur une autre journée par ESPN */
@@ -320,8 +347,10 @@ export async function analyzeMatch(
     matchDate: event.date,
     status: event.status,
     statusDetail: event.statusDetail,
-    homeScore: event.home.score,
-    awayScore: event.away.score,
+    /* ESPN envoie un score "0" pour les matchs à venir : null avant le
+       coup d'envoi (même garde que le bridge des cartes d'accueil). */
+    homeScore: event.status === "pre" ? null : event.home.score,
+    awayScore: event.status === "pre" ? null : event.away.score,
     venue: event.venue,
     odds: event.odds,
     h2h,
@@ -341,5 +370,7 @@ export async function analyzeMatch(
   });
 
   cacheSet(key, result, ttl);
-  return result;
+  /* Le cache garde le résultat brut du moteur : seuls les champs live
+     sont rafraîchis à chaque lecture, jamais recalculés ici. */
+  return refreshLiveFields(result);
 }

@@ -27,7 +27,6 @@ function toLightMatches(board: EspnScoreboard): LightMatch[] {
       const ev: EspnEvent = e;
       const home = ev.home!;
       const away = ev.away!;
-      const hasScore = home.score != null && away.score != null;
       return {
         id: ev.id,
         leagueCode: board.leagueCode,
@@ -36,16 +35,20 @@ function toLightMatches(board: EspnScoreboard): LightMatch[] {
         region: def?.region ?? "europe",
         date: ev.date,
         status: ev.status,
+        /* Match à venir : pas de score ni de statusDetail (ESPN y met
+           une phrase anglaise « Sat, November 14th at 8:00 AM EST »). */
         statusDetail:
-          ev.status === "pre" && !hasScore
+          ev.status === "pre"
             ? ""
             : ev.statusDetail || (ev.completed ? "FT" : ""),
+        /* ESPN envoie un score "0" pour les matchs à venir : on force
+           null avant le coup d'envoi, sinon les cartes affichent « 0:0 ». */
         home: {
           id: home.team.id,
           name: home.team.displayName,
           shortName: home.team.shortDisplayName || home.team.abbreviation || home.team.displayName,
           logo: home.team.logo,
-          score: home.score,
+          score: ev.status === "pre" ? null : home.score,
           form: home.form,
           record: home.recordSummary,
         },
@@ -54,7 +57,7 @@ function toLightMatches(board: EspnScoreboard): LightMatch[] {
           name: away.team.displayName,
           shortName: away.team.shortDisplayName || away.team.abbreviation || away.team.displayName,
           logo: away.team.logo,
-          score: away.score,
+          score: ev.status === "pre" ? null : away.score,
           form: away.form,
           record: away.recordSummary,
         },
@@ -87,6 +90,10 @@ export async function loadFootballDay(
 ): Promise<MatchesResponse> {
   const groups = new Map<string, MatchesResponse["leagues"][number]>();
   let scanned = 0;
+  /* Boards introuvables (réseau coupé) : fetchScoreboard avale ses
+     erreurs (→ null), on les compte pour distinguer « journée sans
+     match » (boards vides) d'« ESPN injoignable » (null partout). */
+  let failed = 0;
 
   const waves: Array<{ codes: string[]; size: number }> = [];
   for (const prio of [1, 2, 3]) {
@@ -101,7 +108,11 @@ export async function loadFootballDay(
     await mapLimited(wave.codes, 4, async (code) => {
       const board = await fetchScoreboard(code, dateISO).catch(() => null);
       scanned++;
-      if (!board || board.events.length === 0) return;
+      if (!board) {
+        failed++;
+        return;
+      }
+      if (board.events.length === 0) return;
       const def = getLeague(code);
       const matches = toLightMatches(board);
       if (matches.length === 0) return;
@@ -120,6 +131,11 @@ export async function loadFootballDay(
   }
 
   const leagues = [...groups.values()].sort(sortLeagueGroup);
+  /* Toutes les ligues injoignables → rejet : l'accueil affiche son
+     ErrorPanel (bouton Réessayer) au lieu de l'état vide trompeur. */
+  if (scanned > 0 && failed === scanned) {
+    throw new Error("Données ESPN indisponibles — vérifie ta connexion puis réessaie.");
+  }
   return {
     date: dateISO,
     totalMatches: leagues.reduce((n, l) => n + l.matches.length, 0),
