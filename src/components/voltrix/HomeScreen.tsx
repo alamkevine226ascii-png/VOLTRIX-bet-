@@ -14,7 +14,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type UIEvent } from "react";
 import { CalendarDays, RefreshCw } from "lucide-react";
-import { timeLabel } from "@/lib/voltrix";
+import { timeLabel, dayLabel } from "@/lib/voltrix";
 import {
   loadFootballDay,
   computeQuickPreds,
@@ -24,6 +24,7 @@ import {
   loadMmaUpcoming,
   hydrateMmaHeadshots,
   hydrateMmaForms,
+  localDateKey,
   eventCategoryLabel,
 } from "@/lib/mma-bridge";
 import { predDbGetAll, predDbPut } from "@/lib/pred-db";
@@ -568,9 +569,22 @@ export function HomeScreen({
     return footData.leagues.map((l) => ({ code: l.code, label: l.shortName || l.code, name: l.name }));
   }, [footData]);
 
-  const orgChips = useMemo(() => {
+  /* Combats MMA présents sur la date sélectionnée (heure locale).
+   * Correctif bug dates : auparavant tous les événements à venir (J-1 -> J+120)
+   * s'affichaient quelle que soit la date choisie — un combat du 14 apparaissait
+   * le 8. Chaque groupe ne garde que les combats ayant lieu le jour sélectionné. */
+  const mmaEventsOnDate = useMemo(() => {
     if (!mmaData) return [];
     return mmaData.events
+      .map((g) => ({
+        ...g,
+        fights: g.fights.filter((f) => localDateKey(f.date) === date),
+      }))
+      .filter((g) => g.fights.length > 0);
+  }, [mmaData, date]);
+
+  const orgChips = useMemo(() => {
+    return mmaEventsOnDate
       .filter((e) => e.eventId !== "prospect")
       .map((e) => ({
         code: `mma:${e.eventId}`,
@@ -578,10 +592,26 @@ export function HomeScreen({
         name: e.eventName,
       }))
       .concat(
-        mmaData.events.some((e) => e.eventId === "prospect")
+        mmaEventsOnDate.some((e) => e.eventId === "prospect")
           ? [{ code: "mma:prospect", label: "Perspectifs", name: "Combats perspectifs" }]
           : [],
       );
+  }, [mmaEventsOnDate]);
+
+  /* Prochain événement MMA à venir (bandeau « aucun combat ce jour-là »). */
+  const nextMmaEvent = useMemo(() => {
+    if (!mmaData) return null;
+    const now = Date.now();
+    return (
+      mmaData.events
+        .filter(
+          (e) =>
+            e.eventId !== "prospect" &&
+            new Date(e.eventDate).getTime() >= now - 12 * 3600000 &&
+            e.fights.some((f) => f.status !== "post"),
+        )
+        .sort((a, b) => new Date(a.eventDate).getTime() - new Date(b.eventDate).getTime())[0] ?? null
+    );
   }, [mmaData]);
 
   const groups = useMemo(() => {
@@ -595,19 +625,22 @@ export function HomeScreen({
   }, [footData, activeFilter]);
 
   const eventGroups = useMemo(() => {
-    if (!mmaData) return [];
     if (activeFilter.startsWith("mma:")) {
       const eventId = activeFilter.slice(4);
-      return mmaData.events.filter((e) => e.eventId === eventId);
+      return mmaEventsOnDate.filter((e) => e.eventId === eventId);
     }
     if (activeFilter !== "all") return [];
-    return mmaData.events;
-  }, [mmaData, activeFilter]);
+    return mmaEventsOnDate;
+  }, [mmaEventsOnDate, activeFilter]);
 
   const openMatch = (m: LightMatch) => onOpenMatch(m.id, m.leagueCode, m.date, m);
   const dt = new Date(`${date}T12:00:00Z`);
   const totalFoot = footData?.totalMatches ?? 0;
-  const totalMma = mmaData?.totalFights ?? 0;
+  /* combats MMA réellement affichables à la date sélectionnée */
+  const totalMma = mmaEventsOnDate.reduce(
+    (n, g) => n + (g.eventId === "prospect" ? 0 : g.fights.length),
+    0,
+  );
 
   return (
     <div className="relative h-full bg-ink">
@@ -694,6 +727,31 @@ export function HomeScreen({
                 </div>
               </section>
             ))}
+
+            {/* ---------- pas de combat MMA à cette date : prochain événement ---------- */}
+            {mmaData &&
+            eventGroups.length === 0 &&
+            nextMmaEvent &&
+            (activeFilter === "all" || activeFilter.startsWith("mma:")) ? (
+              <button
+                onClick={() => setDate(localDateKey(nextMmaEvent.eventDate))}
+                className="mb-1 flex w-full items-center gap-3 rounded-2xl bg-panel px-4 py-3 text-left shadow-[0_10px_24px_rgba(0,0,0,0.35)] transition-transform active:scale-[0.98]"
+              >
+                <span className="text-[20px] leading-none">🥊</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[11px] font-bold text-white/85">
+                    Aucun combat MMA le{" "}
+                    {dt.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })}.
+                  </span>
+                  <span className="block truncate text-[10px] font-semibold text-white/50">
+                    Prochain : {nextMmaEvent.eventName} — {dayLabel(nextMmaEvent.eventDate)}
+                  </span>
+                </span>
+                <span className="shrink-0 rounded-full bg-neon px-2.5 py-1 text-[9px] font-black uppercase tracking-wide text-black">
+                  Voir
+                </span>
+              </button>
+            ) : null}
 
             {/* ---------- sections MMA (catégories d'événements UFC) ---------- */}
             {eventGroups.map((ev) => (

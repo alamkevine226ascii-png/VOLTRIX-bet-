@@ -155,7 +155,8 @@ export { recText };
    perspectifs » = adversaires non annoncés, données ESPN réelles)
    ============================================================ */
 
-function localDateKey(iso: string): string {
+/** Clé de jour local (YYYY-MM-DD, fuseau du navigateur). */
+export function localDateKey(iso: string): string {
   const d = new Date(iso);
   const p = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
@@ -176,7 +177,10 @@ export function eventCategoryLabel(eventName: string, eventDate: string): string
 }
 
 /**
- * Charge les événements UFC à venir (fenêtre : hier -> +120 jours).
+ * Charge les événements UFC à venir (fenêtre : avant-veille -> +120 jours,
+ * pour couvrir tout le bandeau de dates de l'accueil qui va de J-2 à J+4).
+ * Les combats sont ensuite filtrés côté écran selon la date sélectionnée :
+ * ce qui est affiché sous un jour J a bien lieu le jour J (heure locale).
  * Chaque événement forme une catégorie ; les combats à adversaire non
  * annoncé (TBD ESPN) alimentent en outre la catégorie « Combats
  * perspectifs ». Les événements d'hier terminés restent visibles
@@ -184,7 +188,9 @@ export function eventCategoryLabel(eventName: string, eventDate: string): string
  */
 export async function loadMmaUpcoming(): Promise<MmaEventsResponse> {
   const now = new Date();
-  const from = new Date(now.getTime() - 1 * 86400000);
+  /* avant-veille : le bandeau de dates de l'accueil permet de remonter
+     à J-2, on marge à J-3 pour couvrir tous les fuseaux horaires. */
+  const from = new Date(now.getTime() - 3 * 86400000);
   const to = new Date(now.getTime() + 120 * 86400000);
 
   const boards = await mapLimited(ACTIVE_ORGS, 2, (org) =>

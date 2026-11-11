@@ -14,6 +14,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type UIEvent } from "react";
 import { motion } from "framer-motion";
 import {
+  CalendarDays,
   ChevronLeft,
   Hourglass,
   Loader2,
@@ -23,7 +24,7 @@ import {
   Swords,
   TriangleAlert,
 } from "lucide-react";
-import { pct, timeLabel } from "@/lib/voltrix";
+import { pct, timeLabel, dayLabel } from "@/lib/voltrix";
 import { arenaImageFor, loadMmaFightDetail, type MmaFightDetailLoaded } from "@/lib/mma-bridge";
 import type { MmaFighter } from "@/lib/mma-types";
 import { FighterHead } from "./FighterHead";
@@ -222,6 +223,8 @@ export function MmaFightScreen({
   const arenaImg = useMemo(() => arenaImageFor(fight?.venue.name), [fight?.venue.name]);
 
   /* heure / résultat affiché au centre */
+  const fightDay = fight ? dayLabel(fight.date) : null;
+  const fightIsToday = fight ? new Date(fight.date).toDateString() === new Date().toDateString() : false;
   const centerMain = done
     ? fight!.winner === "A"
       ? aShort
@@ -233,7 +236,9 @@ export function MmaFightScreen({
     ? fight!.method ?? "Terminé"
     : live
       ? fight!.statusDetail
-      : "Heure locale";
+      : fightIsToday
+        ? "Heure locale"
+        : (fightDay ?? "Heure locale");
 
   /* segments victoire (2 issues) pour la barre unique */
   const segments = useMemo(() => {
@@ -374,6 +379,14 @@ export function MmaFightScreen({
               <Swords size={10} strokeWidth={2.4} className="shrink-0 text-neon" />
               {fight?.weightClass ?? "Catégorie à confirmer"}
               {fight?.rounds ? ` · ${fight.rounds} rounds` : ""}
+            </span>
+            <span className="inline-flex max-w-[85%] items-center gap-1.5 rounded-full bg-ink-3/80 px-3 py-1 text-[9px] font-bold uppercase tracking-wide text-white/70 backdrop-blur">
+              <CalendarDays size={10} strokeWidth={2.4} className="shrink-0 text-neon" />
+              <span className="truncate">
+                {fight
+                  ? `${dayLabel(fight.date)} · ${timeLabel(fight.date)}`
+                  : "Date à confirmer"}
+              </span>
             </span>
             <span className="inline-flex max-w-[85%] items-center gap-1.5 rounded-full bg-ink-3/80 px-3 py-1 text-[9px] font-bold uppercase tracking-wide text-white/70 backdrop-blur">
               <MapPin size={10} strokeWidth={2.4} className="shrink-0 text-neon" />
