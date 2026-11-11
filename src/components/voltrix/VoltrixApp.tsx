@@ -6,6 +6,9 @@
    détail match / détail combat) et barre d'onglets capsule
    flottante façon iOS 27. Toutes les données sont réelles et
    calculées localement (ESPN direct) — plus de mode démo.
+   Option A (correctif « rechargement du moteur ») : l'écran
+   d'onglet reste monté sous les fiches détaillées — retour
+   instantané, listes, filtres, défilement et pronos conservés.
    ============================================================ */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -49,6 +52,10 @@ export function VoltrixApp() {
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const current = stack[stack.length - 1];
+
+  /* Fiche détaillée ouverte ? L'écran d'onglet courant reste alors
+     monté dessous (option A) : jamais démonté, jamais rechargé. */
+  const isDetail = current.name === "match" || current.name === "fight";
 
   const push = useCallback((screen: Screen) => {
     setDirection(1);
@@ -98,16 +105,22 @@ export function VoltrixApp() {
     return () => window.removeEventListener("keydown", onKey);
   }, [stack.length, pop]);
 
-  const screenKey =
-    current.name === "match"
-      ? `match-${current.matchId}`
-      : current.name === "fight"
-        ? `fight-${current.fightId}`
-        : `tab-${current.name}`;
-
-  const variants = {
+  /* Variantes des fiches détaillées : glissement latéral complet
+     (entrée depuis un bord, sortie vers le bord opposé). */
+  const detailVariants = {
     enter: (dir: number) => ({ x: dir > 0 ? "100%" : "-100%", opacity: 0.6 }),
     center: { x: 0, opacity: 1 },
+    exit: (dir: number) => ({ x: dir > 0 ? "-32%" : "100%", opacity: 0.6 }),
+  };
+
+  /* Variantes de la couche d'onglet : glissement uniquement lors d'un
+     changement d'onglet. Quand une fiche est empilée par-dessus, elle
+     reste en place et se rétracte très légèrement — effet de profondeur
+     des applications natives, cœur de l'option A. */
+  const tabVariants = {
+    enter: (dir: number) => ({ x: dir > 0 ? "100%" : "-100%", opacity: 0.6 }),
+    center: { x: 0, opacity: 1, scale: 1 },
+    covered: { x: 0, opacity: 1, scale: 0.955 },
     exit: (dir: number) => ({ x: dir > 0 ? "-32%" : "100%", opacity: 0.6 }),
   };
 
@@ -125,25 +138,46 @@ export function VoltrixApp() {
       {/* cadre téléphone — plein écran sur mobile, maquette cadrée sur desktop */}
       <div className="relative h-dvh w-full max-w-none overflow-hidden bg-black sm:h-[844px] sm:max-w-[400px] sm:rounded-[46px] sm:shadow-[0_40px_90px_rgba(0,0,0,0.55),0_0_0_11px_#1a1a1c,0_0_0_13px_#3a3a3c]">
         <AnimatePresence initial={false} custom={direction} mode="popLayout">
+          {/* Couche fond — écran d'onglet (accueil / réglages).
+              OPTION A du diagnostic « rechargement du moteur » : cette
+              couche n'est JAMAIS démontée quand une fiche s'ouvre
+              par-dessus. Retour instantané depuis une fiche : date,
+              filtres, listes, pronos et position de défilement restent
+              intacts, aucune requête réseau n'est relancée. Inerte
+              tant qu'une fiche la recouvre. */}
           <motion.div
-            key={screenKey}
+            key={`tab-${tab}`}
             custom={direction}
-            variants={variants}
+            variants={tabVariants}
             initial="enter"
-            animate="center"
+            animate={isDetail ? "covered" : "center"}
             exit="exit"
             transition={{ duration: 0.32, ease: [0.32, 0.72, 0, 1] }}
             className="absolute inset-0"
+            inert={isDetail}
+            style={{ pointerEvents: isDetail ? "none" : undefined }}
           >
-            {current.name === "home" ? (
+            {tab === "home" ? (
               <HomeScreen onOpenMatch={openMatch} onOpenFight={openFight} />
-            ) : null}
-
-            {current.name === "settings" ? (
+            ) : (
               <SettingsScreen headerSlot={<LogoBadge />} />
-            ) : null}
+            )}
+          </motion.div>
 
-            {current.name === "match" ? (
+          {/* Fiches détaillées — empilées par-dessus l'écran d'onglet
+              (z-10) ; seule la fiche courante est rendue, elle est
+              démontée au retour. */}
+          {current.name === "match" ? (
+            <motion.div
+              key={`match-${current.matchId}`}
+              custom={direction}
+              variants={detailVariants}
+              initial="enter"
+              animate="center"
+              exit="exit"
+              transition={{ duration: 0.32, ease: [0.32, 0.72, 0, 1] }}
+              className="absolute inset-0 z-10"
+            >
               <MatchScreen
                 matchId={current.matchId}
                 leagueCode={current.leagueCode}
@@ -151,12 +185,23 @@ export function VoltrixApp() {
                 light={current.light}
                 onBack={pop}
               />
-            ) : null}
+            </motion.div>
+          ) : null}
 
-            {current.name === "fight" ? (
+          {current.name === "fight" ? (
+            <motion.div
+              key={`fight-${current.fightId}`}
+              custom={direction}
+              variants={detailVariants}
+              initial="enter"
+              animate="center"
+              exit="exit"
+              transition={{ duration: 0.32, ease: [0.32, 0.72, 0, 1] }}
+              className="absolute inset-0 z-10"
+            >
               <MmaFightScreen fightId={current.fightId} onBack={pop} />
-            ) : null}
-          </motion.div>
+            </motion.div>
+          ) : null}
         </AnimatePresence>
 
         {/* toast — pilule en haut */}
@@ -180,7 +225,7 @@ export function VoltrixApp() {
             verre sombre, contenu qui défile derrière, pastille active
             animée (layoutId) qui glisse entre les onglets ;
             masquée sur les écrans détail (match / combat) */}
-        {current.name !== "match" && current.name !== "fight" ? (
+        {!isDetail ? (
           <nav
             className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center"
             style={{ paddingBottom: "max(env(safe-area-inset-bottom), 14px)" }}
