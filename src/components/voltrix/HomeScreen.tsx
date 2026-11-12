@@ -28,6 +28,7 @@ import {
   eventCategoryLabel,
 } from "@/lib/mma-bridge";
 import { predDbGetAll, predDbPut } from "@/lib/pred-db";
+import { fetchDayFixtures } from "@/lib/fixtures-client";
 import type { LightMatch, MatchesResponse, QuickPred } from "@/lib/voltrix-types";
 import type { MmaEventsResponse, MmaFight, MmaQuickPred } from "@/lib/mma-types";
 import { TeamBadge } from "./TeamBadge";
@@ -386,6 +387,11 @@ export function HomeScreen({
   const [restoredCount, setRestoredCount] = useState(0);
   const [activeFilter, setActiveFilter] = useState("all");
   const abortRef = useRef(0);
+  /* miroir ref de l'état preds : l'effet de calcul des pronos manquants
+     doit voir les pronos fournis par la base de pré-calcul (sinon il les
+     recalculerait inutilement — exactement ce que l'architecture n°6
+     supprime). */
+  const predsRef = useRef<Record<string, QuickPred>>({});
 
   /* tirer-pour-rafraîchir (pattern natif mobile) : quand la liste est
      en haut, tirer vers le bas révèle un indicateur puis recharge.
@@ -463,28 +469,82 @@ export function HomeScreen({
     setFootData(null);
     setPreds({});
 
-    /* football : scan progressif par vague de priorité (dépend de la date) */
-    void loadFootballDay(d, (p: DayProgress) => {
-      if (run !== abortRef.current) return;
-      setFootData({
-        date: d,
-        totalMatches: p.leagues.reduce((n, l) => n + l.matches.length, 0),
-        leagues: p.leagues,
-        scanMs: 0,
-      });
-    })
-      .then((res) => {
+    /* Chemin local football (scan progressif par vague de priorité) —
+       utilisé en repli de la base de pré-calcul, et le jour J pour
+       rafraîchir les scores sous l'affichage déjà présent. */
+    const localFootballScan = (silent: boolean) => {
+      void loadFootballDay(d, silent ? undefined : (p: DayProgress) => {
         if (run !== abortRef.current) return;
-        setFootData(res);
-        setLoading(false);
+        setFootData({
+          date: d,
+          totalMatches: p.leagues.reduce((n, l) => n + l.matches.length, 0),
+          leagues: p.leagues,
+          scanMs: 0,
+        });
       })
-      .catch(() => {
-        if (run !== abortRef.current) return;
-        setLoading(false);
-        /* Sans ça, seul loading est coupé : l'utilisateur voyait l'état
-           vide « Aucun match programmé » alors que le réseau avait lâché. */
-        setError("Données ESPN indisponibles — vérifie ta connexion puis réessaie.");
-      });
+        .then((res) => {
+          if (run !== abortRef.current) return;
+          setFootData(res);
+          setLoading(false);
+        })
+        .catch(() => {
+          if (run !== abortRef.current) return;
+          setLoading(false);
+          if (!silent) {
+            /* Sans ça, seul loading est coupé : l'utilisateur voyait
+               l'état vide « Aucun match programmé » alors que le réseau
+               avait lâché. */
+            setError("Données ESPN indisponibles — vérifie ta connexion puis réessaie.");
+          }
+        });
+    };
+
+    /* 1. BASE DE PRÉ-CALCUL (architecture n°6) : matchs, combats et
+       pronostics déjà calculés par le job serveur — affichage
+       instantané, aucun scan ESPN, aucun calcul moteur dans le
+       navigateur. Silence/échec → repli sur le chemin 100 % local. */
+    const api = await fetchDayFixtures(d);
+    if (run !== abortRef.current) return;
+
+    if (api) {
+      if (api.foot) {
+        setFootData(api.foot);
+        if (api.footPreds) {
+          setPreds(api.footPreds);
+          for (const [mid, p] of Object.entries(api.footPreds)) {
+            void predDbPut("foot", mid, p, predTtlMs(p.status));
+          }
+        }
+      }
+      if (api.mma) {
+        setMmaData(api.mma);
+        if (api.mmaPreds) {
+          setMmaPreds(api.mmaPreds);
+          for (const [fid, p] of Object.entries(api.mmaPreds)) {
+            void predDbPut("mma", fid, p, 15 * 60 * 1000);
+          }
+        }
+      }
+      setLoading(false);
+
+      /* Jour J : le pré-calcul peut dater de quelques heures — on
+         rafraîchit les scores/statuts en arrière-plan par un scan ESPN
+         silencieux (résultat final seulement, pour éviter tout
+         va-et-vient visuel : l'affiché reste celui de la base jusqu'à
+         l'arrivée du frais). */
+      if (api.foot && d === todayISO()) localFootballScan(true);
+
+      /* Replis partiels : aucune donnée foot pour ce jour dans la base
+       * (jour non couvert par le job) → scan local ; aucune donnée MMA
+       * dans la fenêtre pré-calculée (J-2..J+5) → le chemin local
+       * étend le bandeau jusqu'à J+120. */
+      if (!api.foot) localFootballScan(false);
+      if (!api.mma) void loadMma(run);
+      return;
+    }
+
+    /* 2. RETOMBÉE 100 % LOCALE — comportement historique intact. */
+    localFootballScan(false);
 
     /* MMA : événements UFC à venir (indépendants de la date) */
     void loadMma(run);
@@ -493,6 +553,12 @@ export function HomeScreen({
   useEffect(() => {
     void load(date);
   }, [date, load]);
+
+  /* miroir : toute montée de pronos (base de pré-calcul, restauration
+     locale ou calcul) devient visible pour l'effet de backfill. */
+  useEffect(() => {
+    predsRef.current = preds;
+  }, [preds]);
 
   /* handlers tirer-pour-rafraîchir — après `load` (closure saine) */
   const onTouchStart = useCallback((e: React.TouchEvent) => {
@@ -551,8 +617,11 @@ export function HomeScreen({
       }
 
       /* 2. CALCUL : uniquement les pronos MANQUANTS (jamais recalculés
-         tant que leur entrée en base est encore valide). */
-      const missing = upcoming.filter((m) => !stored[m.id]).slice(0, PRED_MAX);
+         tant que leur entrée en base est encore valide — les pronos de
+         la base de pré-calcul sont déjà dans predsRef). */
+      const missing = upcoming
+        .filter((m) => !stored[m.id] && !predsRef.current[m.id])
+        .slice(0, PRED_MAX);
       if (missing.length === 0) return;
       setPredsBusy(true);
       await computeQuickPreds(

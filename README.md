@@ -1,6 +1,6 @@
 # VOLTRIX
 
-VOLTRIX est une application mobile-first de pronostics football et MMA (UFC), développée avec Next.js et TypeScript. Tous les calculs s'exécutent localement dans le navigateur — il n'existe aucun serveur de calcul ni base de données côté serveur pour les pronostics. Les données proviennent des endpoints publics d'ESPN, appelés directement depuis l'appareil. Règle du projet : aucune donnée inventée — une information absente est affichée « — », ou le pronostic est refusé.
+VOLTRIX est une application mobile-first de pronostics football et MMA (UFC), développée avec Next.js et TypeScript. Les pronostics des 7 prochains jours sont pré-calculés par un job serveur et servis depuis une base PostgreSQL (Neon) : l'utilisateur obtient matchs, combats et probabilités en une requête, sans calcul moteur dans son navigateur. Les données proviennent des endpoints publics d'ESPN. Règle du projet : aucune donnée inventée — une information absente est affichée « — », ou le pronostic est refusé.
 
 ## Fonctionnalités principales
 
@@ -89,6 +89,16 @@ Autres résultats publiés : le modèle n'émet un pronostic que sur 5 682 des 7
 
 Un pronostic sportif reste un estimé probabiliste : cette application ne garantit aucun gain.
 
+## Architecture — pré-calcul serveur + repli local
+
+Depuis l'architecture n°6, le parcours de données est le suivant :
+
+1. **Job de pré-calcul** (`.github/workflows/precompute.yml`, 4 passages par jour) : un runner GitHub Actions exécute `scripts/precompute/run.ts` — le MÊME code moteur TypeScript que l'app — sur les matchs et combats des 7 prochains jours, puis écrit chaque fiche et ses pronostics dans la base PostgreSQL Neon (table `Fixture` : `data` + `predQuick` + `predFull`). Le job est incrémental : une ligne déjà calculée (même version de moteur, statut inchangé) n'est que rafraîchie.
+2. **Lecture app** : l'accueil appelle `GET /api/fixtures?date=…` (une requête) et affiche instantanément matchs + combats + pronostics ; les écrans de détail lisent `GET /api/fixtures/[id]`. Aucune écriture n'est exposée au client.
+3. **Repli local** : si l'API est injoignable (réseau, base endormie, ligne périmée — match à venir dont le coup d'envoi est déjà passé), l'app retombe sur le moteur navigateur historique et ses caches localStorage/IndexedDB. Le jour J, un scan ESPN en arrière-plan rafraîchit les scores sous l'affichage déjà présent.
+
+Sécurité : la clé de connexion Neon vit uniquement dans les variables d'environnement serveur (`DATABASE_URL`, `DIRECT_DATABASE_URL` — jamais de préfixe `NEXT_PUBLIC_`), injectées par Vercel et GitHub Actions Secrets.
+
 ## Sources de données
 
 - ESPN, appelé directement depuis le navigateur (CORS ouvert, aucune clé) : `site.api.espn.com` pour les scoreboards, calendriers d'équipes, classements, blessés et résumés de match ; `sports.core.api.espn.com` pour les compétitions, athlètes, statistiques et palmarès MMA. Les requêtes sont limitées à 4 simultanées, avec relances polies en cas de bridage du CDN.
@@ -118,7 +128,11 @@ bun run start      # NODE_ENV=production bun .next/standalone/server.js
 bun run lint       # eslint
 ```
 
-Le dépôt n'impose aucune version de Node (pas de champ `engines` ni de `.nvmrc`) ; le script `start` exécute le serveur standalone via bun. Le fichier `.env.example` ne contient qu'une variable, `DATABASE_URL` (SQLite pour Prisma, héritée du gabarit) : l'application VOLTRIX elle-même n'en dépend pas, tous les calculs et caches vivent dans le navigateur. Des scripts `db:*` (Prisma) sont également définis dans `package.json`.
+Le dépôt n'impose aucune version de Node (pas de champ `engines` ni de `.nvmrc`) ; le script `start` exécute le serveur standalone via bun. Le fichier `.env.example` documente les deux variables serveur de la base Neon (`DATABASE_URL` pour le runtime, `DIRECT_DATABASE_URL` pour les migrations) : sans ces variables, les routes `/api/fixtures` répondent en erreur et l'app bascule sur le moteur navigateur. Des scripts `db:*` (Prisma) sont également définis dans `package.json`. Le job de pré-calcul se lance aussi à la main :
+
+```bash
+DATABASE_URL=… DIRECT_DATABASE_URL=… bun scripts/precompute/run.ts
+```
 
 ## Structure du projet
 
@@ -136,8 +150,10 @@ src/
                         loaders.ts, types.ts
   lib/                  Caches locaux : persist.ts (localStorage avec TTL),
                         pred-db.ts (IndexedDB des pronostics) ; ponts et types partagés
-  app/                  Page unique (Next.js App Router) + relai optionnel /api/espn
+  app/                  Page unique (Next.js App Router) + API /api/fixtures (lecture
+                        base de pré-calcul) + relai optionnel /api/espn
 scripts/
+  precompute/           Job de pré-calcul serveur (football + MMA, 7 jours, Neon)
   backtest/             Backtest football (Python, données football-data.co.uk)
   backtest-mma/         Rejeu anti-fuite UFC (Node)
 download/

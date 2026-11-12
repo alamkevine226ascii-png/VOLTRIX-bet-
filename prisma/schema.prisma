@@ -1,32 +1,80 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+// ============================================================
+// VOLTRIX — schéma PostgreSQL (Neon)
+//
+// Architecture n°6 du plan : pré-calcul serveur des pronostics.
+// Une ligne = un match (ou combat) de la semaine à venir avec :
+//   - data      : la fiche sérialisée telle que l'UI la consomme
+//                 (LightMatch football / MmaFight) ;
+//   - predQuick : le prono des cartes d'accueil (QuickPred / MmaQuickPred) ;
+//   - predFull  : l'analyse moteur complète (AnalyzeResult / détail MMA).
+//
+// Écriture : UNIQUEMENT par le job de pré-calcul (GitHub Actions cron
+// → scripts/precompute/run.ts). Aucune route d'écriture n'est exposée :
+// le client ne peut pas muter cette base. Lecture : API routes
+// /api/fixtures (côté serveur uniquement — la clé Neon ne vit que
+// dans les variables d'environnement serveur, jamais NEXT_PUBLIC_*).
+// ============================================================
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")        // URL pooler — requêtes runtime
+  directUrl = env("DIRECT_DATABASE_URL") // URL directe — migrations / db push
 }
 
-model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
+// Fixtures = matchs de football et combats MMA pré-calculés.
+model Fixture {
+  // Identifiant stable et lisible : "foot:<leagueCode>:<espnEventId>"
+  // ou "mma:<espnFightId>"
+  id String @id
 
-model Post {
-  id        String   @id @default(cuid())
-  title     String
-  content   String?
-  published Boolean  @default(false)
-  authorId  String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  // "foot" | "mma"
+  sport String
+
+  // Code compétition ESPN (ex. "fra.1") ; "ufc" pour le MMA
+  leagueCode String
+
+  // Date/heure de coup d'envoi (ou du combat), ISO ESPN — ex.
+  // "2026-11-14T19:00Z". Le format ISO garantit que les comparaisons
+  // lexicographiques suivent l'ordre chronologique.
+  kickoff String
+
+  // Statut ESPN au moment du calcul : pre | in | post
+  status String
+
+  // Jours de scan football (YYYY-MM-DD) sous lesquels ESPN liste ce
+  // match — un match après minuit UTC peut apparaître sous deux jours
+  // consécutifs (date du stade vs date UTC) : la requête
+  // /api/fixtures?date=... filtre sur l'appartenance au jour, comme le
+  // ferait le scan local. Vide pour le MMA (fenêtre par kickoff).
+  dayKeys String[]
+
+  // Métadonnées du groupe événement MMA (MmaEventGroup sans les combats)
+  // — permet de reconstruire MmaEventsResponse côté API. Null en foot.
+  eventMeta Json?
+
+  // Fiche consommée par l'UI (LightMatch football / MmaFight)
+  data Json
+
+  // Prono des cartes d'accueil (QuickPred / MmaQuickPred) — null si
+  // le moteur a refusé le pronostic (données insuffisantes)
+  predQuick Json?
+
+  // Analyse moteur complète (détail football / détail combat)
+  predFull Json?
+
+  // Version du moteur ayant produit les pronos — ex. "voltrix-foot-v2.2".
+  // Un changement de version permet d'invalider et recalculer les lignes.
+  engineVersion String
+
+  computedAt DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([sport, kickoff])
+  @@index([kickoff])
+  @@index([engineVersion])
+  @@index([sport, dayKeys])
 }

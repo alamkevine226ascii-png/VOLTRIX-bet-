@@ -21,7 +21,7 @@ import {
   Umbrella,
 } from "lucide-react";
 import { oddsFmt, pct, timeLabel } from "@/lib/voltrix";
-import { analyzeFootballMatch, type FootballDetail } from "@/lib/foot/bridge";
+import { getFootballDetail, type FootballDetail } from "@/lib/fixtures-client";
 import { stadiumImageFor } from "@/lib/stadiums";
 import type { LightMatch } from "@/lib/voltrix-types";
 import { TeamBadge } from "./TeamBadge";
@@ -97,7 +97,7 @@ export function MatchScreen({
     setLoading(true);
     setError(null);
     try {
-      const res = await analyzeFootballMatch(matchId, leagueCode, date);
+      const res = await getFootballDetail(matchId, leagueCode, date);
       if (!res) throw new Error("Match introuvable dans les données ESPN.");
       setDetail(res);
     } catch (e) {

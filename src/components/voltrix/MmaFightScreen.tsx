@@ -25,7 +25,8 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import { pct, timeLabel, dayLabel } from "@/lib/voltrix";
-import { arenaImageFor, loadMmaFightDetail, type MmaFightDetailLoaded } from "@/lib/mma-bridge";
+import { arenaImageFor, type MmaFightDetailLoaded } from "@/lib/mma-bridge";
+import { getMmaFightDetailById } from "@/lib/fixtures-client";
 import type { MmaFighter } from "@/lib/mma-types";
 import { FighterHead } from "./FighterHead";
 import {
@@ -172,7 +173,7 @@ export function MmaFightScreen({
     setLoading(true);
     setError(null);
     try {
-      const res = await loadMmaFightDetail(fightId);
+      const res = await getMmaFightDetailById(fightId);
       setDetail(res);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Analyse indisponible");
