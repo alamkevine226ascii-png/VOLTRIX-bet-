@@ -13,11 +13,13 @@ import urllib.request
 
 from nacl import encoding, public
 
+import os
+
 REPO = "alamkevine226ascii-png/VOLTRIX-bet-"
-TOKEN = sys.argv[1]
+TOKEN = os.environ["GH_TOKEN"]
 SECRETS = {
-    "DATABASE_URL": sys.argv[2],
-    "DIRECT_DATABASE_URL": sys.argv[3],
+    "DATABASE_URL": os.environ["NEON_POOLER_URL"],
+    "DIRECT_DATABASE_URL": os.environ["NEON_DIRECT_URL"],
 }
 
 
