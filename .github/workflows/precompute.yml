@@ -1,0 +1,53 @@
+# ============================================================
+# VOLTRIX — job de pré-calcul des pronostics (architecture n°6)
+#
+# Récupère les matchs et combats des 7 prochains jours sur ESPN, fait
+# tourner les moteurs voltrix-foot-v2.2 / voltrix-mma-v1 et écrit les
+# résultats dans la base PostgreSQL Neon. L'app lit ensuite /api/fixtures :
+# plus aucun calcul moteur côté utilisateur.
+#
+# Secrets à définir (Settings → Secrets and variables → Actions) :
+#   DATABASE_URL        — URL pooler Neon (runtime, ?sslmode=require)
+#   DIRECT_DATABASE_URL — URL directe Neon (migrations / db push)
+#
+# Planification : 4 passages par jour (05:17, 11:17, 17:17, 23:17 UTC).
+# Le job est incrémental — les lignes déjà calculées (même version de
+# moteur, statut inchangé) ne sont que rafraîchies, pas recalculées.
+# Déclenchement manuel possible (workflow_dispatch).
+# ============================================================
+
+name: Pré-calcul VOLTRIX
+
+on:
+  schedule:
+    - cron: "17 5,11,17,23 * * *"
+  workflow_dispatch:
+
+jobs:
+  precompute:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    concurrency:
+      group: precompute
+      cancel-in-progress: true
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DIRECT_DATABASE_URL: ${{ secrets.DIRECT_DATABASE_URL }}
+    steps:
+      - name: Récupérer le dépôt
+        uses: actions/checkout@v4
+
+      - name: Installer Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Installer les dépendances
+        run: bun install --frozen-lockfile
+
+      - name: Générer le client Prisma
+        run: bunx prisma generate
+
+      - name: Synchroniser le schéma (idempotent)
+        run: bunx prisma db push --skip-generate
+
+      - name: Pré-calcul football + MMA (7 jours)
+        run: bun scripts/precompute/run.ts
