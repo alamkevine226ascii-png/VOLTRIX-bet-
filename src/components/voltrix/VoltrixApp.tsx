@@ -19,6 +19,7 @@ import { HomeScreen } from "./HomeScreen";
 import { MatchScreen } from "./MatchScreen";
 import { MmaFightScreen } from "./MmaFightScreen";
 import { SettingsScreen } from "./SettingsScreen";
+import { CombinatorScreen } from "./CombinatorScreen";
 import type { LightMatch } from "@/lib/voltrix-types";
 
 export type TabId = "home" | "settings";
@@ -26,7 +27,8 @@ export type TabId = "home" | "settings";
 export type Screen =
   | { name: TabId }
   | { name: "match"; matchId: string; leagueCode: string; date: string; light?: LightMatch }
-  | { name: "fight"; fightId: string };
+  | { name: "fight"; fightId: string }
+  | { name: "combinator"; date: string };
 
 function LogoBadge() {
   return (
@@ -55,7 +57,8 @@ export function VoltrixApp() {
 
   /* Fiche détaillée ouverte ? L'écran d'onglet courant reste alors
      monté dessous (option A) : jamais démonté, jamais rechargé. */
-  const isDetail = current.name === "match" || current.name === "fight";
+  const isDetail =
+    current.name === "match" || current.name === "fight" || current.name === "combinator";
 
   const push = useCallback((screen: Screen) => {
     setDirection(1);
@@ -86,6 +89,13 @@ export function VoltrixApp() {
   const openFight = useCallback(
     (fightId: string) => {
       push({ name: "fight", fightId });
+    },
+    [push],
+  );
+
+  const openCombinator = useCallback(
+    (date: string) => {
+      push({ name: "combinator", date });
     },
     [push],
   );
@@ -158,7 +168,12 @@ export function VoltrixApp() {
             style={{ pointerEvents: isDetail ? "none" : undefined }}
           >
             {tab === "home" ? (
-              <HomeScreen onOpenMatch={openMatch} onOpenFight={openFight} />
+              <HomeScreen
+                onOpenMatch={openMatch}
+                onOpenFight={openFight}
+                onOpenCombinator={openCombinator}
+                showToast={showToast}
+              />
             ) : (
               <SettingsScreen headerSlot={<LogoBadge />} />
             )}
@@ -200,6 +215,25 @@ export function VoltrixApp() {
               className="absolute inset-0 z-10"
             >
               <MmaFightScreen fightId={current.fightId} onBack={pop} />
+            </motion.div>
+          ) : null}
+
+          {current.name === "combinator" ? (
+            <motion.div
+              key={`combinator-${current.date}`}
+              custom={direction}
+              variants={detailVariants}
+              initial="enter"
+              animate="center"
+              exit="exit"
+              transition={{ duration: 0.32, ease: [0.32, 0.72, 0, 1] }}
+              className="absolute inset-0 z-10"
+            >
+              <CombinatorScreen
+                date={current.date}
+                onBack={pop}
+                onOpenMatch={openMatch}
+              />
             </motion.div>
           ) : null}
         </AnimatePresence>

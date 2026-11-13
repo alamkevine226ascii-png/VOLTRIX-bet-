@@ -13,7 +13,7 @@
    ============================================================ */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type UIEvent } from "react";
-import { CalendarDays, RefreshCw } from "lucide-react";
+import { CalendarDays, Layers, RefreshCw } from "lucide-react";
 import { timeLabel, dayLabel } from "@/lib/voltrix";
 import {
   loadFootballDay,
@@ -27,7 +27,7 @@ import {
   localDateKey,
   eventCategoryLabel,
 } from "@/lib/mma-bridge";
-import { predDbGetAll, predDbPut } from "@/lib/pred-db";
+import { predDbGetAll, predDbPut, predDbClear } from "@/lib/pred-db";
 import { fetchDayFixtures } from "@/lib/fixtures-client";
 import type { LightMatch, MatchesResponse, QuickPred } from "@/lib/voltrix-types";
 import type { MmaEventsResponse, MmaFight, MmaQuickPred } from "@/lib/mma-types";
@@ -370,9 +370,13 @@ function FightCard({
 export function HomeScreen({
   onOpenMatch,
   onOpenFight,
+  onOpenCombinator,
+  showToast,
 }: {
   onOpenMatch: (matchId: string, leagueCode: string, date: string, light?: LightMatch) => void;
   onOpenFight: (fightId: string) => void;
+  onOpenCombinator: (date: string) => void;
+  showToast?: (msg: string) => void;
 }) {
   const [date, setDate] = useState(todayISO());
   const [footData, setFootData] = useState<MatchesResponse | null>(null);
@@ -392,6 +396,11 @@ export function HomeScreen({
      recalculerait inutilement — exactement ce que l'architecture n°6
      supprime). */
   const predsRef = useRef<Record<string, QuickPred>>({});
+  /* rafraîchissements live lancés en arrière-plan par load (scan ESPN
+     football + statuts MMA) : le bouton « Réinitialiser » les attend
+     pour n'annoncer la synchronisation qu'une fois tout à jour. */
+  const scanRef = useRef<Promise<void> | null>(null);
+  const mmaRefreshRef = useRef<Promise<void> | null>(null);
 
   /* tirer-pour-rafraîchir (pattern natif mobile) : quand la liste est
      en haut, tirer vers le bas révèle un indicateur puis recharge.
@@ -426,6 +435,47 @@ export function HomeScreen({
   }, []);
 
   /* ---------- chargement : football par date, MMA par événements UFC ---------- */
+
+  /* Statuts MMA en direct : le pré-calcul date du dernier passage du
+     job (jusqu'à 6 h) — un combat terminé resterait affiché « pas
+     encore commencé ». On relit les statuts ESPN (léger : aucun calcul
+     de forme) et on fusionne dans l'affichage courant : têtes, formes
+     et pronos de la base sont conservés, seuls statut/vainqueur/
+     méthode/rounds sont rafraîchis. */
+  const refreshMmaStatuses = useCallback(async (run: number) => {
+    try {
+      const fresh = await loadMmaUpcoming();
+      if (run !== abortRef.current) return;
+      const byId = new Map<string, MmaFight>();
+      for (const g of fresh.events) {
+        for (const f of g.fights) byId.set(f.id, f);
+      }
+      setMmaData((cur) => {
+        if (!cur) return cur;
+        let changed = false;
+        const events = cur.events.map((g) => ({
+          ...g,
+          fights: g.fights.map((f) => {
+            const ff = byId.get(f.id);
+            if (!ff || ff.status === f.status) return f;
+            changed = true;
+            return {
+              ...f,
+              status: ff.status,
+              statusDetail: ff.statusDetail,
+              winner: ff.winner,
+              method: ff.method ?? f.method,
+              rounds: ff.rounds ?? f.rounds,
+            };
+          }),
+        }));
+        return changed ? { ...cur, events } : cur;
+      });
+    } catch {
+      /* silencieux : l'affichage reste sur les données de la base */
+    }
+  }, []);
+
   const loadMma = useCallback(async (run: number) => {
     try {
       /* restauration immédiate des pronos MMA depuis la base locale :
@@ -470,15 +520,15 @@ export function HomeScreen({
     setPreds({});
 
     /* Chemin local football (scan progressif par vague de priorité) —
-       utilisé en repli de la base de pré-calcul, et le jour J pour
-       rafraîchir les scores sous l'affichage déjà présent. */
-    const localFootballScan = (silent: boolean) => {
-      void loadFootballDay(d, silent ? undefined : (p: DayProgress) => {
+       utilisé en repli de la base de pré-calcul, et les jours J / passés
+       pour rafraîchir scores/statuts sous l'affichage déjà présent. */
+    const localFootballScan = (silent: boolean): Promise<void> => {
+      const scanPromise = loadFootballDay(d, silent ? undefined : (prog: DayProgress) => {
         if (run !== abortRef.current) return;
         setFootData({
           date: d,
-          totalMatches: p.leagues.reduce((n, l) => n + l.matches.length, 0),
-          leagues: p.leagues,
+          totalMatches: prog.leagues.reduce((n, l) => n + l.matches.length, 0),
+          leagues: prog.leagues,
           scanMs: 0,
         });
       })
@@ -497,6 +547,8 @@ export function HomeScreen({
             setError("Données ESPN indisponibles — vérifie ta connexion puis réessaie.");
           }
         });
+      scanRef.current = scanPromise;
+      return scanPromise;
     };
 
     /* 1. BASE DE PRÉ-CALCUL (architecture n°6) : matchs, combats et
@@ -527,12 +579,31 @@ export function HomeScreen({
       }
       setLoading(false);
 
-      /* Jour J : le pré-calcul peut dater de quelques heures — on
-         rafraîchit les scores/statuts en arrière-plan par un scan ESPN
-         silencieux (résultat final seulement, pour éviter tout
+      /* Jour J ou jour passé : le pré-calcul peut dater de quelques
+         heures (le job tourne 4 fois/jour) — un match terminé entre
+         deux passages resterait affiché « pas encore commencé ».
+         On rafraîchit les scores/statuts en arrière-plan par un scan
+         ESPN silencieux (résultat final seulement, pour éviter tout
          va-et-vient visuel : l'affiché reste celui de la base jusqu'à
-         l'arrivée du frais). */
-      if (api.foot && d === todayISO()) localFootballScan(true);
+         l'arrivée du frais). Les jours futurs n'ont rien à rafraîchir
+         (statut « pre » figé). */
+      if (api.foot && d <= todayISO()) localFootballScan(true);
+
+      /* Statuts MMA : si un combat déjà commencé (ou terminé) est
+         encore affiché « pre » par la base, on rafraîchit ses statuts
+         en direct depuis ESPN et on fusionne. */
+      if (
+        api.mma &&
+        api.mma.events.some((g) =>
+          g.fights.some(
+            (f) =>
+              f.status !== "post" &&
+              new Date(f.date).getTime() < Date.now() - 10 * 60 * 1000,
+          ),
+        )
+      ) {
+        mmaRefreshRef.current = refreshMmaStatuses(run);
+      }
 
       /* Replis partiels : aucune donnée foot pour ce jour dans la base
        * (jour non couvert par le job) → scan local ; aucune donnée MMA
@@ -548,7 +619,7 @@ export function HomeScreen({
 
     /* MMA : événements UFC à venir (indépendants de la date) */
     void loadMma(run);
-  }, [loadMma]);
+  }, [loadMma, refreshMmaStatuses]);
 
   useEffect(() => {
     void load(date);
@@ -559,6 +630,31 @@ export function HomeScreen({
   useEffect(() => {
     predsRef.current = preds;
   }, [preds]);
+
+  /* ---------- réinitialiser : resynchronisation complète App ↔ base ---------- */
+  /* Le bouton « Réinitialiser » (au-dessus du sélecteur de jour) purge
+     le cache local de l'app (IndexedDB), relit la base de pré-calcul
+     puis ATTEND les rafraîchissements live (scan ESPN football +
+     statuts MMA) : à la fin du cycle, scores et statuts affichés
+     correspondent à la réalité du moment, même si le job serveur ne
+     repasse que dans plusieurs heures. */
+  const [syncing, setSyncing] = useState(false);
+  const hardSync = useCallback(async () => {
+    if (syncing) return;
+    setSyncing(true);
+    try {
+      await predDbClear().catch(() => undefined);
+      setRestoredCount(0);
+      await load(date);
+      await Promise.allSettled([
+        scanRef.current ?? Promise.resolve(),
+        mmaRefreshRef.current ?? Promise.resolve(),
+      ]);
+      showToast?.("Base synchronisée — statuts à jour");
+    } finally {
+      setSyncing(false);
+    }
+  }, [syncing, date, load, showToast]);
 
   /* handlers tirer-pour-rafraîchir — après `load` (closure saine) */
   const onTouchStart = useCallback((e: React.TouchEvent) => {
@@ -910,15 +1006,32 @@ export function HomeScreen({
               }`}
             />
           </button>
-          <button
-            onClick={() => void load(date)}
-            aria-label="Rafraîchir"
-            className={`pointer-events-auto mt-0.5 flex h-9 w-9 items-center justify-center rounded-full bg-ink-3/90 text-white backdrop-blur transition-all duration-300 ease-out hover:bg-neon hover:text-black ${
-              headerCollapsed ? "pointer-events-none scale-75 opacity-0" : "opacity-100"
-            }`}
-          >
-            <RefreshCw size={15} strokeWidth={2.2} className={loading ? "animate-spin" : ""} />
-          </button>
+          <div className="pointer-events-auto mt-0.5 flex items-center gap-2">
+            <button
+              onClick={() => onOpenCombinator(date)}
+              aria-label="Combinateur — créer un combiné à côte cible"
+              title="Combinateur"
+              className={`flex h-9 w-9 items-center justify-center rounded-full bg-ink-3/90 text-white backdrop-blur transition-all duration-300 ease-out hover:bg-neon hover:text-black ${
+                headerCollapsed ? "pointer-events-none scale-75 opacity-0" : "opacity-100"
+              }`}
+            >
+              <Layers size={15} strokeWidth={2.2} />
+            </button>
+            <button
+              onClick={() => void hardSync()}
+              aria-label="Réinitialiser — resynchroniser l'app avec la base de données"
+              title="Réinitialiser : synchronise l'app avec la base de données"
+              className={`flex h-9 w-9 items-center justify-center rounded-full bg-ink-3/90 text-white backdrop-blur transition-all duration-300 ease-out hover:bg-neon hover:text-black ${
+                headerCollapsed ? "pointer-events-none scale-75 opacity-0" : "opacity-100"
+              }`}
+            >
+              <RefreshCw
+                size={15}
+                strokeWidth={2.2}
+                className={(loading || syncing) ? "animate-spin" : ""}
+              />
+            </button>
+          </div>
         </div>
 
         {/* dates + ligues — se replient au défilement (hors flux : aucun saut) */}
