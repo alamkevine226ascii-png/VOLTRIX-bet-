@@ -253,6 +253,21 @@ function matchDiff(a: Candidate, b: Candidate): number {
  * incluse), probabilité ≥ minProb, une jambe par match, 2 à maxLegs
  * jambes. Renvoie jusqu'à 3 combinés (variantes distinctes d'au
  * moins 2 matchs).
+ *
+ * Robustesse : le DFS explore par cotes croissantes, donc sans garde
+ * il passe la quasi-totalité de son budget dans les combinés de
+ * petites cotes qui n'atteignent jamais la cible (comportement vu
+ * sur le périmètre semaine : 537 jambes éligibles, budget épuisé,
+ * « aucun combiné » alors que des solutions existaient). Deux
+ * mécanismes corrigent cela :
+ *   1. élagage d'atteignabilité — depuis la position courante, si
+ *      multiplier par les k meilleures cotes restantes ne peut pas
+ *      atteindre la cible, la branche est coupée (les cotes étant
+ *      ≥ 1, le produit des k plus grandes du suffixe majore tout
+ *      ce qui est constructible) ;
+ *   2. graines gloutonnes — deux combinés constructibles rapidement
+ *      (probabilité d'abord, cote d'abord) garantissent qu'au moins
+ *      une réponse existe même si le budget DFS rend l'âme.
  */
 export function findBestCombos(
   pool: ComboLeg[],
@@ -289,6 +304,33 @@ export function findBestCombos(
     perMatchCapped.push(...arr.slice(0, 5));
   }
 
+  /**
+   * Produit des k plus grandes cotes d'un suffixe de jambes triées
+   * par cote croissante : sufTop[i][k] majore le facteur multiplicatif
+   * constructible avec au plus k jambes prises après l'index i.
+   */
+  function suffixTopOdds(legs: ComboLeg[]): number[][] {
+    const n = legs.length;
+    const suf: number[][] = new Array(n + 1);
+    suf[n] = [1];
+    let top: number[] = []; // k plus grandes cotes du suffixe, triées desc
+    for (let i = n - 1; i >= 0; i--) {
+      const o = legs[i].odds;
+      let j = 0;
+      while (j < top.length && top[j] > o) j++;
+      top.splice(j, 0, o);
+      if (top.length > maxLegs) top.length = maxLegs;
+      const prods = [1];
+      let p = 1;
+      for (let k = 0; k < top.length; k++) {
+        p *= top[k];
+        prods.push(p);
+      }
+      suf[i] = prods;
+    }
+    return suf;
+  }
+
   const run = (legArr: ComboLeg[], probPrune: boolean, budget: number) => {
     const legs = legArr;
     const cands: Candidate[] = [];
@@ -296,6 +338,8 @@ export function findBestCombos(
     let aborted = false;
     const used = new Set<string>();
     const cur: ComboLeg[] = [];
+    legs.sort((a, b) => a.odds - b.odds);
+    const sufTop = suffixTopOdds(legs);
 
     const dfs = (startIdx: number, odds: number, prob: number) => {
       if (aborted) return;
@@ -307,9 +351,14 @@ export function findBestCombos(
         const l = legs[i];
         const o = odds * l.odds;
         if (o > maxOdds) break; // jambes triées par cote croissante
-        if (probPrune && prob * l.prob < minProb) continue;
         if (used.has(l.matchId)) continue;
         const p = prob * l.prob;
+        if (probPrune && p < minProb) continue;
+        /* atteignabilité : même en prenant les meilleures cotes
+         * restantes, la cible est hors de portée → coupe. */
+        const slotsLeft = maxLegs - cur.length - 1;
+        const reach = sufTop[i + 1];
+        if (o < target && o * reach[Math.min(slotsLeft, reach.length - 1)] < target) continue;
         used.add(l.matchId);
         cur.push(l);
         if (cur.length >= 2 && o >= target) {
@@ -325,29 +374,74 @@ export function findBestCombos(
       }
     };
 
-    legs.sort((a, b) => a.odds - b.odds);
     dfs(0, 1, 1);
     return { cands, aborted };
   };
 
-  /* Phase 1 : stricte — seules les branches ≥ seuil sont explorées. */
-  const pool1 = perMatchCapped.slice(0, poolCap);
+  /** Graine gloutonne : ajoute des jambes distinctes selon un ordre
+   *  donné en coupant celles qui rendent la cible inatteignable. */
+  const greedySeed = (order: "prob" | "odds"): Candidate | null => {
+    const sorted = [...perMatchCapped].sort((a, b) =>
+      order === "prob" ? b.prob - a.prob : b.odds - a.odds,
+    );
+    const allOdds = sorted.map((l) => l.odds).sort((a, b) => b - a);
+    const topProd = (k: number) => {
+      let p = 1;
+      for (let i = 0; i < Math.min(k, allOdds.length); i++) p *= allOdds[i];
+      return p;
+    };
+    const chosen: ComboLeg[] = [];
+    const used = new Set<string>();
+    let o = 1;
+    let p = 1;
+    for (const l of sorted) {
+      if (chosen.length >= maxLegs) break;
+      if (used.has(l.matchId)) continue;
+      const o2 = o * l.odds;
+      if (o2 > maxOdds) continue;
+      const slotsLeft = maxLegs - chosen.length - 1;
+      if (o2 < target && o2 * topProd(slotsLeft) < target) continue;
+      used.add(l.matchId);
+      chosen.push(l);
+      o = o2;
+      p *= l.prob;
+      if (o >= target && chosen.length >= 2) break;
+    }
+    if (o >= target && chosen.length >= 2) return { legs: chosen, odds: o, prob: p };
+    return null;
+  };
+
+  /* Phase 1 : stricte — seules les branches ≥ seuil sont explorées.
+   * Pool trié par probabilité décroissante : les 170 meilleures
+   * jambes de tout le périmètre (semaine comprise), pas seulement
+   * celles des premiers jours. */
+  const pool1 = [...perMatchCapped].sort((a, b) => b.prob - a.prob).slice(0, poolCap);
   const strict = run(pool1, true, nodeBudget);
 
   let cands = strict.cands;
-  let relaxed = false;
   let aborted = strict.aborted;
 
-  /* Phase 2 : seuil non atteignable — meilleur combiné ≥ cible sans
-   * prune de probabilité, sur un pool réduit et un budget plus bas. */
+  /* Phase 2 : graines gloutonnes + seuil relâché. Le pool de repli
+   * mêle les meilleures probabilités et les plus grosses cotes —
+   * un pool « probabilité seule » ne peut pas toujours atteindre
+   * la cible. */
   if (cands.length === 0) {
-    const pool2 = [...perMatchCapped]
-      .sort((a, b) => b.prob - a.prob)
-      .slice(0, 60)
-      .sort((a, b) => a.odds - b.odds);
+    for (const order of ["prob", "odds"] as const) {
+      const seed = greedySeed(order);
+      if (seed) cands.push(seed);
+    }
+    const byProb = [...perMatchCapped].sort((a, b) => b.prob - a.prob);
+    const byOdds = [...perMatchCapped].sort((a, b) => b.odds - a.odds);
+    const seen = new Set<string>();
+    const pool2: ComboLeg[] = [];
+    for (const l of [...byProb.slice(0, 40), ...byOdds.slice(0, 20)]) {
+      const key = `${l.matchId}|${l.market}|${l.pick}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      pool2.push(l);
+    }
     const loose = run(pool2, false, 200_000);
-    cands = loose.cands;
-    relaxed = cands.length > 0;
+    cands.push(...loose.cands);
     aborted = aborted || loose.aborted;
   }
 
@@ -375,7 +469,7 @@ export function findBestCombos(
     results,
     poolSize: perMatchCapped.length,
     matches,
-    relaxed,
+    relaxed: results.length > 0 && results.every((r) => r.prob < minProb),
     aborted,
   };
 }

@@ -108,14 +108,15 @@ log "Analyse SEMAINE : $E → $RESUME"
 agent-browser screenshot "$OUT/3-combo-semaine.png" >/dev/null 2>&1
 
 # ---- clic sur une jambe → fiche match ----
-agent-browser eval "
+CLIC=$(agent-browser eval "
 (() => {
   const mains = [...document.querySelectorAll('main')];
   const combo = mains[mains.length-1];
   const leg = [...combo.querySelectorAll('section[aria-label] button')].find(b => /\d\.\d{2}/.test(b.innerText));
   if (leg) { leg.click(); return 'OUVERTE'; }
   return 'PAS_DE_JAMBE';
-})()" 2>/dev/null | tr -d '"' | head -1 | xargs -I{} log "Clic jambe : {}"
+})()" 2>/dev/null | tr -d '"' | head -1)
+log "Clic jambe : $CLIC"
 sleep 3
 FICHE=$(agent-browser eval "
 (() => {
@@ -147,12 +148,13 @@ sleep 1
 agent-browser screenshot "$OUT/5-apres-reset.png" >/dev/null 2>&1
 
 # ---- jour passé : statuts ----
-agent-browser eval "
+SEL=$(agent-browser eval "
 (() => {
   const days = [...document.querySelectorAll('button[aria-pressed]')];
   if (days.length >= 2) { days[1].click(); return 'J-1'; }
   return 'ABSENT';
-})()" 2>/dev/null | tr -d '"' | head -1 | xargs -I{} log "Sélection {}"
+})()" 2>/dev/null | tr -d '"' | head -1)
+log "Sélection $SEL"
 sleep 14
 log "J-1 statuts : $(agent-browser eval "
 (() => {
