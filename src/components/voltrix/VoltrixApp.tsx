@@ -146,7 +146,7 @@ export function VoltrixApp() {
       />
 
       {/* cadre téléphone — plein écran sur mobile, maquette cadrée sur desktop */}
-      <div className="relative h-dvh w-full max-w-none overflow-hidden bg-black sm:h-[844px] sm:max-w-[400px] sm:rounded-[46px] sm:shadow-[0_40px_90px_rgba(0,0,0,0.55),0_0_0_11px_#1a1a1c,0_0_0_13px_#3a3a3c]">
+      <div className="relative h-dvh w-full max-w-none overflow-hidden bg-black sm:h-dvh sm:max-w-[560px] sm:rounded-[46px] sm:shadow-[0_40px_90px_rgba(0,0,0,0.55),0_0_0_11px_#1a1a1c,0_0_0_13px_#3a3a3c]">
         <AnimatePresence initial={false} custom={direction} mode="popLayout">
           {/* Couche fond — écran d'onglet (accueil / réglages).
               OPTION A du diagnostic « rechargement du moteur » : cette
@@ -265,7 +265,7 @@ export function VoltrixApp() {
             style={{ paddingBottom: "max(env(safe-area-inset-bottom), 14px)" }}
             aria-label="Navigation principale"
           >
-            <div className="pointer-events-auto flex items-center gap-1 rounded-full bg-ink-2/80 p-1.5 ring-1 ring-white/10 shadow-[0_16px_44px_rgba(0,0,0,0.6),0_2px_10px_rgba(0,0,0,0.4)] backdrop-blur-xl">
+            <div className="pointer-events-auto flex items-center gap-1 rounded-full bg-ink-2 p-1.5 ring-1 ring-white/10 shadow-[0_16px_44px_rgba(0,0,0,0.6),0_2px_10px_rgba(0,0,0,0.4)]">
               {TABS.map((t) => {
                 const Icon = t.icon;
                 const active = t.id === tab;
@@ -275,7 +275,7 @@ export function VoltrixApp() {
                     onClick={() => goTab(t.id)}
                     aria-label={t.label}
                     aria-current={active ? "page" : undefined}
-                    className={`relative flex items-center gap-2 rounded-full px-5 py-2.5 transition-colors duration-150 ease-out ${
+                    className={`relative flex min-h-[44px] items-center gap-2 rounded-full px-5 py-2.5 transition-colors duration-150 ease-out ${
                       active ? "text-ink" : "text-white/50 hover:text-white/80"
                     }`}
                   >

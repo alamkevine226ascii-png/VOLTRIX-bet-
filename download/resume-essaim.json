@@ -1,0 +1,296 @@
+{
+  "n_agents": 3000,
+  "n_points_distincts": 36,
+  "agents_satisfaits": 1441,
+  "categories": {
+    "Barres flottantes (lisibilité au défilement)": [
+      {
+        "point": "[accueil] Le contenu défile sous la barre de navigation en bas / l'en-tête en haut (ex. « jeu. ») — visible en transition, les barres sont désormais opaques.",
+        "nb_agents": 1058,
+        "appareils": [
+          "Android entrée de gamme (360×640)",
+          "Pixel 7 (393×873)",
+          "iPhone XR/11 (414×896)"
+        ]
+      },
+      {
+        "point": "[accueil] Le contenu défile sous la barre de navigation en bas / l'en-tête en haut (ex. « ven. ») — visible en transition, les barres sont désormais opaques.",
+        "nb_agents": 1058,
+        "appareils": [
+          "Android entrée de gamme (360×640)",
+          "Pixel 7 (393×873)",
+          "iPhone XR/11 (414×896)"
+        ]
+      },
+      {
+        "point": "[fiche match] Le contenu défile sous la barre de navigation en bas / l'en-tête en haut (ex. « jeu. ») — visible en transition, les barres sont désormais opaques.",
+        "nb_agents": 851,
+        "appareils": [
+          "Android entrée de gamme (360×640)",
+          "Pixel 7 (393×873)",
+          "iPhone XR/11 (414×896)"
+        ]
+      },
+      {
+        "point": "[fiche match] Le contenu défile sous la barre de navigation en bas / l'en-tête en haut (ex. « ven. ») — visible en transition, les barres sont désormais opaques.",
+        "nb_agents": 851,
+        "appareils": [
+          "Android entrée de gamme (360×640)",
+          "Pixel 7 (393×873)",
+          "iPhone XR/11 (414×896)"
+        ]
+      },
+      {
+        "point": "[combinateur (réglages)] Le contenu défile sous la barre de navigation en bas / l'en-tête en haut (ex. « jeu. ») — visible en transition, les barres sont désormais opaques.",
+        "nb_agents": 751,
+        "appareils": [
+          "Android entrée de gamme (360×640)",
+          "Pixel 7 (393×873)",
+          "iPhone XR/11 (414×896)"
+        ]
+      },
+      {
+        "point": "[combinateur (réglages)] Le contenu défile sous la barre de navigation en bas / l'en-tête en haut (ex. « ven. ») — visible en transition, les barres sont désormais opaques.",
+        "nb_agents": 751,
+        "appareils": [
+          "Android entrée de gamme (360×640)",
+          "Pixel 7 (393×873)",
+          "iPhone XR/11 (414×896)"
+        ]
+      },
+      {
+        "point": "[combinateur (résultats)] Le contenu défile sous la barre de navigation en bas / l'en-tête en haut (ex. « jeu. ») — visible en transition, les barres sont désormais opaques.",
+        "nb_agents": 689,
+        "appareils": [
+          "Android entrée de gamme (360×640)",
+          "Pixel 7 (393×873)",
+          "iPhone XR/11 (414×896)"
+        ]
+      },
+      {
+        "point": "[combinateur (résultats)] Le contenu défile sous la barre de navigation en bas / l'en-tête en haut (ex. « ven. ») — visible en transition, les barres sont désormais opaques.",
+        "nb_agents": 689,
+        "appareils": [
+          "Android entrée de gamme (360×640)",
+          "Pixel 7 (393×873)",
+          "iPhone XR/11 (414×896)"
+        ]
+      },
+      {
+        "point": "[accueil (J+2)] Le contenu défile sous la barre de navigation en bas / l'en-tête en haut (ex. « jeu. ») — visible en transition, les barres sont désormais opaques.",
+        "nb_agents": 639,
+        "appareils": [
+          "Android entrée de gamme (360×640)",
+          "Pixel 7 (393×873)",
+          "iPhone XR/11 (414×896)"
+        ]
+      },
+      {
+        "point": "[accueil (J+2)] Le contenu défile sous la barre de navigation en bas / l'en-tête en haut (ex. « ven. ») — visible en transition, les barres sont désormais opaques.",
+        "nb_agents": 639,
+        "appareils": [
+          "Android entrée de gamme (360×640)",
+          "Pixel 7 (393×873)",
+          "iPhone XR/11 (414×896)"
+        ]
+      },
+      {
+        "point": "[accueil] Le contenu défile sous la barre de navigation en bas / l'en-tête en haut (ex. « mer. ») — visible en transition, les barres sont désormais opaques.",
+        "nb_agents": 488,
+        "appareils": [
+          "Android entrée de gamme (360×640)"
+        ]
+      },
+      {
+        "point": "[fiche match] Le contenu défile sous la barre de navigation en bas / l'en-tête en haut (ex. « mer. ») — visible en transition, les barres sont désormais opaques.",
+        "nb_agents": 384,
+        "appareils": [
+          "Android entrée de gamme (360×640)"
+        ]
+      },
+      {
+        "point": "[combinateur (réglages)] Le contenu défile sous la barre de navigation en bas / l'en-tête en haut (ex. « mer. ») — visible en transition, les barres sont désormais opaques.",
+        "nb_agents": 347,
+        "appareils": [
+          "Android entrée de gamme (360×640)"
+        ]
+      },
+      {
+        "point": "[combinateur (résultats)] Le contenu défile sous la barre de navigation en bas / l'en-tête en haut (ex. « mer. ») — visible en transition, les barres sont désormais opaques.",
+        "nb_agents": 324,
+        "appareils": [
+          "Android entrée de gamme (360×640)"
+        ]
+      },
+      {
+        "point": "[accueil (J+2)] Le contenu défile sous la barre de navigation en bas / l'en-tête en haut (ex. « mer. ») — visible en transition, les barres sont désormais opaques.",
+        "nb_agents": 292,
+        "appareils": [
+          "Android entrée de gamme (360×640)"
+        ]
+      }
+    ],
+    "Navigation": [
+      {
+        "point": "[accueil] 0 sections affichées : acceptable, mais le premier contenu utile demande un défilement.",
+        "nb_agents": 373,
+        "appareils": [
+          "Android entrée de gamme (360×640)",
+          "Grand écran (1920×1080)",
+          "Ordinateur portable (1280×720)",
+          "Pixel 7 (393×873)",
+          "Tablette paysage (1024×768)",
+          "Tablette portrait (768×1024)",
+          "iPhone 12/13/14 (390×844)",
+          "iPhone 14/15 Pro Max (430×932)",
+          "iPhone SE 1 (320×568)",
+          "iPhone SE 2/8 (375×667)",
+          "iPhone XR/11 (414×896)",
+          "Écran de bureau (1440×900)"
+        ]
+      }
+    ],
+    "Design grands écrans": [
+      {
+        "point": "[accueil] Sur Ordinateur portable (1280×720), l'interface reste un gabarit mobile : grande largeur inutilisée, impression d'app téléphone posée au milieu de l'écran.",
+        "nb_agents": 97,
+        "appareils": [
+          "Ordinateur portable (1280×720)"
+        ]
+      },
+      {
+        "point": "[accueil] Sur Tablette paysage (1024×768), l'interface reste un gabarit mobile : grande largeur inutilisée, impression d'app téléphone posée au milieu de l'écran.",
+        "nb_agents": 84,
+        "appareils": [
+          "Tablette paysage (1024×768)"
+        ]
+      },
+      {
+        "point": "[fiche match] Sur Ordinateur portable (1280×720), l'interface reste un gabarit mobile : grande largeur inutilisée, impression d'app téléphone posée au milieu de l'écran.",
+        "nb_agents": 80,
+        "appareils": [
+          "Ordinateur portable (1280×720)"
+        ]
+      },
+      {
+        "point": "[combinateur (résultats)] Sur Ordinateur portable (1280×720), l'interface reste un gabarit mobile : grande largeur inutilisée, impression d'app téléphone posée au milieu de l'écran.",
+        "nb_agents": 73,
+        "appareils": [
+          "Ordinateur portable (1280×720)"
+        ]
+      },
+      {
+        "point": "[accueil] Sur Écran de bureau (1440×900), l'interface reste un gabarit mobile : grande largeur inutilisée, impression d'app téléphone posée au milieu de l'écran.",
+        "nb_agents": 73,
+        "appareils": [
+          "Écran de bureau (1440×900)"
+        ]
+      },
+      {
+        "point": "[combinateur (réglages)] Sur Ordinateur portable (1280×720), l'interface reste un gabarit mobile : grande largeur inutilisée, impression d'app téléphone posée au milieu de l'écran.",
+        "nb_agents": 69,
+        "appareils": [
+          "Ordinateur portable (1280×720)"
+        ]
+      },
+      {
+        "point": "[fiche match] Sur Tablette paysage (1024×768), l'interface reste un gabarit mobile : grande largeur inutilisée, impression d'app téléphone posée au milieu de l'écran.",
+        "nb_agents": 68,
+        "appareils": [
+          "Tablette paysage (1024×768)"
+        ]
+      },
+      {
+        "point": "[combinateur (résultats)] Sur Tablette paysage (1024×768), l'interface reste un gabarit mobile : grande largeur inutilisée, impression d'app téléphone posée au milieu de l'écran.",
+        "nb_agents": 62,
+        "appareils": [
+          "Tablette paysage (1024×768)"
+        ]
+      },
+      {
+        "point": "[accueil (J+2)] Sur Ordinateur portable (1280×720), l'interface reste un gabarit mobile : grande largeur inutilisée, impression d'app téléphone posée au milieu de l'écran.",
+        "nb_agents": 59,
+        "appareils": [
+          "Ordinateur portable (1280×720)"
+        ]
+      },
+      {
+        "point": "[combinateur (réglages)] Sur Tablette paysage (1024×768), l'interface reste un gabarit mobile : grande largeur inutilisée, impression d'app téléphone posée au milieu de l'écran.",
+        "nb_agents": 57,
+        "appareils": [
+          "Tablette paysage (1024×768)"
+        ]
+      },
+      {
+        "point": "[combinateur (réglages)] Sur Écran de bureau (1440×900), l'interface reste un gabarit mobile : grande largeur inutilisée, impression d'app téléphone posée au milieu de l'écran.",
+        "nb_agents": 52,
+        "appareils": [
+          "Écran de bureau (1440×900)"
+        ]
+      },
+      {
+        "point": "[fiche match] Sur Écran de bureau (1440×900), l'interface reste un gabarit mobile : grande largeur inutilisée, impression d'app téléphone posée au milieu de l'écran.",
+        "nb_agents": 51,
+        "appareils": [
+          "Écran de bureau (1440×900)"
+        ]
+      },
+      {
+        "point": "[combinateur (résultats)] Sur Écran de bureau (1440×900), l'interface reste un gabarit mobile : grande largeur inutilisée, impression d'app téléphone posée au milieu de l'écran.",
+        "nb_agents": 49,
+        "appareils": [
+          "Écran de bureau (1440×900)"
+        ]
+      },
+      {
+        "point": "[accueil (J+2)] Sur Tablette paysage (1024×768), l'interface reste un gabarit mobile : grande largeur inutilisée, impression d'app téléphone posée au milieu de l'écran.",
+        "nb_agents": 46,
+        "appareils": [
+          "Tablette paysage (1024×768)"
+        ]
+      },
+      {
+        "point": "[accueil (J+2)] Sur Écran de bureau (1440×900), l'interface reste un gabarit mobile : grande largeur inutilisée, impression d'app téléphone posée au milieu de l'écran.",
+        "nb_agents": 44,
+        "appareils": [
+          "Écran de bureau (1440×900)"
+        ]
+      },
+      {
+        "point": "[accueil] Sur Grand écran (1920×1080), l'interface reste un gabarit mobile : grande largeur inutilisée, impression d'app téléphone posée au milieu de l'écran.",
+        "nb_agents": 42,
+        "appareils": [
+          "Grand écran (1920×1080)"
+        ]
+      },
+      {
+        "point": "[fiche match] Sur Grand écran (1920×1080), l'interface reste un gabarit mobile : grande largeur inutilisée, impression d'app téléphone posée au milieu de l'écran.",
+        "nb_agents": 35,
+        "appareils": [
+          "Grand écran (1920×1080)"
+        ]
+      },
+      {
+        "point": "[accueil (J+2)] Sur Grand écran (1920×1080), l'interface reste un gabarit mobile : grande largeur inutilisée, impression d'app téléphone posée au milieu de l'écran.",
+        "nb_agents": 24,
+        "appareils": [
+          "Grand écran (1920×1080)"
+        ]
+      },
+      {
+        "point": "[combinateur (réglages)] Sur Grand écran (1920×1080), l'interface reste un gabarit mobile : grande largeur inutilisée, impression d'app téléphone posée au milieu de l'écran.",
+        "nb_agents": 24,
+        "appareils": [
+          "Grand écran (1920×1080)"
+        ]
+      },
+      {
+        "point": "[combinateur (résultats)] Sur Grand écran (1920×1080), l'interface reste un gabarit mobile : grande largeur inutilisée, impression d'app téléphone posée au milieu de l'écran.",
+        "nb_agents": 18,
+        "appareils": [
+          "Grand écran (1920×1080)"
+        ]
+      }
+    ]
+  }
+}

@@ -70,14 +70,14 @@ function FighterCard({ f, fav }: { f: MmaFighter; fav: boolean }) {
         <FighterHead name={f.name} headshotUrl={f.headshotUrl} size={44} />
         <div className="min-w-0">
           <p className="truncate text-[12px] font-black uppercase tracking-wide text-white">{f.name}</p>
-          <p className="text-[9.5px] font-bold text-white/40">
+          <p className="text-[10.5px] font-bold text-white/40">
             {recOf(f)}
             {f.ranking === 1 ? " · Champion" : f.ranking ? ` · ${f.ranking}e` : ""}
             {fav ? " · Favori" : ""}
           </p>
         </div>
       </div>
-      <div className="mt-2.5 grid grid-cols-2 gap-x-3 gap-y-1.5 text-[9.5px]">
+      <div className="mt-2.5 grid grid-cols-2 gap-x-3 gap-y-1.5 text-[10.5px]">
         {[
           ["Surnom", f.nickname ?? "—"],
           ["Âge", f.age != null ? `${f.age} ans` : "—"],
@@ -102,7 +102,7 @@ function FighterCard({ f, fav }: { f: MmaFighter; fav: boolean }) {
         ))}
       </div>
       <div className="mt-2 flex items-center justify-between">
-        <span className="text-[8.5px] font-bold uppercase tracking-widest text-white/35">Forme</span>
+        <span className="text-[10px] font-bold uppercase tracking-widest text-white/35">Forme</span>
         <FormDots form={f.form} />
       </div>
     </div>
@@ -125,7 +125,7 @@ function StatRow({
 }) {
   if (a == null && b == null) {
     return (
-      <div className="rounded-2xl bg-ink-3 px-3.5 py-2 text-center text-[9.5px] font-semibold text-white/35">
+      <div className="rounded-2xl bg-ink-3 px-3.5 py-2 text-center text-[10.5px] font-semibold text-white/35">
         {label} — non publié par ESPN
       </div>
     );
@@ -137,7 +137,7 @@ function StatRow({
     <div className="rounded-2xl bg-ink-3 px-3.5 py-2.5">
       <div className="flex items-baseline justify-between text-[10px] font-black">
         <span className={aBest ? "text-neon" : "text-white/60"}>{a == null ? "—" : fmt(a)}</span>
-        <span className="text-[9px] font-bold uppercase tracking-wider text-white/45">{label}</span>
+        <span className="text-[10.5px] font-bold uppercase tracking-wider text-white/45">{label}</span>
         <span className={!aBest ? "text-neon" : "text-white/60"}>{b == null ? "—" : fmt(b)}</span>
       </div>
       <div className="mt-1.5 flex h-[5px] justify-end overflow-hidden rounded-full bg-black/50">
@@ -267,7 +267,7 @@ export function MmaFightScreen({
   const backBtn = (
     <button
       onClick={onBack}
-      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-ink-3/90 text-white backdrop-blur transition-colors hover:bg-neon hover:text-black"
+      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-ink-3/95 text-white backdrop-blur transition-colors hover:bg-neon hover:text-black"
       aria-label="Retour"
     >
       <ChevronLeft size={18} strokeWidth={2.4} />
@@ -277,7 +277,7 @@ export function MmaFightScreen({
   const refreshBtn = (
     <button
       onClick={() => void load()}
-      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-ink-3/90 text-white backdrop-blur transition-colors hover:bg-neon hover:text-black"
+      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-ink-3/95 text-white backdrop-blur transition-colors hover:bg-neon hover:text-black"
       aria-label="Réanalyser"
     >
       <RefreshCw size={15} strokeWidth={2.2} className={loading ? "animate-spin" : ""} />
@@ -301,7 +301,7 @@ export function MmaFightScreen({
           <FighterHead name={aName} headshotUrl={aHead} size={30} />
           <div className="min-w-0 flex-1 text-center">
             <p className="font-display text-[17px] leading-none tracking-wide text-white">{centerMain}</p>
-            <p className="mt-0.5 truncate text-[8px] font-bold uppercase tracking-widest text-white/40">
+            <p className="mt-0.5 truncate text-[10.5px] font-bold uppercase tracking-widest text-white/40">
               {fight?.orgShort ?? "MMA"}
               {live ? " · Live" : ""}
             </p>
@@ -333,12 +333,12 @@ export function MmaFightScreen({
                 {fight?.orgShort ?? fight?.org ?? "MMA"}
               </span>
               {live ? (
-                <span className="flex items-center gap-1 rounded-full bg-neon px-2.5 py-1 text-[9px] font-black uppercase text-black">
+                <span className="flex items-center gap-1 rounded-full bg-neon px-2.5 py-1 text-[10.5px] font-black uppercase text-black">
                   <span className="live-dot h-1.5 w-1.5 rounded-full bg-black" />
                   Live
                 </span>
               ) : (
-                <span className="rounded-full bg-ink-3/90 px-2.5 py-1 text-[9px] font-black uppercase tracking-wide text-white/70 backdrop-blur">
+                <span className="rounded-full bg-ink-3/90 px-2.5 py-1 text-[10.5px] font-black uppercase tracking-wide text-white/70 backdrop-blur">
                   {done ? "Terminé" : "À venir"}
                 </span>
               )}
@@ -350,25 +350,25 @@ export function MmaFightScreen({
           <div className="relative mt-2 grid grid-cols-[1fr_auto_1fr] items-center px-6 pb-4 pt-1">
             <div className="flex flex-col items-center gap-1.5">
               <FighterHead name={aName} headshotUrl={aHead} size={64} />
-              <span className="max-w-[104px] text-center text-[8.5px] font-extrabold leading-[1.3] tracking-wide text-white">
+              <span className="max-w-[104px] text-center text-[10px] font-extrabold leading-[1.3] tracking-wide text-white">
                 {aName.toUpperCase()}
               </span>
-              <span className="text-[8px] font-bold text-white/50">
+              <span className="text-[10.5px] font-bold text-white/50">
                 {fight ? recOf({ record: fight.fighterA.record }) : "—"}
               </span>
             </div>
             <div className="mx-3 min-w-[92px] px-1 text-center">
               <span className="font-display text-[26px] leading-none tracking-wide text-white">{centerMain}</span>
-              <span className="mt-1 block text-[8.5px] font-semibold uppercase tracking-widest text-white/50">
+              <span className="mt-1 block text-[10px] font-semibold uppercase tracking-widest text-white/50">
                 {centerSub}
               </span>
             </div>
             <div className="flex flex-col items-center gap-1.5">
               <FighterHead name={bName} headshotUrl={bHead} size={64} />
-              <span className="max-w-[104px] text-center text-[8.5px] font-extrabold leading-[1.3] tracking-wide text-white">
+              <span className="max-w-[104px] text-center text-[10px] font-extrabold leading-[1.3] tracking-wide text-white">
                 {bName.toUpperCase()}
               </span>
-              <span className="text-[8px] font-bold text-white/50">
+              <span className="text-[10.5px] font-bold text-white/50">
                 {fight ? recOf({ record: fight.fighterB.record }) : "—"}
               </span>
             </div>
@@ -376,12 +376,12 @@ export function MmaFightScreen({
 
           {/* catégorie + lieu */}
           <div className="relative flex flex-col items-center gap-1.5 pb-3">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-ink-3/80 px-3 py-1 text-[9px] font-bold uppercase tracking-wide text-white/70 backdrop-blur">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-ink-3/80 px-3 py-1 text-[10.5px] font-bold uppercase tracking-wide text-white/70 backdrop-blur">
               <Swords size={10} strokeWidth={2.4} className="shrink-0 text-neon" />
               {fight?.weightClass ?? "Catégorie à confirmer"}
               {fight?.rounds ? ` · ${fight.rounds} rounds` : ""}
             </span>
-            <span className="inline-flex max-w-[85%] items-center gap-1.5 rounded-full bg-ink-3/80 px-3 py-1 text-[9px] font-bold uppercase tracking-wide text-white/70 backdrop-blur">
+            <span className="inline-flex max-w-[85%] items-center gap-1.5 rounded-full bg-ink-3/80 px-3 py-1 text-[10.5px] font-bold uppercase tracking-wide text-white/70 backdrop-blur">
               <CalendarDays size={10} strokeWidth={2.4} className="shrink-0 text-neon" />
               <span className="truncate">
                 {fight
@@ -389,7 +389,7 @@ export function MmaFightScreen({
                   : "Date à confirmer"}
               </span>
             </span>
-            <span className="inline-flex max-w-[85%] items-center gap-1.5 rounded-full bg-ink-3/80 px-3 py-1 text-[9px] font-bold uppercase tracking-wide text-white/70 backdrop-blur">
+            <span className="inline-flex max-w-[85%] items-center gap-1.5 rounded-full bg-ink-3/80 px-3 py-1 text-[10.5px] font-bold uppercase tracking-wide text-white/70 backdrop-blur">
               <MapPin size={10} strokeWidth={2.4} className="shrink-0 text-neon" />
               <span className="truncate">
                 {fight?.venue.name ?? "Arène"}
@@ -417,10 +417,10 @@ export function MmaFightScreen({
             {pred?.available ? (
               <section className="rounded-[26px] bg-neon px-5 pb-4 pt-4 text-black">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-[9px] font-black uppercase tracking-[0.2em] text-black/50">
+                  <p className="text-[10.5px] font-black uppercase tracking-[0.2em] text-black/50">
                     {done ? "Prono du moteur · reconstruction a posteriori" : "Prono du moteur"}
                   </p>
-                  <span className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-wider text-black/70">
+                  <span className="flex items-center gap-1.5 text-[10.5px] font-black uppercase tracking-wider text-black/70">
                     <span title={`Confiance ${pred.confidence}/5`}>{confidenceStars(pred.confidence)}</span>
                     {pred.confidenceLabel}
                   </span>
@@ -449,7 +449,7 @@ export function MmaFightScreen({
                         } ${best ? "bg-black text-neon" : "text-black/75"}`}
                         style={{ flexGrow: Math.max(0.14, s.value) }}
                       >
-                        <span className="w-full truncate text-center text-[8px] font-bold uppercase tracking-wider opacity-70">
+                        <span className="w-full truncate text-center text-[10.5px] font-bold uppercase tracking-wider opacity-70">
                           {s.label}
                         </span>
                         <span className="text-[14px] font-black leading-none">{Math.round(s.value * 100)}%</span>
@@ -457,7 +457,7 @@ export function MmaFightScreen({
                     );
                   })}
                 </div>
-                <p className="mt-2 text-[8.5px] font-semibold leading-relaxed text-black/45">
+                <p className="mt-2 text-[10px] font-semibold leading-relaxed text-black/45">
                   {pred.marginLabel} · {pred.dimensionsUsed}/{pred.dimensionsTotal} dimensions observées ·
                   probabilité bornée 25-75 % (modèle {pred.modelVersion}).
                 </p>
@@ -552,7 +552,7 @@ export function MmaFightScreen({
                       <div className="space-y-1.5">
                         {scenarios.map((s) => (
                           <div key={s.label} className="flex items-center gap-2.5 rounded-2xl bg-ink-3 px-3.5 py-2">
-                            <span className="w-[128px] shrink-0 truncate text-[9px] font-bold text-white/70" title={s.label}>{s.label.replace(" par ", " · ")}</span>
+                            <span className="w-[128px] shrink-0 truncate text-[10.5px] font-bold text-white/70" title={s.label}>{s.label.replace(" par ", " · ")}</span>
                             <div className="h-[6px] flex-1 overflow-hidden rounded-full bg-black/50">
                               <div className="h-full rounded-full bg-neon" style={{ width: `${Math.min(100, s.p * 250)}%` }} />
                             </div>
@@ -580,11 +580,11 @@ export function MmaFightScreen({
                             : " — toutes disponibles"}
                           .
                         </p>
-                        <p className="mt-1.5 text-[9.5px] leading-relaxed text-white/40">
+                        <p className="mt-1.5 text-[10.5px] leading-relaxed text-white/40">
                           {pred.notes[1] ?? ""}
                         </p>
                         {detail.derivedPending ? (
-                          <p className="mt-1.5 text-[9.5px] font-semibold text-neon">
+                          <p className="mt-1.5 text-[10.5px] font-semibold text-neon">
                             Indicateurs avancés (fenêtre 8 combats) en cours de calcul — réactualise pour les voir.
                           </p>
                         ) : null}
@@ -612,7 +612,7 @@ export function MmaFightScreen({
                         <ProbBar label="Soum." value={pred.byMethod.b.sub} compact />
                         <ProbBar label="Décis." value={pred.byMethod.b.dec} compact />
                       </div>
-                      <p className="mt-1.5 text-[8.5px] leading-relaxed text-white/35">
+                      <p className="mt-1.5 text-[10px] leading-relaxed text-white/35">
                         Dérivé de la probabilité de victoire × répartition des victoires observées (palmarès ESPN).
                       </p>
                     </>
@@ -631,7 +631,7 @@ export function MmaFightScreen({
                           {pred.method.label}
                           {pred.method.share != null ? ` · ${pred.method.share} %` : ""}
                         </p>
-                        <p className="mt-1 text-[9.5px] leading-relaxed text-white/50">{pred.method.detail}</p>
+                        <p className="mt-1 text-[10.5px] leading-relaxed text-white/50">{pred.method.detail}</p>
                       </div>
                     </>
                   ) : null}
@@ -642,7 +642,7 @@ export function MmaFightScreen({
                     <ProbBar label="Va jusqu'à la décision" value={pred?.goesToDecision ?? undefined} />
                   </div>
                   {pred?.goesToDecision == null ? (
-                    <p className="mt-1 text-[9px] font-semibold text-white/35">
+                    <p className="mt-1 text-[10.5px] font-semibold text-white/35">
                       Distance non déterminable : répartition des victoires/défaites incomplète chez ESPN.
                     </p>
                   ) : null}
@@ -655,13 +655,13 @@ export function MmaFightScreen({
                           <div key={i} className="flex items-center justify-between gap-3 rounded-2xl bg-ink-3 px-3.5 py-3">
                             <div className="min-w-0">
                               <p className="truncate text-[12px] font-black text-white">{b.pick}</p>
-                              <p className="text-[9px] font-bold uppercase tracking-wider text-white/40">{b.market} · {b.note}</p>
+                              <p className="text-[10.5px] font-bold uppercase tracking-wider text-white/40">{b.market} · {b.note}</p>
                             </div>
                             <span className="shrink-0 text-[15px] font-black text-neon">{pct(b.prob)}</span>
                           </div>
                         ))}
                       </div>
-                      <p className="mt-2 text-[8.5px] leading-relaxed text-white/30">
+                      <p className="mt-2 text-[10px] leading-relaxed text-white/30">
                         Lectures informatives : VOLTRIX n&apos;édite aucune cote et ne donne aucun conseil de paris.
                       </p>
                     </>
@@ -699,7 +699,7 @@ export function MmaFightScreen({
                           : ""}
                       </p>
                       {pred.roundBasis ? (
-                        <p className="mt-2 rounded-2xl bg-black/40 px-3.5 py-2.5 text-[8.5px] leading-relaxed text-white/40">
+                        <p className="mt-2 rounded-2xl bg-black/40 px-3.5 py-2.5 text-[10px] leading-relaxed text-white/40">
                           Base : {pred.roundBasis.documentedWinsA ?? 0} victoire(s) documentée(s) {aShort}
                           {pred.roundBasis.priorWeightA != null ? ` (part du prior UFC : ${Math.round(pred.roundBasis.priorWeightA * 100)} %)` : ""}
                           {" · "}{pred.roundBasis.documentedWinsB ?? 0} victoire(s) documentée(s) {bShort}
@@ -718,7 +718,7 @@ export function MmaFightScreen({
                       </p>
                     </div>
                   )}
-                  <p className="mt-2 text-[8.5px] leading-relaxed text-white/30">{pred?.roundModelNote}</p>
+                  <p className="mt-2 text-[10px] leading-relaxed text-white/30">{pred?.roundModelNote}</p>
                 </div>
               ) : null}
 
@@ -769,7 +769,7 @@ export function MmaFightScreen({
                       max={3}
                     />
                   </div>
-                  <p className="mt-2 text-center text-[8.5px] font-bold uppercase tracking-widest text-white/30">
+                  <p className="mt-2 text-center text-[10px] font-bold uppercase tracking-widest text-white/30">
                     {aShort} à gauche · {bShort} à droite · carrière ESPN
                   </p>
 
@@ -784,7 +784,7 @@ export function MmaFightScreen({
                             <div key={d.key} className="rounded-2xl bg-ink-3 px-3.5 py-2.5">
                               <div className="flex items-baseline justify-between text-[10px] font-black">
                                 <span className={d.advantage === "A" ? "text-neon" : "text-white/60"}>{Math.round(d.scoreA as number)}</span>
-                                <span className="text-[9px] font-bold uppercase tracking-wider text-white/45">{d.label}</span>
+                                <span className="text-[10.5px] font-bold uppercase tracking-wider text-white/45">{d.label}</span>
                                 <span className={d.advantage === "B" ? "text-neon" : "text-white/60"}>{Math.round(d.scoreB as number)}</span>
                               </div>
                               <div className="mt-1.5 flex h-[5px] justify-end overflow-hidden rounded-full bg-black/50">
@@ -820,11 +820,11 @@ export function MmaFightScreen({
                           <div key={`${h.date}-${h.event}`} className="rounded-2xl bg-ink-3 px-4 py-3">
                             <div className="flex items-baseline justify-between gap-2">
                               <span className="text-[11px] font-black text-white">{h.winner}</span>
-                              <span className="shrink-0 text-[9px] font-bold uppercase tracking-wider text-white/40">
+                              <span className="shrink-0 text-[10.5px] font-bold uppercase tracking-wider text-white/40">
                                 {new Date(h.date).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" })}
                               </span>
                             </div>
-                            <p className="mt-0.5 text-[9.5px] font-semibold text-white/45">
+                            <p className="mt-0.5 text-[10.5px] font-semibold text-white/45">
                               {h.event}
                               {h.method ? ` · ${h.method}` : ""}
                             </p>

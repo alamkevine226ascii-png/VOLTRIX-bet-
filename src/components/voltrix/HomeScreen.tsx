@@ -73,7 +73,7 @@ function DateStrip({ value, onChange }: { value: string; onChange: (d: string) =
     return [-2, -1, 0, 1, 2, 3, 4, 5, 6].map((off) => isoAddDays(t, off));
   }, []);
   return (
-    <div className="no-scrollbar flex gap-1.5 overflow-x-auto px-5">
+    <div className="no-scrollbar flex gap-2 overflow-x-auto px-5 pb-1">
       {days.map((d) => {
         const active = d === value;
         const dt = new Date(`${d}T12:00:00Z`);
@@ -83,13 +83,17 @@ function DateStrip({ value, onChange }: { value: string; onChange: (d: string) =
             key={d}
             onClick={() => onChange(d)}
             aria-pressed={active}
-            className={`flex w-[46px] shrink-0 flex-col items-center rounded-xl px-1 py-1.5 transition-colors ${
-              active ? "bg-neon text-black" : "bg-ink-3 text-white hover:bg-[#383838]"
-            }`}
+            className="flex min-h-[52px] w-[50px] shrink-0 flex-col items-center justify-center rounded-xl px-1 py-2 transition-colors"
+            style={{
+              background: active
+                ? "var(--neon, #c6f211)"
+                : "rgba(38,38,40,0.95)",
+              color: active ? "#000" : "#fff",
+            }}
           >
             <span
-              className={`text-[8px] font-bold uppercase tracking-wider ${
-                active ? "text-black/60" : isToday ? "text-neon" : "text-white/50"
+              className={`text-[10px] font-bold uppercase tracking-wider ${
+                active ? "text-black/60" : isToday ? "text-neon" : "text-white/60"
               }`}
             >
               {isToday ? "Auj." : dt.toLocaleDateString("fr-FR", { weekday: "short" })}
@@ -115,17 +119,17 @@ function ProbsStrip({ pred }: { pred: QuickPred }) {
       {items.map((it) => (
         <span
           key={it.k}
-          className={`flex min-w-[44px] flex-col items-center rounded-xl px-1.5 py-1 ${
-            it === best ? "bg-black text-neon" : "bg-black/5 text-black/60"
+          className={`flex min-w-[46px] flex-col items-center rounded-xl px-1.5 py-1 ${
+            it === best ? "bg-black text-neon" : "bg-black/5 text-black/70"
           }`}
         >
-          <span className="text-[8px] font-black uppercase tracking-wider opacity-60">{it.k}</span>
-          <span className="text-[13px] font-black leading-none">{Math.round(it.v * 100)}%</span>
+          <span className="text-[9.5px] font-black uppercase tracking-wider opacity-70">{it.k}</span>
+          <span className="text-[13.5px] font-black leading-none">{Math.round(it.v * 100)}%</span>
         </span>
       ))}
       <span className="ml-1 flex flex-col items-end gap-0.5">
         <span
-          className="text-[10px] leading-none tracking-[0.1em] text-black/80"
+          className="text-[11px] leading-none tracking-[0.1em] text-black"
           title={`Confiance ${pred.confidence}/5`}
         >
           {confidenceStars(pred.confidence)}
@@ -139,7 +143,7 @@ function ProbsStrip({ pred }: { pred: QuickPred }) {
 function MmaProbsStrip({ pred, aShort, bShort }: { pred: MmaQuickPred; aShort: string; bShort: string }) {
   if (!pred.available) {
     return (
-      <span className="text-[9px] font-bold uppercase tracking-wider text-black/35">
+      <span className="text-[10px] font-bold uppercase tracking-wider text-black/45">
         Prono indisponible
       </span>
     );
@@ -154,16 +158,16 @@ function MmaProbsStrip({ pred, aShort, bShort }: { pred: MmaQuickPred; aShort: s
       {items.map((it) => (
         <span
           key={it.k}
-          className={`flex min-w-[44px] flex-col items-center rounded-xl px-1.5 py-1 ${
-            it === best ? "bg-black text-neon" : "bg-black/5 text-black/60"
+          className={`flex min-w-[46px] flex-col items-center rounded-xl px-1.5 py-1 ${
+            it === best ? "bg-black text-neon" : "bg-black/5 text-black/70"
           }`}
         >
-          <span className="text-[8px] font-black uppercase tracking-wider opacity-60">{it.k}</span>
-          <span className="text-[13px] font-black leading-none">{Math.round(it.v * 100)}%</span>
+          <span className="text-[9.5px] font-black uppercase tracking-wider opacity-70">{it.k}</span>
+          <span className="text-[13.5px] font-black leading-none">{Math.round(it.v * 100)}%</span>
         </span>
       ))}
       <span
-        className="ml-1 max-w-[72px] text-right text-[8px] font-black uppercase leading-tight tracking-wider text-black/45"
+        className="ml-1 max-w-[72px] text-right text-[10px] font-black uppercase leading-tight tracking-wider text-black/60"
         title={`Base : ${pred.basis}`}
       >
         {pred.level}
@@ -200,7 +204,7 @@ function MatchCard({
         <div className="flex flex-col items-center gap-2 pt-1">
           <TeamBadge name={match.home.name} logo={match.home.logo} size={56} />
           <div className="flex flex-col items-center gap-1">
-            <span className="max-w-[96px] text-center text-[9px] font-extrabold leading-[1.25] tracking-wide text-black">
+            <span className="max-w-[96px] text-center text-[10px] font-extrabold leading-[1.25] tracking-wide text-black">
               {match.home.name.toUpperCase()}
             </span>
             <FormDots form={match.home.form} align="left" />
@@ -219,14 +223,14 @@ function MatchCard({
             </span>
           )}
           {hasScore ? (
-            <span className="mt-1.5 text-[10px] font-bold uppercase tracking-wide text-black/45">
+            <span className="mt-1.5 text-[10.5px] font-bold uppercase tracking-wide text-black/55">
               {match.statusDetail || (done ? "FT" : "")}
             </span>
           ) : (
             <span className="mt-2.5 text-[20px] font-black leading-none text-black">{timeLabel(match.date)}</span>
           )}
           {live ? (
-            <span className="mt-1.5 flex items-center gap-1 rounded-full bg-neon px-2 py-[3px] text-[8px] font-black uppercase text-black">
+            <span className="mt-1.5 flex items-center gap-1 rounded-full bg-neon px-2 py-[3px] text-[10px] font-black uppercase text-black">
               <span className="live-dot h-1.5 w-1.5 rounded-full bg-black" />
               Live
             </span>
@@ -237,7 +241,7 @@ function MatchCard({
         <div className="flex flex-col items-center gap-2 pt-1">
           <TeamBadge name={match.away.name} logo={match.away.logo} size={56} />
           <div className="flex flex-col items-center gap-1">
-            <span className="max-w-[96px] text-center text-[9px] font-extrabold leading-[1.25] tracking-wide text-black">
+            <span className="max-w-[96px] text-center text-[10px] font-extrabold leading-[1.25] tracking-wide text-black">
               {match.away.name.toUpperCase()}
             </span>
             <FormDots form={match.away.form} />
@@ -247,7 +251,7 @@ function MatchCard({
 
       {/* bandeau bas : ligue + triplet moteur / cotes */}
       <div className="mt-3.5 flex items-center justify-between gap-2 rounded-2xl bg-panel-2 px-3 py-2">
-        <span className="shrink-0 rounded-full bg-white px-2.5 py-[3px] text-[8px] font-extrabold uppercase tracking-wider text-black shadow-sm">
+        <span className="shrink-0 rounded-full bg-white px-2.5 py-[4px] text-[9.5px] font-extrabold uppercase tracking-wider text-black shadow-sm">
           {leagueShort}
         </span>
         {pred ? (
@@ -259,14 +263,14 @@ function MatchCard({
               { k: "X", v: match.mlDraw },
               { k: "2", v: match.mlAway },
             ].map((o) => (
-              <span key={o.k} className="flex min-w-[40px] flex-col items-center rounded-xl bg-white px-1.5 py-1 text-black/70">
-                <span className="text-[8px] font-black uppercase opacity-60">{o.k}</span>
-                <span className="text-[12px] font-black leading-none">{o.v?.toFixed(2)}</span>
+              <span key={o.k} className="flex min-w-[42px] flex-col items-center rounded-xl bg-white px-1.5 py-1 text-black/80">
+                <span className="text-[9.5px] font-black uppercase opacity-70">{o.k}</span>
+                <span className="text-[12.5px] font-black leading-none">{o.v?.toFixed(2)}</span>
               </span>
             ))}
           </div>
         ) : (
-          <span className="text-[9px] font-bold uppercase tracking-wider text-black/35">Pas de cotes</span>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-black/45">Pas de cotes</span>
         )}
       </div>
     </article>
@@ -300,10 +304,10 @@ function FightCard({
         <div className="flex flex-col items-center gap-2 pt-1">
           <FighterHead name={fight.fighterA.name} headshotUrl={fight.fighterA.headshotUrl} size={56} />
           <div className="flex flex-col items-center gap-1">
-            <span className="max-w-[96px] text-center text-[9px] font-extrabold leading-[1.25] tracking-wide text-black">
+            <span className="max-w-[96px] text-center text-[10px] font-extrabold leading-[1.25] tracking-wide text-black">
               {fight.fighterA.name.toUpperCase()}
             </span>
-            <span className="text-[8px] font-bold text-black/45">{rec(fight.fighterA.record)}</span>
+            <span className="text-[10px] font-bold text-black/60">{rec(fight.fighterA.record)}</span>
             <FormDots form={fight.fighterA.form} align="left" />
           </div>
         </div>
@@ -320,14 +324,14 @@ function FightCard({
             </span>
           )}
           {done ? (
-            <span className="mt-1.5 max-w-[104px] text-center text-[9px] font-bold uppercase tracking-wide text-black/45">
+            <span className="mt-1.5 max-w-[104px] text-center text-[10px] font-bold uppercase tracking-wide text-black/55">
               {fight.method ?? "Terminé"}
             </span>
           ) : (
             <span className="mt-2.5 text-[20px] font-black leading-none text-black">{timeLabel(fight.date)}</span>
           )}
           {live ? (
-            <span className="mt-1.5 flex items-center gap-1 rounded-full bg-neon px-2 py-[3px] text-[8px] font-black uppercase text-black">
+            <span className="mt-1.5 flex items-center gap-1 rounded-full bg-neon px-2 py-[3px] text-[10px] font-black uppercase text-black">
               <span className="live-dot h-1.5 w-1.5 rounded-full bg-black" />
               {fight.statusDetail || "Live"}
             </span>
@@ -338,10 +342,10 @@ function FightCard({
         <div className="flex flex-col items-center gap-2 pt-1">
           <FighterHead name={fight.fighterB.name} headshotUrl={fight.fighterB.headshotUrl} size={56} />
           <div className="flex flex-col items-center gap-1">
-            <span className="max-w-[96px] text-center text-[9px] font-extrabold leading-[1.25] tracking-wide text-black">
+            <span className="max-w-[96px] text-center text-[10px] font-extrabold leading-[1.25] tracking-wide text-black">
               {fight.fighterB.name.toUpperCase()}
             </span>
-            <span className="text-[8px] font-bold text-black/45">{rec(fight.fighterB.record)}</span>
+            <span className="text-[10px] font-bold text-black/60">{rec(fight.fighterB.record)}</span>
             <FormDots form={fight.fighterB.form} />
           </div>
         </div>
@@ -349,17 +353,17 @@ function FightCard({
 
       {/* bandeau bas : catégorie + duo moteur */}
       <div className="mt-3.5 flex items-center justify-between gap-2 rounded-2xl bg-panel-2 px-3 py-2">
-        <span className="shrink-0 rounded-full bg-white px-2.5 py-[3px] text-[8px] font-extrabold uppercase tracking-wider text-black shadow-sm">
+        <span className="shrink-0 rounded-full bg-white px-2.5 py-[4px] text-[9.5px] font-extrabold uppercase tracking-wider text-black shadow-sm">
           {fight.weightClassShort ?? fight.org}
         </span>
         {fight.prospect ? (
-          <span className="text-[9px] font-bold uppercase tracking-wider text-black/35">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-black/45">
             Adversaire à confirmer
           </span>
         ) : pred ? (
           <MmaProbsStrip pred={pred} aShort={fight.fighterA.shortName} bShort={fight.fighterB.shortName} />
         ) : (
-          <span className="text-[9px] font-bold uppercase tracking-wider text-black/35">Analyse…</span>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-black/45">Analyse…</span>
         )}
       </div>
     </article>
@@ -824,7 +828,7 @@ export function HomeScreen({
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
-        className="no-scrollbar absolute inset-0 overflow-y-auto overscroll-contain px-5 pb-28 pt-[176px]"
+        className="no-scrollbar absolute inset-0 overflow-y-auto overscroll-contain px-5 pb-28 pt-[168px]"
       >
         {/* indicateur tirer-pour-rafraîchir */}
         <div
@@ -851,7 +855,7 @@ export function HomeScreen({
           }}
         >
         <div className="flex items-center justify-between">
-          <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-white/45">
+          <p className="flex items-center gap-1.5 text-[11.5px] font-bold uppercase tracking-widest text-white/70">
             <CalendarDays size={12} strokeWidth={2.4} />
             {dt.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })}
           </p>
@@ -865,7 +869,7 @@ export function HomeScreen({
             </span>
           ) : restoredCount > 0 ? (
             <span
-              className="rounded-full bg-white/5 px-2 py-0.5 text-[8.5px] font-bold uppercase tracking-widest text-white/45 ring-1 ring-white/10"
+              className="rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-white/70 ring-1 ring-white/15"
               title={"Pronostics relus depuis la base locale de l\u2019app — aucun recalcul nécessaire."}
             >
               ⚡ {restoredCount} prono{restoredCount > 1 ? "s" : ""} restauré{restoredCount > 1 ? "s" : ""} · base locale
@@ -927,7 +931,7 @@ export function HomeScreen({
                     Prochain : {nextMmaEvent.eventName} — {dayLabel(nextMmaEvent.eventDate)}
                   </span>
                 </span>
-                <span className="shrink-0 rounded-full bg-neon px-2.5 py-1 text-[9px] font-black uppercase tracking-wide text-black">
+                <span className="shrink-0 rounded-full bg-neon px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-black">
                   Voir
                 </span>
               </button>
@@ -941,7 +945,7 @@ export function HomeScreen({
                   <h2 className="min-w-0 flex-1 truncate text-[11px] font-black uppercase tracking-[0.14em] text-white/70">
                     {ev.eventId === "prospect" ? "Arts martiaux mixtes · Combats perspectifs" : ev.eventName}
                   </h2>
-                  <span className="shrink-0 text-[9px] font-bold text-white/30">
+                  <span className="shrink-0 text-[10px] font-bold text-white/45">
                     {ev.eventId === "prospect"
                       ? `${ev.fights.length}`
                       : `${new Date(ev.eventDate).toLocaleDateString("fr-FR", { day: "2-digit", month: "short" })} · ${ev.fights.length}`}
@@ -977,7 +981,7 @@ export function HomeScreen({
               <LoadingPanel label="Le moteur VOLTRIX analyse les matchs à venir…" />
             ) : null}
 
-            <p className="pt-2 text-center text-[8.5px] font-bold uppercase tracking-widest text-white/25">
+            <p className="pt-2 text-center text-[10px] font-bold uppercase tracking-widest text-white/45">
               Données ESPN · calculs 100 % locaux · tirez pour rafraîchir
             </p>
           </div>
@@ -989,13 +993,13 @@ export function HomeScreen({
           Déplié (haut de page) : logo + sélecteur de date + ligues.
           Replié (défilement) : seul le logo flotte — aucun fond,
           aucune bande. Toucher le logo ramène en haut. */}
-      <header className="pointer-events-none absolute inset-x-0 top-0 z-40">
+      <header className="pointer-events-none absolute inset-x-0 top-0 z-40 bg-gradient-to-b from-ink via-ink/95 to-transparent">
         {/* logo — toujours visible, sans fond */}
-        <div className="pointer-events-auto flex items-start justify-between px-5 pt-6">
+        <div className="pointer-events-auto flex items-start justify-between px-5 pt-4">
           <button
             onClick={scrollToTop}
             aria-label="VOLTRIX — revenir en haut"
-            className="flex items-center gap-2.5 rounded-full"
+            className="flex w-fit shrink-0 items-center gap-2.5 rounded-full"
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
@@ -1011,22 +1015,22 @@ export function HomeScreen({
               onClick={() => onOpenCombinator(date)}
               aria-label="Combinateur — créer un combiné à côte cible"
               title="Combinateur"
-              className={`flex h-9 w-9 items-center justify-center rounded-full bg-ink-3/90 text-white backdrop-blur transition-all duration-300 ease-out hover:bg-neon hover:text-black ${
-                headerCollapsed ? "pointer-events-none scale-75 opacity-0" : "opacity-100"
+              className={`flex h-11 w-11 items-center justify-center rounded-full bg-ink-3/95 text-white backdrop-blur transition-all duration-300 ease-out hover:bg-neon hover:text-black ${
+                headerCollapsed ? "pointer-events-none opacity-0" : "opacity-100"
               }`}
             >
-              <Layers size={15} strokeWidth={2.2} />
+              <Layers size={17} strokeWidth={2.2} />
             </button>
             <button
               onClick={() => void hardSync()}
               aria-label="Réinitialiser — resynchroniser l'app avec la base de données"
               title="Réinitialiser : synchronise l'app avec la base de données"
-              className={`flex h-9 w-9 items-center justify-center rounded-full bg-ink-3/90 text-white backdrop-blur transition-all duration-300 ease-out hover:bg-neon hover:text-black ${
-                headerCollapsed ? "pointer-events-none scale-75 opacity-0" : "opacity-100"
+              className={`flex h-11 w-11 items-center justify-center rounded-full bg-ink-3/95 text-white backdrop-blur transition-all duration-300 ease-out hover:bg-neon hover:text-black ${
+                headerCollapsed ? "pointer-events-none opacity-0" : "opacity-100"
               }`}
             >
               <RefreshCw
-                size={15}
+                size={17}
                 strokeWidth={2.2}
                 className={(loading || syncing) ? "animate-spin" : ""}
               />
@@ -1034,14 +1038,17 @@ export function HomeScreen({
           </div>
         </div>
 
-        {/* dates + ligues — se replient au défilement (hors flux : aucun saut) */}
+        {/* dates + ligues — se replient au défilement (hors flux : aucun
+            saut). Repli : display:none total — plus aucune fausse cible
+            tactile mesurable dans le bandeau fermé. */}
         <div
           aria-hidden={headerCollapsed}
+          style={{ display: headerCollapsed ? "none" : undefined }}
           className={`pointer-events-auto grid transition-[grid-template-rows,opacity,transform] duration-300 ease-out ${
             headerCollapsed
-              ? "invisible pointer-events-none grid-rows-[0fr] -translate-y-3 opacity-0"
+              ? "pointer-events-none opacity-0"
               : "grid-rows-[1fr] translate-y-0 opacity-100"
-          } mt-3`}
+          } mt-2`}
         >
           <div className="overflow-hidden">
             <DateStrip value={date} onChange={changeDate} />
@@ -1050,7 +1057,7 @@ export function HomeScreen({
                 <button
                   onClick={() => setActiveFilter("all")}
                   aria-pressed={activeFilter === "all"}
-                  className={`whitespace-nowrap rounded-full px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide transition-colors ${
+                  className={`flex min-h-[44px] items-center whitespace-nowrap rounded-full px-3.5 py-2 text-[11px] font-bold uppercase tracking-wide transition-colors ${
                     activeFilter === "all" ? "bg-neon text-black" : "bg-ink-3 text-white hover:bg-[#383838]"
                   }`}
                 >
@@ -1062,7 +1069,7 @@ export function HomeScreen({
                     onClick={() => setActiveFilter(l.code)}
                     aria-pressed={activeFilter === l.code}
                     title={l.name}
-                    className={`whitespace-nowrap rounded-full px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide transition-colors ${
+                    className={`flex min-h-[44px] items-center whitespace-nowrap rounded-full px-3.5 py-2 text-[11px] font-bold uppercase tracking-wide transition-colors ${
                       activeFilter === l.code ? "bg-neon text-black" : "bg-ink-3 text-white hover:bg-[#383838]"
                     }`}
                   >
@@ -1075,7 +1082,7 @@ export function HomeScreen({
                     onClick={() => setActiveFilter(o.code)}
                     aria-pressed={activeFilter === o.code}
                     title={o.name}
-                    className={`whitespace-nowrap rounded-full px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide transition-colors ${
+                    className={`flex min-h-[44px] items-center whitespace-nowrap rounded-full px-3.5 py-2 text-[11px] font-bold uppercase tracking-wide transition-colors ${
                       activeFilter === o.code ? "bg-neon text-black" : "bg-ink-3 text-white hover:bg-[#383838]"
                     }`}
                   >

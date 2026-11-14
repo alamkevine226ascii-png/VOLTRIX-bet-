@@ -69,8 +69,8 @@ function Segmented<T extends string | number>({
             key={String(o.value)}
             onClick={() => onChange(o.value)}
             aria-pressed={active}
-            className={`flex-1 rounded-xl px-2 py-2 text-[11px] font-black uppercase tracking-wide transition-colors ${
-              active ? "bg-black text-neon" : "text-black/50 hover:text-black/80"
+            className={`flex-1 min-h-[44px] rounded-xl px-2.5 py-2.5 text-[12.5px] font-black uppercase tracking-wide transition-colors ${
+              active ? "bg-black text-neon" : "text-black/70 hover:text-black"
             }`}
           >
             {o.label}
@@ -96,26 +96,26 @@ function LegRow({
       }`}
     >
       <span className="flex w-[52px] shrink-0 flex-col items-start gap-0.5">
-        <span className="text-[9px] font-bold uppercase tracking-wide text-black/45">
+        <span className="text-[10px] font-bold uppercase tracking-wide text-black/60">
           {timeLabel(leg.kickoff)}
         </span>
-        <span className="text-[8px] font-semibold uppercase tracking-wide text-black/35">
+        <span className="text-[9.5px] font-semibold uppercase tracking-wide text-black/55">
           {new Date(leg.kickoff).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" })}
         </span>
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[11px] font-extrabold text-black">
+        <span className="block truncate text-[12px] font-extrabold text-black">
           {leg.pick}
         </span>
-        <span className="block truncate text-[9.5px] font-semibold text-black/50">
+        <span className="block truncate text-[10.5px] font-semibold text-black/60">
           {leg.homeShort} – {leg.awayShort} · {leg.leagueShort}
         </span>
       </span>
       <span className="flex shrink-0 flex-col items-end gap-0.5">
-        <span className="font-display text-[15px] font-black leading-none text-black">
+        <span className="font-display text-[16px] font-black leading-none text-black">
           {leg.odds.toFixed(2)}
         </span>
-        <span className="text-[9px] font-bold text-black/45">
+        <span className="text-[10.5px] font-bold text-black/60">
           {Math.round(leg.prob * 100)}%
         </span>
       </span>
@@ -149,10 +149,10 @@ function ComboCard({
       {/* bandeau résultat */}
       <div className="flex items-center gap-3 bg-black px-4 py-3.5">
         <div className="min-w-0 flex-1">
-          <p className="text-[8.5px] font-black uppercase tracking-[0.16em] text-white/40">
+          <p className="text-[9.5px] font-black uppercase tracking-[0.16em] text-white/55">
             {rank === 0 ? "Combiné proposé" : `Variante ${rank}`}
           </p>
-          <p className="truncate text-[10px] font-semibold text-white/50">
+          <p className="truncate text-[10.5px] font-semibold text-white/60">
             {combo.legs.length} sélection{combo.legs.length > 1 ? "s" : ""} ·{" "}
             {dayLabel(combo.legs[0].kickoff)}
             {combo.legs.length > 1
@@ -162,7 +162,7 @@ function ComboCard({
         </div>
         <div className="flex items-center gap-3">
           <div className="flex flex-col items-end">
-            <span className="text-[8px] font-black uppercase tracking-widest text-white/35">
+            <span className="text-[9.5px] font-black uppercase tracking-widest text-white/50">
               Côte
             </span>
             <span className="font-display text-[24px] font-black leading-none text-neon">
@@ -171,7 +171,7 @@ function ComboCard({
           </div>
           <div className="h-8 w-px bg-white/10" aria-hidden="true" />
           <div className="flex flex-col items-end">
-            <span className="text-[8px] font-black uppercase tracking-widest text-white/35">
+            <span className="text-[9.5px] font-black uppercase tracking-widest text-white/50">
               Réussite
             </span>
             <span
@@ -198,7 +198,7 @@ function ComboCard({
             aria-hidden="true"
           />
         </div>
-        <p className="mt-1.5 text-[9px] font-bold uppercase tracking-wide text-black/60">
+        <p className="mt-1.5 text-[10px] font-bold uppercase tracking-wide text-black/70">
           {pass
             ? `Seuil de ${Math.round(minProb * 100)} % atteint`
             : `Sous le seuil de ${Math.round(minProb * 100)} % — meilleur combiné possible`}
@@ -318,7 +318,7 @@ export function CombinatorScreen({
   return (
     <div className="relative h-full bg-ink text-white">
       {/* contenu défilant */}
-      <main className="no-scrollbar absolute inset-0 overflow-y-auto overscroll-contain px-5 pb-10 pt-[86px]">
+      <main className="no-scrollbar absolute inset-0 overflow-y-auto overscroll-contain px-5 pb-12 pt-[96px]">
         {/* ---------- paramètres ---------- */}
         <section
           aria-label="Paramètres du combiné"
@@ -326,8 +326,8 @@ export function CombinatorScreen({
         >
           {/* côte cible */}
           <div className="flex items-end justify-between">
-            <p className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-black/50">
-              <Target size={13} strokeWidth={2.6} /> Côte cible
+            <p className="flex items-center gap-1.5 text-[10.5px] font-black uppercase tracking-[0.14em] text-black/60">
+              <Target size={14} strokeWidth={2.6} /> Côte cible
             </p>
             <p className="flex items-baseline gap-1">
               <span className="font-display text-[34px] font-black leading-none text-black">
@@ -346,13 +346,13 @@ export function CombinatorScreen({
             aria-label="Côte cible du combiné"
             className="mt-2 w-full accent-black"
           />
-          <div className="flex justify-between text-[8.5px] font-bold uppercase tracking-wide text-black/35">
+          <div className="flex justify-between text-[9.5px] font-bold uppercase tracking-wide text-black/55">
             <span>{TARGET_MIN.toFixed(2)}</span>
             <span>{TARGET_MAX.toFixed(2)}</span>
           </div>
 
           {/* seuil de réussite */}
-          <p className="mt-4 text-[10px] font-black uppercase tracking-[0.14em] text-black/50">
+          <p className="mt-4 text-[10.5px] font-black uppercase tracking-[0.14em] text-black/60">
             Chance de réussite minimum
           </p>
           <div className="mt-1.5">
@@ -365,7 +365,7 @@ export function CombinatorScreen({
           </div>
 
           {/* périmètre */}
-          <p className="mt-4 text-[10px] font-black uppercase tracking-[0.14em] text-black/50">
+          <p className="mt-4 text-[10.5px] font-black uppercase tracking-[0.14em] text-black/60">
             Matchs analysés
           </p>
           <div className="mt-1.5">
@@ -379,7 +379,7 @@ export function CombinatorScreen({
               onChange={setScope}
             />
           </div>
-          <p className="mt-1.5 text-[9.5px] font-semibold text-black/45">
+          <p className="mt-1.5 text-[10px] font-semibold text-black/60">
             {scope === "day" ? scopeLabel : "Aujourd'hui à J+6."}
           </p>
 
@@ -405,7 +405,7 @@ export function CombinatorScreen({
 
         {/* ---------- stats du dernier passage ---------- */}
         {outcome ? (
-          <p className="mt-3 px-1 text-[9px] font-bold uppercase tracking-widest text-white/50">
+          <p className="mt-3 px-1 text-[10px] font-bold uppercase tracking-widest text-white/65">
             {outcome.matches} match{outcome.matches > 1 ? "s" : ""} analysé
             {outcome.matches > 1 ? "s" : ""} · {outcome.poolSize} sélection
             {outcome.poolSize > 1 ? "s" : ""} jouable{outcome.poolSize > 1 ? "s" : ""} ·{" "}
@@ -451,7 +451,7 @@ export function CombinatorScreen({
         ) : null}
 
         {outcome && outcome.relaxed && outcome.results.length > 0 ? (
-          <p className="mt-3 rounded-2xl bg-amber-400/10 px-3 py-2 text-[9.5px] font-bold leading-relaxed text-amber-300 ring-1 ring-amber-400/25">
+          <p className="mt-3 rounded-2xl bg-amber-400/15 px-3 py-2 text-[10.5px] font-bold leading-relaxed text-amber-200 ring-1 ring-amber-400/30">
             Seuil de {Math.round(outcome.minProb * 100)} % non atteignable à cette côte — meilleur combiné possible.
           </p>
         ) : null}
@@ -478,7 +478,7 @@ export function CombinatorScreen({
           </div>
         ) : null}
 
-        <p className="mt-6 text-center text-[8.5px] font-bold uppercase tracking-widest text-white/40">
+        <p className="mt-6 text-center text-[10px] font-bold uppercase tracking-widest text-white/50">
           Jouer comporte des risques
         </p>
       </main>
@@ -488,7 +488,7 @@ export function CombinatorScreen({
         <button
           onClick={onBack}
           aria-label="Retour à l'accueil"
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-ink-3/90 text-white backdrop-blur transition-colors hover:bg-neon hover:text-black"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-ink-3/95 text-white backdrop-blur transition-colors hover:bg-neon hover:text-black"
         >
           <ChevronLeft size={18} strokeWidth={2.4} />
         </button>
@@ -496,7 +496,7 @@ export function CombinatorScreen({
           <h1 className="text-[17px] font-black leading-tight tracking-tight text-white">
             Combinateur
           </h1>
-          <p className="truncate text-[9.5px] font-bold uppercase tracking-widest text-white/40">
+          <p className="truncate text-[10px] font-bold uppercase tracking-widest text-white/55">
             Combiné à côte cible · {scopeLabel}
           </p>
         </div>
@@ -505,7 +505,7 @@ export function CombinatorScreen({
             onClick={() => void analyze()}
             disabled={analyzing}
             aria-label="Relancer l'analyse"
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-ink-3/90 text-white backdrop-blur transition-colors hover:bg-neon hover:text-black disabled:opacity-50"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-ink-3/95 text-white backdrop-blur transition-colors hover:bg-neon hover:text-black disabled:opacity-50"
           >
             <RefreshCw size={15} strokeWidth={2.2} className={analyzing ? "animate-spin" : ""} />
           </button>

@@ -90,7 +90,7 @@ export function SettingsScreen({ headerSlot }: { headerSlot?: ReactNode }) {
         </div>
         <button
           onClick={refresh}
-          className="flex h-9 w-9 items-center justify-center rounded-full bg-ink-3 text-white transition-colors hover:bg-neon hover:text-black"
+          className="flex h-11 w-11 items-center justify-center rounded-full bg-ink-3 text-white transition-colors hover:bg-neon hover:text-black"
           aria-label="Actualiser les statistiques"
         >
           <RefreshCw size={15} strokeWidth={2.2} />
@@ -116,7 +116,7 @@ export function SettingsScreen({ headerSlot }: { headerSlot?: ReactNode }) {
             <KpiTile label="Ligues foot suivies" value={`${LEAGUES.length}`} />
             <KpiTile label="Organisation MMA" value="UFC" />
           </div>
-          <p className="mt-3 text-[9px] leading-relaxed text-white/30">
+          <p className="mt-3 text-[10.5px] leading-relaxed text-white/30">
             Les deux moteurs sont STRICTEMENT distincts : football (Poisson par morceaux + Elo + forme, marchés
             1X2/O-U/BTTS/1er but) et UFC (dimensions de carrière, méthodes de victoire, rounds de fin réels) n&apos;ont
             aucun paramètre ni modèle en commun — seul le transport HTTP/ESPN est partagé.
@@ -132,7 +132,7 @@ export function SettingsScreen({ headerSlot }: { headerSlot?: ReactNode }) {
               <p className="text-[10.5px] font-semibold leading-relaxed text-white/60">
                 Endpoints publics ESPN consommés directement par le navigateur (CORS ouvert, aucune clé) :
               </p>
-              <ul className="mt-2 space-y-1.5 text-[9.5px] font-semibold text-white/45">
+              <ul className="mt-2 space-y-1.5 text-[10.5px] font-semibold text-white/45">
                 <li className="break-all">
                   <span className="text-white/70">Football :</span> site.api.espn.com/…/soccer/&#123;ligue&#125;/scoreboard ·
                   /teams/&#123;id&#125;/schedule · /standings · /injuries · /summary (1er but)
@@ -146,7 +146,7 @@ export function SettingsScreen({ headerSlot }: { headerSlot?: ReactNode }) {
                   <span className="text-white/70">Météo :</span> open-meteo.com (gratuit, sans clé)
                 </li>
               </ul>
-              <p className="mt-2.5 text-[9px] leading-relaxed text-white/30">
+              <p className="mt-2.5 text-[10.5px] leading-relaxed text-white/30">
                 Cadre d&apos;usage personnel et non commercial — les conditions Disney/ESPN réservent l&apos;usage
                 commercial à une licence. Requêtes limitées à 4 simultanées, mises en cache, avec relance polie en cas
                 de bridage.
@@ -167,7 +167,7 @@ export function SettingsScreen({ headerSlot }: { headerSlot?: ReactNode }) {
             <button
               onClick={() => void doClear()}
               disabled={clearing}
-              className="flex items-center gap-1.5 rounded-full bg-neon px-3 py-1.5 text-[9px] font-black uppercase tracking-wider text-black transition-transform active:scale-95 disabled:opacity-50"
+              className="flex items-center gap-1.5 rounded-full bg-neon px-3 py-1.5 text-[10.5px] font-black uppercase tracking-wider text-black transition-transform active:scale-95 disabled:opacity-50"
             >
               <Trash2 size={11} strokeWidth={2.8} />
               {clearing ? "Purge…" : "Vider"}
@@ -182,7 +182,7 @@ export function SettingsScreen({ headerSlot }: { headerSlot?: ReactNode }) {
             </div>
           ) : null}
 
-          <p className="mt-3 text-[9px] leading-relaxed text-white/30">
+          <p className="mt-3 text-[10.5px] leading-relaxed text-white/30">
             Scoreboards 10 min · calendriers et classements 3 h · fiches combattants 24 h · analyses 30 min (60 s le
             jour du match) · indicateurs dérivés 12 h · prior rounds UFC 7 jours. Tout est stocké sur l&apos;appareil :
             quitter puis rouvrir l&apos;app dans les 10 minutes ne déclenche AUCUN recalcul réseau. Vider le cache force
@@ -240,17 +240,17 @@ export function SettingsScreen({ headerSlot }: { headerSlot?: ReactNode }) {
                 <div className="mt-2.5 space-y-1">
                   {modelCheck.rows.slice(0, 6).map((r, i) => (
                     <div key={i} className="flex items-center justify-between gap-2 rounded-xl bg-ink-3 px-3 py-1.5">
-                      <span className="min-w-0 flex-1 truncate text-[9px] font-bold text-white/60">
+                      <span className="min-w-0 flex-1 truncate text-[10.5px] font-bold text-white/60">
                         {r.fighterA.split(" ").pop()} vs {r.fighterB.split(" ").pop()}
                       </span>
-                      <span className={`text-[9px] font-black ${r.correct ? "text-neon" : "text-white/35"}`}>
+                      <span className={`text-[10.5px] font-black ${r.correct ? "text-neon" : "text-white/35"}`}>
                         {r.correct ? "✓ prono juste" : "✗ faux"} · {Math.round(r.probability)} %
                       </span>
                     </div>
                   ))}
                 </div>
               ) : null}
-              <p className="mt-2 text-[8.5px] leading-relaxed text-white/30">
+              <p className="mt-2 text-[10px] leading-relaxed text-white/30">
                 {modelCheck.notes.join(" · ")}
               </p>
             </div>
@@ -259,7 +259,7 @@ export function SettingsScreen({ headerSlot }: { headerSlot?: ReactNode }) {
 
         {/* honnêteté */}
         <SectionTitle>Engagements du moteur</SectionTitle>
-        <div className="rounded-[26px] bg-ink-2 p-4 text-[9.5px] font-semibold leading-relaxed text-white/45 ring-1 ring-white/5">
+        <div className="rounded-[26px] bg-ink-2 p-4 text-[10.5px] font-semibold leading-relaxed text-white/45 ring-1 ring-white/5">
           <p>
             <span className="text-neon">Rien d&apos;inventé :</span> une donnée absente chez ESPN est affichée
             « — » ou refuse le prono. Les probabilités MMA sont volontairement bornées entre 25 et 75 % — aucun combat n&apos;est

@@ -198,7 +198,7 @@ def main():
                         f"[{sc_label}] Contraste insuffisant ({c['ratio']}:1) pour « {c['t']} » en {c['fs']} px."))
             for u in aud["issues"].get("underFloating", [])[:3]:
                 points.append((cat_map["floating"],
-                    f"[{sc_label}] Le contenu défile sous la barre flottante semi-transparente (ex. « {u['t']} ») : illisible pendant le défilement."))
+                    f"[{sc_label}] Le contenu défile sous la barre de navigation en bas / l'en-tête en haut (ex. « {u['t']} ») — visible en transition, les barres sont désormais opaques."))
             for _ in aud["issues"].get("brokenImgs", [])[:2]:
                 points.append((cat_map["img"],
                     f"[{sc_label}] Une image ne charge pas (icône cassée affichée)."))

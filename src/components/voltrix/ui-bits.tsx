@@ -17,7 +17,7 @@ export function FormDots({ form, align = "right" }: { form: string | null | unde
   const color = (r: string) => (r === "W" ? "bg-neon" : r === "D" ? "bg-white/70" : r === "L" ? "bg-[#ff5d5d]" : "bg-white/20");
   return (
     <span className={`flex items-center gap-[3px] ${align === "left" ? "justify-start" : "justify-end"}`} aria-label={`Forme ${form ?? "inconnue"}`}>
-      {letters.length === 0 ? <span className="text-[9px] text-white/30">—</span> : letters.map((r, i) => (
+      {letters.length === 0 ? <span className="text-[10.5px] text-white/30">—</span> : letters.map((r, i) => (
         <span key={i} className={`h-[7px] w-[10px] rounded-[2px] ${color(r)}`} title={r} />
       ))}
     </span>
@@ -62,7 +62,7 @@ export function ConfidenceChip({ confidence, label }: { confidence: number; labe
       <span className="text-[11px] leading-none tracking-[0.12em] text-neon" aria-label={`Confiance ${confidence}/5`}>
         {confidenceStars(confidence)}
       </span>
-      {label ? <span className="text-[9px] font-bold uppercase tracking-wider text-white/60">{label}</span> : null}
+      {label ? <span className="text-[10.5px] font-bold uppercase tracking-wider text-white/60">{label}</span> : null}
     </span>
   );
 }
@@ -77,7 +77,7 @@ export function GradeBadge({ grade }: { grade: string | null | undefined }) {
   const txt: Record<string, string> = { CORRECT: "OK", INCORRECT: "KO", VOID: "ANN" };
   const g = grade ?? "";
   return (
-    <span className={`inline-flex h-[22px] min-w-[34px] items-center justify-center rounded-full px-1.5 text-[9.5px] font-black uppercase tracking-wide ${map[g] ?? "bg-ink-3 text-white/35"}`}>
+    <span className={`inline-flex h-[22px] min-w-[34px] items-center justify-center rounded-full px-1.5 text-[10.5px] font-black uppercase tracking-wide ${map[g] ?? "bg-ink-3 text-white/35"}`}>
       {txt[g] ?? "—"}
     </span>
   );
@@ -85,7 +85,7 @@ export function GradeBadge({ grade }: { grade: string | null | undefined }) {
 
 /* ---------- Résultat WIN/LOSE/VOID ---------- */
 export function ResultBadge({ result }: { result: string | null }) {
-  if (!result) return <span className="rounded-full bg-ink-3 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-white/40">En attente</span>;
+  if (!result) return <span className="rounded-full bg-ink-3 px-2 py-0.5 text-[10.5px] font-black uppercase tracking-wider text-white/40">En attente</span>;
   const map: Record<string, string> = {
     WIN: "bg-neon text-black",
     LOSE: "bg-[#ff5d5d] text-white",
@@ -93,7 +93,7 @@ export function ResultBadge({ result }: { result: string | null }) {
   };
   const txt: Record<string, string> = { WIN: "GAGNÉ", LOSE: "PERDU", VOID: "RENDU" };
   return (
-    <span className={`rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-wider ${map[result] ?? "bg-ink-3 text-white/50"}`}>
+    <span className={`rounded-full px-2 py-0.5 text-[10.5px] font-black uppercase tracking-wider ${map[result] ?? "bg-ink-3 text-white/50"}`}>
       {txt[result] ?? result}
     </span>
   );
@@ -135,8 +135,8 @@ export function ProgressRing({
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
         <span className="font-display text-[24px] leading-none tracking-wide text-white">{Math.round(v * 100)}%</span>
-        {label ? <span className="mt-1 text-[8.5px] font-bold uppercase tracking-widest text-white/50">{label}</span> : null}
-        {sub ? <span className="mt-0.5 text-[9px] font-semibold text-neon">{sub}</span> : null}
+        {label ? <span className="mt-1 text-[10px] font-bold uppercase tracking-widest text-white/50">{label}</span> : null}
+        {sub ? <span className="mt-0.5 text-[10.5px] font-semibold text-neon">{sub}</span> : null}
       </div>
     </div>
   );
@@ -148,7 +148,7 @@ export function CalibrationRow({ label, predicted, actual, count }: { label: str
   const a = actual == null ? 0 : Math.round(actual * 100);
   return (
     <div className="grid grid-cols-[52px_1fr_34px] items-center gap-2.5">
-      <span className="text-[9px] font-bold uppercase tracking-wide text-white/50">{label}</span>
+      <span className="text-[10.5px] font-bold uppercase tracking-wide text-white/50">{label}</span>
       <div className="space-y-1">
         <div className="flex h-[8px] items-center overflow-hidden rounded-full bg-black/50">
           <div className="h-full rounded-full bg-neon" style={{ width: `${p}%` }} />
@@ -157,7 +157,7 @@ export function CalibrationRow({ label, predicted, actual, count }: { label: str
           <div className="h-full rounded-full bg-white/75" style={{ width: `${a}%` }} />
         </div>
       </div>
-      <span className="text-right text-[9.5px] font-bold text-white/45">n={count}</span>
+      <span className="text-right text-[10.5px] font-bold text-white/45">n={count}</span>
     </div>
   );
 }
@@ -250,7 +250,7 @@ export function KpiTile({ label, value, tone = "default" }: { label: string; val
     tone === "good" ? "text-[#3ddc84]" : tone === "bad" ? "text-[#ff5d5d]" : tone === "neon" ? "text-neon" : "text-white";
   return (
     <div className="rounded-2xl bg-ink-3 px-3 py-2.5">
-      <p className="text-[8.5px] font-bold uppercase tracking-widest text-white/45">{label}</p>
+      <p className="text-[10px] font-bold uppercase tracking-widest text-white/45">{label}</p>
       <p className={`mt-1 text-[16px] font-black leading-none ${toneCls}`}>{value}</p>
     </div>
   );
@@ -296,7 +296,7 @@ export function eurCompact(v: number | null | undefined): string {
 export function EdgeChip({ edge }: { edge: number }) {
   const positive = edge > 0;
   return (
-    <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-black ${positive ? "bg-neon text-black" : "bg-white/15 text-white/50"}`}>
+    <span className={`rounded-full px-1.5 py-0.5 text-[10.5px] font-black ${positive ? "bg-neon text-black" : "bg-white/15 text-white/50"}`}>
       {positive ? "+" : ""}
       {Math.round(edge * 100)} %
     </span>

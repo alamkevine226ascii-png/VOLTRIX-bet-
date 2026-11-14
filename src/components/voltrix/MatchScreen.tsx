@@ -57,7 +57,7 @@ function ComponentRow({ name, probs, note }: { name: string; probs: { home: numb
     <div className="rounded-2xl bg-black/30 px-3.5 py-3">
       <div className="flex items-center justify-between">
         <span className="text-[10px] font-black uppercase tracking-widest text-white/70">{name}</span>
-        {note ? <span className="text-[9px] font-semibold text-white/35">{note}</span> : null}
+        {note ? <span className="text-[10.5px] font-semibold text-white/35">{note}</span> : null}
       </div>
       <div className="mt-2 grid grid-cols-3 gap-1.5">
         <ProbBar label="1" value={probs.home} compact />
@@ -187,12 +187,12 @@ export function MatchScreen({
         <TeamBadge name={t.name} logo={t.logo} size={38} />
         <div className="min-w-0">
           <p className="truncate text-[12px] font-black uppercase tracking-wide text-white">{t.name}</p>
-          <p className="text-[9.5px] font-bold text-white/40">
+          <p className="text-[10.5px] font-bold text-white/40">
             Elo {t.elo} {t.rank ? `· ${t.rank}e` : ""} {t.points ? `· ${t.points} pts` : ""}
           </p>
         </div>
       </div>
-      <div className="mt-2.5 grid grid-cols-2 gap-x-3 gap-y-1.5 text-[9.5px]">
+      <div className="mt-2.5 grid grid-cols-2 gap-x-3 gap-y-1.5 text-[10.5px]">
         {[
           ["Forme", `${Math.round(t.formScore * 100)}/100`],
           ["Buts/match", t.goalsForPerMatch.toFixed(2)],
@@ -210,7 +210,7 @@ export function MatchScreen({
         ))}
       </div>
       <div className="mt-2 flex items-center justify-between">
-        <span className="text-[8.5px] font-bold uppercase tracking-widest text-white/35">Forme</span>
+        <span className="text-[10px] font-bold uppercase tracking-widest text-white/35">Forme</span>
         <FormDots form={t.form.map((f) => f.result).join("")} />
       </div>
     </div>
@@ -219,7 +219,7 @@ export function MatchScreen({
   const backBtn = (
     <button
       onClick={onBack}
-      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-ink-3/90 text-white backdrop-blur transition-colors hover:bg-neon hover:text-black"
+      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-ink-3/95 text-white backdrop-blur transition-colors hover:bg-neon hover:text-black"
       aria-label="Retour"
     >
       <ChevronLeft size={18} strokeWidth={2.4} />
@@ -229,7 +229,7 @@ export function MatchScreen({
   const refreshBtn = (
     <button
       onClick={() => void load()}
-      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-ink-3/90 text-white backdrop-blur transition-colors hover:bg-neon hover:text-black"
+      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-ink-3/95 text-white backdrop-blur transition-colors hover:bg-neon hover:text-black"
       aria-label="Réanalyser"
     >
       <RefreshCw size={15} strokeWidth={2.2} className={loading ? "animate-spin" : ""} />
@@ -253,7 +253,7 @@ export function MatchScreen({
           <TeamBadge name={homeName} logo={light?.home.logo ?? detail?.home.logo ?? null} size={30} />
           <div className="min-w-0 flex-1 text-center">
             <p className="font-display text-[17px] leading-none tracking-wide text-white">{compactCenter}</p>
-            <p className="mt-0.5 truncate text-[8px] font-bold uppercase tracking-widest text-white/40">
+            <p className="mt-0.5 truncate text-[10.5px] font-bold uppercase tracking-widest text-white/40">
               {detail?.leagueName ?? light?.leagueName ?? leagueCode}
               {live ? " · Live" : ""}
             </p>
@@ -285,12 +285,12 @@ export function MatchScreen({
                 {detail?.leagueName ?? light?.leagueName ?? leagueCode}
               </span>
               {live ? (
-                <span className="flex items-center gap-1 rounded-full bg-neon px-2.5 py-1 text-[9px] font-black uppercase text-black">
+                <span className="flex items-center gap-1 rounded-full bg-neon px-2.5 py-1 text-[10.5px] font-black uppercase text-black">
                   <span className="live-dot h-1.5 w-1.5 rounded-full bg-black" />
                   Live
                 </span>
               ) : (
-                <span className="rounded-full bg-ink-3/90 px-2.5 py-1 text-[9px] font-black uppercase tracking-wide text-white/70 backdrop-blur">
+                <span className="rounded-full bg-ink-3/90 px-2.5 py-1 text-[10.5px] font-black uppercase tracking-wide text-white/70 backdrop-blur">
                   {detail?.status === "post" ? "Terminé" : "À venir"}
                 </span>
               )}
@@ -302,7 +302,7 @@ export function MatchScreen({
           <div className="relative mt-2 grid grid-cols-[1fr_auto_1fr] items-center px-6 pb-4 pt-1">
             <div className="flex flex-col items-center gap-1.5">
               <TeamBadge name={homeName} logo={light?.home.logo ?? detail?.home.logo ?? null} size={56} />
-              <span className="max-w-[104px] text-center text-[8.5px] font-extrabold leading-[1.3] tracking-wide text-white">
+              <span className="max-w-[104px] text-center text-[10px] font-extrabold leading-[1.3] tracking-wide text-white">
                 {homeName.toUpperCase()}
               </span>
             </div>
@@ -312,7 +312,7 @@ export function MatchScreen({
                   <span className="font-display text-[36px] leading-none tracking-wide text-white">
                     {detail!.homeScore}:{detail!.awayScore}
                   </span>
-                  <span className="mt-1 block text-[8.5px] font-semibold uppercase tracking-widest text-white/50">
+                  <span className="mt-1 block text-[10px] font-semibold uppercase tracking-widest text-white/50">
                     {detail?.statusDetail || (detail?.status === "post" ? "FT" : "")}
                   </span>
                 </>
@@ -321,7 +321,7 @@ export function MatchScreen({
                   <span className="font-display text-[28px] leading-none tracking-wide text-white">
                     {detail ? timeLabel(detail.matchDate) : light ? timeLabel(light.date) : "--:--"}
                   </span>
-                  <span className="mt-1 block text-[8.5px] font-semibold uppercase tracking-widest text-white/50">
+                  <span className="mt-1 block text-[10px] font-semibold uppercase tracking-widest text-white/50">
                     Coup d&apos;envoi
                   </span>
                 </>
@@ -329,7 +329,7 @@ export function MatchScreen({
             </div>
             <div className="flex flex-col items-center gap-1.5">
               <TeamBadge name={awayName} logo={light?.away.logo ?? detail?.away.logo ?? null} size={56} />
-              <span className="max-w-[104px] text-center text-[8.5px] font-extrabold leading-[1.3] tracking-wide text-white">
+              <span className="max-w-[104px] text-center text-[10px] font-extrabold leading-[1.3] tracking-wide text-white">
                 {awayName.toUpperCase()}
               </span>
             </div>
@@ -337,7 +337,7 @@ export function MatchScreen({
 
           {/* lieu */}
           <div className="relative flex justify-center pb-3">
-            <span className="inline-flex max-w-[85%] items-center gap-1.5 rounded-full bg-ink-3/80 px-3 py-1 text-[9px] font-bold uppercase tracking-wide text-white/70 backdrop-blur">
+            <span className="inline-flex max-w-[85%] items-center gap-1.5 rounded-full bg-ink-3/80 px-3 py-1 text-[10.5px] font-bold uppercase tracking-wide text-white/70 backdrop-blur">
               <MapPin size={10} strokeWidth={2.4} className="shrink-0 text-neon" />
               <span className="truncate">
                 {detail?.venue.name ?? light?.venue.name ?? "Stade"}
@@ -357,8 +357,8 @@ export function MatchScreen({
             {/* ---------- PRONO DU MOTEUR : une carte, une hiérarchie ---------- */}
             <section className="rounded-[26px] bg-neon px-5 pb-4 pt-4 text-black">
               <div className="flex items-center justify-between gap-2">
-                <p className="text-[9px] font-black uppercase tracking-[0.2em] text-black/50">Prono du moteur</p>
-                <span className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-wider text-black/70">
+                <p className="text-[10.5px] font-black uppercase tracking-[0.2em] text-black/50">Prono du moteur</p>
+                <span className="flex items-center gap-1.5 text-[10.5px] font-black uppercase tracking-wider text-black/70">
                   <span title={`Confiance ${pred.confidence}/5`}>{confidenceStars(pred.confidence)}</span>
                   {pred.confidenceLabel}
                 </span>
@@ -387,7 +387,7 @@ export function MatchScreen({
                       } ${best ? "bg-black text-neon" : "text-black/75"}`}
                       style={{ flexGrow: Math.max(0.09, s.value) }}
                     >
-                      <span className="w-full truncate text-center text-[8px] font-bold uppercase tracking-wider opacity-70">
+                      <span className="w-full truncate text-center text-[10.5px] font-bold uppercase tracking-wider opacity-70">
                         {s.odds != null ? `${s.label} ${s.odds.toFixed(2)}` : s.label}
                       </span>
                       <span className="text-[14px] font-black leading-none">{Math.round(s.value * 100)}%</span>
@@ -453,11 +453,11 @@ export function MatchScreen({
                   {pred.firstGoalHeadline ? (
                     <div className="mb-3 rounded-2xl bg-ink-3 px-3.5 py-3">
                       <div className="flex items-center justify-between gap-2">
-                        <p className="text-[9px] font-black uppercase tracking-widest text-white/40">
+                        <p className="text-[10.5px] font-black uppercase tracking-widest text-white/40">
                           1er but attendu
                         </p>
                         <span
-                          className={`rounded-full px-2 py-0.5 text-[8px] font-black uppercase tracking-wide ${
+                          className={`rounded-full px-2 py-0.5 text-[10.5px] font-black uppercase tracking-wide ${
                             pred.firstGoalHeadline.basis === "equipes"
                               ? "bg-neon/15 text-neon"
                               : "bg-white/10 text-white/50"
@@ -476,7 +476,7 @@ export function MatchScreen({
                               e minute
                             </span>
                           </p>
-                          <p className="mt-1 text-[9.5px] font-semibold text-white/50">
+                          <p className="mt-1 text-[10.5px] font-semibold text-white/50">
                             Fenêtre attendue : {pred.firstGoalTiming[highlightWindow]?.label} (
                             {pct(pred.firstGoalTiming[highlightWindow]?.prob ?? 0, 1)})
                           </p>
@@ -495,7 +495,7 @@ export function MatchScreen({
                             { name: detail.away.name, med: pred.firstGoalHeadline.awayMedianMinute },
                           ].map((t) => (
                             <div key={t.name} className="rounded-xl bg-black/40 px-2.5 py-2">
-                              <p className="truncate text-[8px] font-bold uppercase tracking-wider text-white/35">
+                              <p className="truncate text-[10.5px] font-bold uppercase tracking-wider text-white/35">
                                 {t.name}
                               </p>
                               <p className="mt-0.5 text-[10.5px] font-black text-white/85">
@@ -523,7 +523,7 @@ export function MatchScreen({
                             : "bg-ink-3"
                         }`}
                       >
-                        <span className="w-[110px] text-[9.5px] font-bold text-white/60">{w.label}</span>
+                        <span className="w-[110px] text-[10.5px] font-bold text-white/60">{w.label}</span>
                         <div className="h-[6px] flex-1 overflow-hidden rounded-full bg-black/50">
                           <div
                             className={`h-full rounded-full ${i === highlightWindow ? "bg-neon" : "bg-white/70"}`}
@@ -540,7 +540,7 @@ export function MatchScreen({
                         { k: detail.away.name, v: pred.firstToScore.away },
                       ].map((x) => (
                         <div key={x.k} className="rounded-2xl bg-ink-3 px-2 py-2 text-center">
-                          <p className="truncate text-[8.5px] font-bold uppercase tracking-wider text-white/40">{x.k}</p>
+                          <p className="truncate text-[10px] font-bold uppercase tracking-wider text-white/40">{x.k}</p>
                           <p className="mt-1 text-[14px] font-black text-white">{pct(x.v)}</p>
                         </div>
                       ))}
@@ -568,7 +568,7 @@ export function MatchScreen({
                           { k: detail.away.name, v: pred.lambda.away },
                         ].map((x) => (
                           <div key={x.k} className="rounded-2xl bg-black/30 px-2 py-2.5 text-center">
-                            <p className="truncate text-[8.5px] font-bold uppercase tracking-wider text-white/40">{x.k}</p>
+                            <p className="truncate text-[10px] font-bold uppercase tracking-wider text-white/40">{x.k}</p>
                             <p className="mt-1 text-[17px] font-black text-neon">λ {x.v.toFixed(2)}</p>
                           </div>
                         ))}
@@ -584,7 +584,7 @@ export function MatchScreen({
                   <SectionTitle
                     right={
                       pred.valueBets.length ? (
-                        <span className="rounded-full bg-neon px-2 py-0.5 text-[8.5px] font-black uppercase text-black">
+                        <span className="rounded-full bg-neon px-2 py-0.5 text-[10px] font-black uppercase text-black">
                           {pred.valueBets.length} value
                         </span>
                       ) : undefined
@@ -605,13 +605,13 @@ export function MatchScreen({
                           <div className="flex items-center justify-between gap-2">
                             <span className="min-w-0">
                               <span className="block truncate text-[12px] font-black text-white">{vb.pick}</span>
-                              <span className="text-[9px] font-bold uppercase tracking-wider text-white/40">
+                              <span className="text-[10.5px] font-bold uppercase tracking-wider text-white/40">
                                 {vb.market} · modèle {pct(vb.modelProb)} · cote {oddsFmt(vb.odds)}
                               </span>
                             </span>
                             <span className="flex shrink-0 items-center gap-1.5">
                               <EdgeChip edge={vb.edge} />
-                              <span className="rounded-full bg-black/60 px-2 py-0.5 text-[9px] font-black text-white/70">
+                              <span className="rounded-full bg-black/60 px-2 py-0.5 text-[10.5px] font-black text-white/70">
                                 K {Math.round(vb.kelly * 100)}%
                               </span>
                             </span>
@@ -631,7 +631,7 @@ export function MatchScreen({
                           <div className="flex items-center justify-between">
                             <span className="text-[11px] font-black text-white">Ligne {ou.line.toFixed(1)}</span>
                             {ou.line === 2.5 ? (
-                              <span className="rounded-full bg-neon px-2.5 py-1 text-[8.5px] font-black uppercase tracking-wider text-black">
+                              <span className="rounded-full bg-neon px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-black">
                                 {ou.over >= 0.5 ? "Plus de 2.5" : "Moins de 2.5"} · {pct(Math.max(ou.over, ou.under))}
                               </span>
                             ) : null}
@@ -650,7 +650,7 @@ export function MatchScreen({
                     <div className="rounded-2xl bg-ink-3 px-3.5 py-3">
                       <div className="flex items-baseline justify-between gap-2">
                         <span className="text-[11px] font-black text-white">Distribution des buts</span>
-                        <span className="text-[8px] font-bold uppercase tracking-wider text-white/35">
+                        <span className="text-[10.5px] font-bold uppercase tracking-wider text-white/35">
                           {pred.mc.iterations.toLocaleString("fr-FR")} sim. MC · écart {pct(pred.mc.agreement, 1)}
                         </span>
                       </div>
@@ -670,12 +670,12 @@ export function MatchScreen({
                       </div>
                       <div className="mt-1 flex gap-1">
                         {pred.mc.totalGoalsHist.map((_, t) => (
-                          <span key={t} className="flex-1 text-center text-[8px] font-bold text-white/35">
+                          <span key={t} className="flex-1 text-center text-[10.5px] font-bold text-white/35">
                             {t}
                           </span>
                         ))}
                       </div>
-                      <p className="mt-2 text-[9px] leading-relaxed text-white/40">
+                      <p className="mt-2 text-[10.5px] leading-relaxed text-white/40">
                         Poisson bivarié (λ³ {pred.mc.lambda3.toFixed(2)} · seed {pred.mc.seed}) · médiane {pred.mc.medianGoals} buts · victoire sans encaisser :{" "}
                         {pct(pred.mc.winToNil.home, 1)} / {pct(pred.mc.winToNil.away, 1)}
                       </p>
@@ -688,7 +688,7 @@ export function MatchScreen({
                     <ProbBar label="BTTS Non" value={pred.btts.no} />
                   </div>
                   {pred.raw ? (
-                    <p className="mt-2 text-[9px] leading-relaxed text-white/35">
+                    <p className="mt-2 text-[10.5px] leading-relaxed text-white/35">
                       Probabilités brutes (pré-calibrage marché) : Over {pct(pred.raw.overUnder[0]?.over, 1)} · BTTS Oui {pct(pred.raw.btts.yes, 1)}. La calibration marché s&apos;applique aux totals.
                     </p>
                   ) : null}
@@ -701,7 +701,7 @@ export function MatchScreen({
                   ) : null}
 
                   {detail.odds ? (
-                    <p className="mt-3 text-center text-[9px] font-semibold uppercase tracking-widest text-white/30">
+                    <p className="mt-3 text-center text-[10.5px] font-semibold uppercase tracking-widest text-white/30">
                       Cotes {detail.odds.provider} · open/close capturées à la prédiction
                     </p>
                   ) : null}
@@ -719,7 +719,7 @@ export function MatchScreen({
                       { k: detail.away.name, v: detail.h2hSummary.awayWins, tone: "bg-[#ff5d5d]/80 text-white" },
                     ].map((x) => (
                       <div key={x.k} className={`rounded-2xl px-2 py-3 text-center ${x.tone}`}>
-                        <p className="truncate text-[8.5px] font-bold uppercase tracking-wider opacity-70">{x.k}</p>
+                        <p className="truncate text-[10px] font-bold uppercase tracking-wider opacity-70">{x.k}</p>
                         <p className="mt-1 font-display text-[22px] leading-none">{x.v}</p>
                       </div>
                     ))}
@@ -736,11 +736,11 @@ export function MatchScreen({
                             <p className="truncate text-[11px] font-bold text-white">
                               {h.homeTeam} <span className="mx-1 rounded bg-black/50 px-1.5 py-0.5 font-display text-[12px] text-neon">{h.score}</span> {h.awayTeam}
                             </p>
-                            <p className="text-[9px] font-semibold text-white/35">
+                            <p className="text-[10.5px] font-semibold text-white/35">
                               {new Date(h.date).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" })}
                             </p>
                           </div>
-                          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[8.5px] font-black uppercase ${
+                          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-black uppercase ${
                             h.winner === "home" ? "bg-neon text-black" : h.winner === "away" ? "bg-[#ff5d5d] text-white" : "bg-white/15 text-white/70"
                           }`}>
                             {h.winner === "draw" ? "Nul" : "Victoire"}
@@ -749,7 +749,7 @@ export function MatchScreen({
                       ))}
                     </div>
                   )}
-                  <p className="mt-3 text-[9px] leading-relaxed text-white/30">
+                  <p className="mt-3 text-[10.5px] leading-relaxed text-white/30">
                     Historique lu dans les calendriers ESPN des deux équipes (2 saisons) — comptage par identifiant d&apos;équipe, les deux ordres domicile/extérieur.
                   </p>
                 </div>
@@ -768,11 +768,11 @@ export function MatchScreen({
                   <SectionTitle>Enjeux</SectionTitle>
                   <div className="space-y-2">
                     <div className="rounded-2xl bg-ink-3 px-3.5 py-3">
-                      <p className="text-[9px] font-black uppercase tracking-widest text-white/40">{detail.home.name}</p>
+                      <p className="text-[10.5px] font-black uppercase tracking-widest text-white/40">{detail.home.name}</p>
                       <p className="mt-1 text-[11px] font-semibold leading-relaxed text-white/80">{detail.context.stakesHome}</p>
                     </div>
                     <div className="rounded-2xl bg-ink-3 px-3.5 py-3">
-                      <p className="text-[9px] font-black uppercase tracking-widest text-white/40">{detail.away.name}</p>
+                      <p className="text-[10.5px] font-black uppercase tracking-widest text-white/40">{detail.away.name}</p>
                       <p className="mt-1 text-[11px] font-semibold leading-relaxed text-white/80">{detail.context.stakesAway}</p>
                     </div>
                   </div>
@@ -786,7 +786,7 @@ export function MatchScreen({
                           <p className="text-[11.5px] font-black text-white">
                             {detail.context.weather.description} · {detail.context.weather.tempC}°C · vent {detail.context.weather.windKmh} km/h
                           </p>
-                          <p className="text-[9.5px] font-semibold text-white/45">Impact moteur : {detail.context.weather.impact}</p>
+                          <p className="text-[10.5px] font-semibold text-white/45">Impact moteur : {detail.context.weather.impact}</p>
                         </div>
                       </div>
                     </>
@@ -829,7 +829,7 @@ export function MatchScreen({
                       <p className="text-[11.5px] font-black text-white">
                         {detail.venue.name ?? "Stade inconnu"}
                       </p>
-                      <p className="mt-0.5 text-[9.5px] font-semibold text-white/45">
+                      <p className="mt-0.5 text-[10.5px] font-semibold text-white/45">
                         {[detail.venue.city, detail.venue.country].filter(Boolean).join(", ") || "Lieu non communiqué"}
                       </p>
                     </div>
@@ -844,7 +844,7 @@ export function MatchScreen({
       {loading ? (
         <div className="absolute bottom-6 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full bg-black/70 px-3.5 py-2 ring-1 ring-white/10">
           <Loader2 size={12} className="animate-spin text-neon" />
-          <span className="text-[9.5px] font-bold uppercase tracking-widest text-white/60">Analyse…</span>
+          <span className="text-[10.5px] font-bold uppercase tracking-widest text-white/60">Analyse…</span>
         </div>
       ) : null}
     </div>
