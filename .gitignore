@@ -57,3 +57,6 @@ server.log
 tool-results/
 upload/
 scripts/backtest-mma/data/
+
+# crash dumps
+/core
