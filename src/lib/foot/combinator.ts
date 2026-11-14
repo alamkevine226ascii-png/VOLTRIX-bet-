@@ -3,10 +3,12 @@
  *
  * Principe (fonctionnalité v1, restaurée et étendue à la semaine) :
  * l'utilisateur choisit une côte cible et un seuil de réussite
- * (40 / 50 / 60 %). Le moteur collecte toutes les sélections
- * « jouables » des matchs à venir (résultat 1X2, double chance,
- * total buts — uniquement celles qui ont une COTE RÉELLE capturée
- * par ESPN), puis cherche le meilleur combiné dont :
+ * (20 / 30 / 40 %). Le moteur collecte toutes les sélections
+ * « jouables » des matchs à venir (victoire V1/V2, match nul,
+ * double chance, total buts, premier but — uniquement celles qui
+ * ont une COTE : réelle du bookmaker pour 1X2/DC/totaux, cote
+ * équitable 1/p dérivée du moteur pour le premier but), puis
+ * cherche le meilleur combiné dont :
  *   - la côte totale (produit des cotes) atteint la cible ;
  *   - la probabilité de réussite (produit des probabilités moteur)
  *     dépasse le seuil demandé.
@@ -217,6 +219,34 @@ export function buildLegPool(days: ComboDayInput[]): { legs: ComboLeg[]; matches
             }
           }
         }
+
+        /* --- Premier but (probabilités moteur, cote dérivée = cote
+         *     équitable 1/p — ESPN ne publie pas ce marché). Les
+         *     fenêtres 15 min donnent « avant la Xe » / « après la
+         *     Xe » aux bornes clés 15/30/45/60/75. --- */
+        const fg = pred.firstGoal;
+        if (fg && fg.windows.length >= 6) {
+          const bounds = [15, 30, 45, 60, 75];
+          let cumBefore = 0;
+          for (let i = 0; i < bounds.length; i++) {
+            cumBefore += fg.windows[i];
+            const after = 1 - cumBefore - fg.noGoal;
+            const b = bounds[i];
+            const fgLeg = (pick: string, p: number) => {
+              if (!validProb(p)) return;
+              const odds = Math.min(ODDS_MAX, Math.max(ODDS_MIN, 1 / p));
+              legs.push({
+                ...base,
+                market: "Premier but",
+                pick,
+                prob: p,
+                odds: Math.round(odds * 100) / 100,
+              });
+            };
+            fgLeg(`1er but avant la ${b + 1}e minute`, cumBefore);
+            fgLeg(`1er but après la ${b}e minute`, after);
+          }
+        }
       }
     }
   }
@@ -290,8 +320,10 @@ export function findBestCombos(
     (l) => l.odds <= maxOdds && l.prob >= minProb && l.prob * l.odds >= 0.8,
   );
 
-  /* Au plus 5 jambes par match (les mieux placées) : un match
-   * n'occupe qu'un slot de combiné, garder plus n'apporte rien. */
+  /* Au plus 6 jambes par match, dont au plus 3 par marché : un
+   * match n'occupe qu'un slot de combiné et la diversité des
+   * marchés (1X2, double chance, total buts, premier but) doit
+   * survivre au plafonnement. */
   const byMatch = new Map<string, ComboLeg[]>();
   for (const l of eligible) {
     const arr = byMatch.get(l.matchId);
@@ -301,7 +333,16 @@ export function findBestCombos(
   const perMatchCapped: ComboLeg[] = [];
   for (const arr of byMatch.values()) {
     arr.sort((a, b) => b.prob - a.prob);
-    perMatchCapped.push(...arr.slice(0, 5));
+    const perMarket = new Map<string, number>();
+    const kept: ComboLeg[] = [];
+    for (const l of arr) {
+      if (kept.length >= 6) break;
+      const c = perMarket.get(l.market) ?? 0;
+      if (c >= 3) continue;
+      perMarket.set(l.market, c + 1);
+      kept.push(l);
+    }
+    perMatchCapped.push(...kept);
   }
 
   /**

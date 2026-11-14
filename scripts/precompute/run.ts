@@ -1,7 +1,7 @@
 /**
  * VOLTRIX — Job de pré-calcul serveur (architecture n°6).
  *
- * Récupère les matchs de football et combats MMA des 7 prochains jours
+ * Récupère les matchs de football et combats MMA des 9 prochains jours
  * sur ESPN, exécute les moteurs de pronostics (le même code TypeScript
  * que le navigateur) et écrit le tout dans la base PostgreSQL Neon.
  * L'app n'a ensuite plus qu'à lire /api/fixtures : aucun calcul moteur
@@ -12,7 +12,12 @@
  *
  * Variables d'environnement :
  *   DATABASE_URL / DIRECT_DATABASE_URL — base Neon (requis)
- *   PRECOMPUTE_DAYS   — fenêtre en jours (défaut 7)
+ *   PRECOMPUTE_DAYS   — fenêtre en jours (défaut 9 : J+0..J+8,
+ *                        toute la semaine + le week-end suivant)
+ *   PRECOMPUTE_START  — premier offset de jour (défaut 0) : permet
+ *                        de rejouer un seul jour (backfill ciblé)
+ *   PRECOMPUTE_CONCURRENCY — analyses moteur en parallèle (défaut 4 ;
+ *                        réduire à 2 sur machine limitée en mémoire)
  *   PRECOMPUTE_MAX_FOOT — limite de matchs analysés (tests de fumée)
  *   PRECOMPUTE_MAX_MMA  — limite de combats analysés (tests de fumée)
  *
@@ -57,7 +62,9 @@ function jsonOrNull(v: object | null): object | typeof Prisma.DbNull {
   return v ?? Prisma.DbNull;
 }
 
-const DAYS = Math.max(1, parseInt(process.env.PRECOMPUTE_DAYS ?? "7", 10) || 7);
+const DAYS = Math.max(1, parseInt(process.env.PRECOMPUTE_DAYS ?? "9", 10) || 9);
+const START = Math.max(0, parseInt(process.env.PRECOMPUTE_START ?? "0", 10) || 0);
+const CONCURRENCY = Math.max(1, parseInt(process.env.PRECOMPUTE_CONCURRENCY ?? "4", 10) || 4);
 const MAX_FOOT = parseInt(process.env.PRECOMPUTE_MAX_FOOT ?? "0", 10) || Infinity;
 const MAX_MMA = parseInt(process.env.PRECOMPUTE_MAX_MMA ?? "0", 10) || Infinity;
 
@@ -110,7 +117,7 @@ async function mapLimited<T>(
 async function precomputeFootball(): Promise<void> {
   log(`Football — fenêtre ${DAYS} jour(s), moteur ${FOOT_PARAMS_VERSION}`);
 
-  for (let offset = 0; offset < DAYS; offset++) {
+  for (let offset = START; offset < START + DAYS; offset++) {
     const day = dayAt(offset);
     const res = await loadFootballDay(day).catch((e) => {
       log(`  ${day} : scan impossible (${e instanceof Error ? e.message : e})`);
@@ -125,7 +132,7 @@ async function precomputeFootball(): Promise<void> {
     log(`  ${day} : ${matches.length} match(s) sur ${res.leagues.length} ligues`);
 
     let computedToday = 0;
-    await mapLimited(matches, 4, async ({ match, leagueCode }) => {
+    await mapLimited(matches, CONCURRENCY, async ({ match, leagueCode }) => {
       if (computedToday >= MAX_FOOT) return;
       const id = `foot:${leagueCode}:${match.id}`;
       try {

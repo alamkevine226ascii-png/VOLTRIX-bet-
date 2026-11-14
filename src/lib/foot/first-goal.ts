@@ -88,10 +88,17 @@ export interface FirstGoalHeadline {
   /** Minute médiane attendue du 1er but (interp. linéaire de la
    *  survie entre bords de fenêtres). Null si P(aucun but) ≥ 50 %. */
   expectedMinute: number | null;
-  /** Index de la fenêtre la plus probable (0..5). */
+  /** Index de la fenêtre la plus probable (0..5) — information
+   *  secondaire à l'affichage. */
   bestWindow: number;
   /** Probabilité de cette fenêtre (0..1). */
   bestWindowProb: number;
+  /** Index de la fenêtre CONTENANT la minute médiane attendue :
+   *  c'est elle que l'interface surligne — surligner le mode alors
+   *  que le titre annonce la médiane affichait deux pronostics
+   *  contradictoires (ex. « 30e minute » avec barre néon sur la
+   *  fenêtre 0-15 ou 61-75). */
+  medianWindow: number | null;
   /** P(match sans but) — repli d'affichage. */
   noGoalProb: number;
   /** Tempo médian des matchs de chaque équipe (minutes), si observé. */
@@ -356,6 +363,10 @@ export function predictFirstGoal(
       if (expectedMinute === null) expectedMinute = 90; // défense
     }
   }
+  /* Fenêtre contenant la médiane : la surbrillance de l'interface
+   * suit cette fenêtre pour rester cohérente avec le titre. */
+  const medianWindow =
+    expectedMinute != null ? Math.min(5, Math.floor((expectedMinute - 1) / 15)) : null;
 
   const sampleMatches = (home?.matches ?? 0) + (away?.matches ?? 0);
   const basis: "equipes" | "ligue" = homeDist || awayDist ? "equipes" : "ligue";
@@ -374,6 +385,7 @@ export function predictFirstGoal(
     headline: {
       expectedMinute,
       bestWindow,
+      medianWindow,
       bestWindowProb: rounded[bestWindow],
       noGoalProb: noGoal,
       homeMedianMinute: home ? medianOf(home.minuteOf) : null,

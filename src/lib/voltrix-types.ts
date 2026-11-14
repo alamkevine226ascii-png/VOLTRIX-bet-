@@ -67,6 +67,14 @@ export interface QuickPred {
   topScores: Array<{ score: string; prob: number }>;
   valueBetsCount: number;
   ouOdds?: { line: number | null; over: number | null; under: number | null } | null;
+  /** Premier but (moteur dédié) — compact pour le combinateur :
+   *  6 fenêtres de 15 min (probs, somme + noGoal = 1) et minute
+   *  médiane attendue. Absent des lignes calculées avant v2.3. */
+  firstGoal?: {
+    expectedMinute: number | null;
+    windows: number[];
+    noGoal: number;
+  };
 }
 
 export interface RecommendedBet {
@@ -164,6 +172,9 @@ export interface MatchDetailDTO {
     firstGoalHeadline?: {
       expectedMinute: number | null;
       bestWindow: number;
+      /** Fenêtre contenant la minute médiane — utilisée pour la
+       *  surbrillance (cohérence titre / barres). */
+      medianWindow?: number | null;
       bestWindowProb: number;
       noGoalProb: number;
       homeMedianMinute: number | null;

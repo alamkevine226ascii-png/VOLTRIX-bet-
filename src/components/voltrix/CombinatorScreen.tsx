@@ -1,14 +1,9 @@
 "use client";
 
 /* ============================================================
-   VOLTRIX app — Combinateur (fonctionnalité v1 restaurée,
-   étendue à la semaine).
-   On choisit une côte cible et un seuil de réussite (40 / 50 /
-   60 %) ; le moteur analyse tous les matchs à venir — de la
-   journée sélectionnée ou des 7 prochains jours — et construit
-   le meilleur combiné atteignant cette côte : une seule jambe
-   par match, cotes réelles du bookmaker (1X2, double chance,
-   total buts), probabilité produit des probabilités moteur.
+   VOLTRIX app — Combinateur : côte cible, seuil 20 / 30 / 40 %,
+   journée ou 7 prochains jours. Une jambe par match, marchés
+   variés : victoire, double chance, total buts, premier but.
    ============================================================ */
 
 import { useCallback, useMemo, useState } from "react";
@@ -27,9 +22,9 @@ import type { LightMatch } from "@/lib/voltrix-types";
 /* ---------- Paramètres ---------- */
 
 const PROB_OPTIONS = [
+  { value: 0.2, label: "20 %" },
+  { value: 0.3, label: "30 %" },
   { value: 0.4, label: "40 %" },
-  { value: 0.5, label: "50 %" },
-  { value: 0.6, label: "60 %" },
 ] as const;
 
 const TARGET_MIN = 1.5;
@@ -65,7 +60,7 @@ function Segmented<T extends string | number>({
     <div
       role="group"
       aria-label={ariaLabel}
-      className="flex gap-1 rounded-2xl bg-black/40 p-1 ring-1 ring-white/10"
+      className="flex gap-1 rounded-2xl bg-black/[0.07] p-1 ring-1 ring-black/10"
     >
       {options.map((o) => {
         const active = o.value === value;
@@ -75,7 +70,7 @@ function Segmented<T extends string | number>({
             onClick={() => onChange(o.value)}
             aria-pressed={active}
             className={`flex-1 rounded-xl px-2 py-2 text-[11px] font-black uppercase tracking-wide transition-colors ${
-              active ? "bg-neon text-black" : "text-white/55 hover:text-white/85"
+              active ? "bg-black text-neon" : "text-black/50 hover:text-black/80"
             }`}
           >
             {o.label}
@@ -96,31 +91,31 @@ function LegRow({
   return (
     <button
       onClick={onOpen ? () => onOpen(leg.matchId, leg.leagueCode, leg.dayKey) : undefined}
-      className={`flex w-full items-center gap-3 rounded-2xl bg-black/35 px-3 py-2.5 text-left ring-1 ring-white/5 ${
+      className={`flex w-full items-center gap-3 rounded-2xl bg-black/[0.06] px-3 py-2.5 text-left ring-1 ring-black/10 ${
         onOpen ? "transition-transform active:scale-[0.98]" : "cursor-default"
       }`}
     >
       <span className="flex w-[52px] shrink-0 flex-col items-start gap-0.5">
-        <span className="text-[9px] font-bold uppercase tracking-wide text-white/40">
+        <span className="text-[9px] font-bold uppercase tracking-wide text-black/45">
           {timeLabel(leg.kickoff)}
         </span>
-        <span className="text-[8px] font-semibold uppercase tracking-wide text-white/25">
+        <span className="text-[8px] font-semibold uppercase tracking-wide text-black/35">
           {new Date(leg.kickoff).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" })}
         </span>
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[11px] font-extrabold text-white/90">
+        <span className="block truncate text-[11px] font-extrabold text-black">
           {leg.pick}
         </span>
-        <span className="block truncate text-[9.5px] font-semibold text-white/40">
+        <span className="block truncate text-[9.5px] font-semibold text-black/50">
           {leg.homeShort} – {leg.awayShort} · {leg.leagueShort}
         </span>
       </span>
       <span className="flex shrink-0 flex-col items-end gap-0.5">
-        <span className="font-display text-[15px] font-black leading-none text-neon">
+        <span className="font-display text-[15px] font-black leading-none text-black">
           {leg.odds.toFixed(2)}
         </span>
-        <span className="text-[9px] font-bold text-white/40">
+        <span className="text-[9px] font-bold text-black/45">
           {Math.round(leg.prob * 100)}%
         </span>
       </span>
@@ -203,7 +198,7 @@ function ComboCard({
             aria-hidden="true"
           />
         </div>
-        <p className="mt-1.5 text-[9px] font-bold uppercase tracking-wide text-black/45">
+        <p className="mt-1.5 text-[9px] font-bold uppercase tracking-wide text-black/60">
           {pass
             ? `Seuil de ${Math.round(minProb * 100)} % atteint`
             : `Sous le seuil de ${Math.round(minProb * 100)} % — meilleur combiné possible`}
@@ -232,7 +227,7 @@ export function CombinatorScreen({
   onOpenMatch?: (matchId: string, leagueCode: string, date: string, light?: LightMatch) => void;
 }) {
   const [target, setTarget] = useState(3);
-  const [minProb, setMinProb] = useState<number>(0.5);
+  const [minProb, setMinProb] = useState<number>(0.4);
   const [scope, setScope] = useState<"day" | "week">("day");
 
   const [analyzing, setAnalyzing] = useState(false);
@@ -349,7 +344,7 @@ export function CombinatorScreen({
             value={target}
             onChange={(e) => setTarget(Number(e.target.value))}
             aria-label="Côte cible du combiné"
-            className="mt-2 w-full accent-[#c6f211]"
+            className="mt-2 w-full accent-black"
           />
           <div className="flex justify-between text-[8.5px] font-bold uppercase tracking-wide text-black/35">
             <span>{TARGET_MIN.toFixed(2)}</span>
@@ -385,7 +380,7 @@ export function CombinatorScreen({
             />
           </div>
           <p className="mt-1.5 text-[9.5px] font-semibold text-black/45">
-            {scope === "day" ? scopeLabel : "Du jour à J+6 — matchs à venir uniquement."}
+            {scope === "day" ? scopeLabel : "Aujourd'hui à J+6."}
           </p>
 
           {/* bouton analyser */}
@@ -410,7 +405,7 @@ export function CombinatorScreen({
 
         {/* ---------- stats du dernier passage ---------- */}
         {outcome ? (
-          <p className="mt-3 px-1 text-[9px] font-bold uppercase tracking-widest text-white/35">
+          <p className="mt-3 px-1 text-[9px] font-bold uppercase tracking-widest text-white/50">
             {outcome.matches} match{outcome.matches > 1 ? "s" : ""} analysé
             {outcome.matches > 1 ? "s" : ""} · {outcome.poolSize} sélection
             {outcome.poolSize > 1 ? "s" : ""} jouable{outcome.poolSize > 1 ? "s" : ""} ·{" "}
@@ -450,19 +445,14 @@ export function CombinatorScreen({
           <div className="mt-4 flex flex-col items-center gap-2 rounded-[24px] bg-panel px-5 py-8 text-center">
             <span className="text-[30px]">🎯</span>
             <p className="text-[12px] font-bold text-black/70">
-              Aucun combiné possible à la côte {outcome.target.toFixed(2)}.
-            </p>
-            <p className="max-w-[270px] text-[10px] leading-relaxed text-black/45">
-              Baisse la côte cible, ou choisis un seuil de réussite plus faible — puis relance
-              l'analyse.
+              Aucun combiné possible à la côte {outcome.target.toFixed(2)} — baisse la cible ou le seuil.
             </p>
           </div>
         ) : null}
 
         {outcome && outcome.relaxed && outcome.results.length > 0 ? (
           <p className="mt-3 rounded-2xl bg-amber-400/10 px-3 py-2 text-[9.5px] font-bold leading-relaxed text-amber-300 ring-1 ring-amber-400/25">
-            Seuil de {Math.round(outcome.minProb * 100)} % non atteignable à cette côte — voici le
-            meilleur combiné possible en dessous du seuil.
+            Seuil de {Math.round(outcome.minProb * 100)} % non atteignable à cette côte — meilleur combiné possible.
           </p>
         ) : null}
 
@@ -483,18 +473,13 @@ export function CombinatorScreen({
           <div className="mt-4 flex flex-col items-center gap-2 rounded-[24px] bg-panel px-5 py-8 text-center">
             <Layers size={26} className="text-black/30" strokeWidth={2.2} />
             <p className="text-[12px] font-bold text-black/70">
-              Choisis ta côte cible et lance l'analyse.
-            </p>
-            <p className="max-w-[270px] text-[10px] leading-relaxed text-black/45">
-              Le moteur parcourt {scope === "day" ? "les matchs de la journée" : "les 7 prochains jours"},
-              retient les sélections avec cote réelle (résultat, double chance, total buts) et
-              construit le combiné le plus solide atteignant ta côte.
+              Règle ta cible et lance l'analyse.
             </p>
           </div>
         ) : null}
 
-        <p className="mt-6 text-center text-[8.5px] font-bold uppercase tracking-widest text-white/25">
-          Probabilités moteur VOLTRIX · jouer comporte des risques
+        <p className="mt-6 text-center text-[8.5px] font-bold uppercase tracking-widest text-white/40">
+          Jouer comporte des risques
         </p>
       </main>
 

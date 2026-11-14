@@ -161,6 +161,16 @@ export function analyzeFootballMatch(
 
 /** QuickPred dérivé d'une analyse complète (mêmes champs que l'API historique). */
 export function quickPredOf(a: FootballDetail): QuickPred {
+  /* Premier but : compacté depuis le moteur dédié (6 fenêtres + 0-0). */
+  const fgTiming = a.prediction.firstGoalTiming ?? [];
+  const firstGoal =
+    fgTiming.length >= 7
+      ? {
+          expectedMinute: a.prediction.firstGoalHeadline?.expectedMinute ?? null,
+          windows: fgTiming.slice(0, 6).map((w) => w.prob),
+          noGoal: fgTiming[6].prob,
+        }
+      : undefined;
   return {
     matchId: a.matchId,
     leagueCode: a.leagueCode,
@@ -175,6 +185,7 @@ export function quickPredOf(a: FootballDetail): QuickPred {
     btts: a.prediction.btts,
     topScores: a.prediction.topScores,
     valueBetsCount: a.prediction.valueBets.length,
+    firstGoal,
     ouOdds: a.odds
       ? {
           line: a.odds.overUnderLine,

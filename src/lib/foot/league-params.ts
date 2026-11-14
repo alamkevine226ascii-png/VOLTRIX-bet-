@@ -20,8 +20,10 @@
 // Elo) vivent dans prediction.ts, au plus près des formules.
 // ============================================================
 
-/** Version du jeu de constantes (traçabilité des recalibrations). */
-export const FOOT_PARAMS_VERSION = 'voltrix-foot-v2.2';
+/** Version du jeu de constantes (traçabilité des recalibrations).
+ *  v2.3 : predQuick intègre le bloc premier but (6 fenêtres + 0-0,
+ *  minute médiane) pour alimenter le combinateur. */
+export const FOOT_PARAMS_VERSION = 'voltrix-foot-v2.3';
 
 /** Source et date de calibration. */
 export const FOOT_PARAMS_SOURCE =

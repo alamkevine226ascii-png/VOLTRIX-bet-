@@ -114,6 +114,18 @@ export function MatchScreen({
   const pred = detail?.prediction;
   const bestPick = useMemo(() => pred?.recommendedBets[0] ?? null, [pred]);
 
+  /* Premier but : fenêtre surlignée = celle qui CONTIENT la minute
+   * médiane annoncée en titre (medianWindow). Avant v2.3 la barre
+   * néon marquait la fenêtre la plus probable (mode), qui peut être
+   * différente — l'écran semblait alors se contredire (« 30e minute »
+   * avec la fenêtre 0-15 ou 61-75 allumée). Repli : mode. */
+  const highlightWindow = useMemo(() => {
+    const fg = pred?.firstGoalHeadline;
+    if (!fg) return 0;
+    const idx = fg.medianWindow ?? fg.bestWindow;
+    return idx >= 0 && idx <= 5 ? idx : 0;
+  }, [pred]);
+
   const live = detail?.status === "in" || light?.status === "in";
   /* ESPN peut renvoyer un score 0 pour un match à venir : un score ne
      s'affiche que si le coup d'envoi est donné. */
@@ -465,8 +477,8 @@ export function MatchScreen({
                             </span>
                           </p>
                           <p className="mt-1 text-[9.5px] font-semibold text-white/50">
-                            Fenêtre la plus probable : {pred.firstGoalTiming[pred.firstGoalHeadline.bestWindow]?.label} (
-                            {pct(pred.firstGoalHeadline.bestWindowProb, 1)})
+                            Fenêtre attendue : {pred.firstGoalTiming[highlightWindow]?.label} (
+                            {pct(pred.firstGoalTiming[highlightWindow]?.prob ?? 0, 1)})
                           </p>
                         </>
                       ) : (
@@ -506,7 +518,7 @@ export function MatchScreen({
                       <div
                         key={w.window}
                         className={`flex items-center gap-3 rounded-2xl px-3.5 py-2 ${
-                          pred.firstGoalHeadline && i === pred.firstGoalHeadline.bestWindow
+                          i === highlightWindow
                             ? "bg-ink-3 ring-1 ring-neon/40"
                             : "bg-ink-3"
                         }`}
@@ -514,18 +526,13 @@ export function MatchScreen({
                         <span className="w-[110px] text-[9.5px] font-bold text-white/60">{w.label}</span>
                         <div className="h-[6px] flex-1 overflow-hidden rounded-full bg-black/50">
                           <div
-                            className={`h-full rounded-full ${pred.firstGoalHeadline && i === pred.firstGoalHeadline.bestWindow ? "bg-neon" : "bg-white/70"}`}
+                            className={`h-full rounded-full ${i === highlightWindow ? "bg-neon" : "bg-white/70"}`}
                             style={{ width: `${Math.min(100, w.prob * 300)}%` }}
                           />
                         </div>
                         <span className="w-11 text-right text-[11px] font-black text-white/80">{pct(w.prob, 1)}</span>
                       </div>
                     ))}
-                    <p className="text-[8.5px] leading-relaxed text-white/35">
-                      {pred.firstGoalTiming[0]?.basis === "equipes"
-                        ? `Moteur dédié : minutes réelles des 1ers buts des ${pred.firstGoalTiming[0]?.sampleMatches ?? 0} derniers matchs de ${detail.home.name} et ${detail.away.name} (summaries ESPN), fusionnées puis mises à l'échelle sur les buts attendus du match (λ ×${pred.firstGoalHeadline?.lambdaScale ?? 1}).`
-                        : "Minutes des 1ers buts indisponibles chez ESPN pour ces équipes : calcul sur le profil empirique de ligue (échantillon documenté dans le moteur)."}
-                    </p>
                     <div className="mt-2 grid grid-cols-3 gap-2">
                       {[
                         { k: detail.home.name, v: pred.firstToScore.home },

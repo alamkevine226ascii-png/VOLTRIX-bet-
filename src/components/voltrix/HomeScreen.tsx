@@ -66,11 +66,11 @@ function todayISO(): string {
   return localDateKey(new Date().toISOString());
 }
 
-/* ---------- Bandeau de dates (7 jours, compact) ---------- */
+/* ---------- Bandeau de dates (J-2 à J+6, défilable) ---------- */
 function DateStrip({ value, onChange }: { value: string; onChange: (d: string) => void }) {
   const days = useMemo(() => {
     const t = todayISO();
-    return [-2, -1, 0, 1, 2, 3, 4].map((off) => isoAddDays(t, off));
+    return [-2, -1, 0, 1, 2, 3, 4, 5, 6].map((off) => isoAddDays(t, off));
   }, []);
   return (
     <div className="no-scrollbar flex gap-1.5 overflow-x-auto px-5">
