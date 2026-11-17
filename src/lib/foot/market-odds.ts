@@ -214,6 +214,29 @@ export function blendWithMarket(pModel: number, pMarket: number | null): number 
   return p;
 }
 
+// ---------- Blend modèle ↔ marché (Task 61 bis — 1X2 entier) ----------
+
+/**
+ * Blend VECTORIEL du trio 1X2 : p_eff = 0,65 × marché dé-margé + 0,35 × modèle,
+ * composante par composante, puis renormalisation (le trio sommme à 1).
+ * Version trio de blendWithMarket (mêmes poids, forme vectorielle) — le
+ * 1X2 final du moteur s'ancre désormais sur les cotes réelles du bookmaker.
+ */
+export function blend1x2WithMarket(
+  pModel: { home: number; draw: number; away: number },
+  pMarket: { home: number; draw: number; away: number } | null,
+): { home: number; draw: number; away: number } {
+  if (!pMarket) return pModel;
+  const blend = (m: number, x: number): number => MARKET_BLEND_WEIGHT * m + (1 - MARKET_BLEND_WEIGHT) * x;
+  let h = blend(Math.min(0.97, Math.max(0.02, pMarket.home)), pModel.home);
+  let d = blend(Math.min(0.97, Math.max(0.02, pMarket.draw)), pModel.draw);
+  let a = blend(Math.min(0.97, Math.max(0.02, pMarket.away)), pModel.away);
+  const s = h + d + a;
+  if (!Number.isFinite(s) || s <= 0) return pModel;
+  h /= s; d /= s; a /= s;
+  return { home: h, draw: d, away: a };
+}
+
 // ---------- Proba → cote ----------
 
 /**

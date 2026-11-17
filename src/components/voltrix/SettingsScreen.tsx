@@ -16,12 +16,36 @@ import { runModelCheck, type ModelCheckResult } from "@/lib/mma/loaders";
 import { clearFootballCache } from "@/lib/foot/analyze";
 import { LEAGUES } from "@/lib/foot/leagues";
 import { predDbClear } from "@/lib/pred-db";
+import {
+  DEFAULT_BANKROLL,
+  KELLY_FRACTION,
+  STAKE_CAP_RATIO,
+  loadBankroll,
+  saveBankroll,
+  type BankrollSettings,
+} from "@/lib/bankroll";
 import { KpiTile, SectionTitle } from "./ui-bits";
 
 export function SettingsScreen({ headerSlot }: { headerSlot?: ReactNode }) {
   const [stats, setStats] = useState<CacheStats | null>(null);
   const [cleared, setCleared] = useState(false);
   const [clearing, setClearing] = useState(false);
+
+  /* bankroll du parieur (v3.0) : montant + devise, persistés en local.
+     Les value bets et combinés affichent la mise Kelly ¼ plafonnée. */
+  const [bankroll, setBankroll] = useState<BankrollSettings>(DEFAULT_BANKROLL);
+
+  useEffect(() => {
+    setBankroll(loadBankroll());
+  }, []);
+
+  const updateBankroll = useCallback((patch: Partial<BankrollSettings>) => {
+    setBankroll((prev) => {
+      const next = { ...prev, ...patch };
+      saveBankroll(next);
+      return next;
+    });
+  }, []);
 
   /* vérification publique du modèle MMA (backtest UFC, exécuté
      dans le navigateur sur les combats terminés récents) */
@@ -98,6 +122,49 @@ export function SettingsScreen({ headerSlot }: { headerSlot?: ReactNode }) {
       </header>
 
       <main className="no-scrollbar mt-5 flex-1 overflow-y-auto px-5 pb-28">
+        {/* bankroll */}
+        <SectionTitle>Bankroll</SectionTitle>
+        <div className="rounded-[26px] bg-ink-2 p-4 ring-1 ring-white/5">
+          <div className="flex items-center justify-between gap-3">
+            <label htmlFor="bankroll-amount" className="text-[10.5px] font-black uppercase tracking-widest text-white/60">
+              Montant total
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                id="bankroll-amount"
+                type="number"
+                inputMode="numeric"
+                min={1}
+                value={bankroll.amount}
+                onChange={(e) => {
+                  const v = Number(e.target.value);
+                  updateBankroll({ amount: Number.isFinite(v) && v > 0 ? v : DEFAULT_BANKROLL.amount });
+                }}
+                className="w-28 rounded-xl bg-black/40 px-3 py-2 text-right font-display text-[16px] font-black text-white outline-none ring-1 ring-white/10 focus:ring-neon/60"
+              />
+              <input
+                type="text"
+                value={bankroll.currency}
+                onChange={(e) => updateBankroll({ currency: e.target.value.slice(0, 6) || DEFAULT_BANKROLL.currency })}
+                aria-label="Devise"
+                className="w-20 rounded-xl bg-black/40 px-2.5 py-2 text-center text-[11px] font-black uppercase text-white outline-none ring-1 ring-white/10 focus:ring-neon/60"
+              />
+            </div>
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <KpiTile
+              label={`Mise max (${Math.round(STAKE_CAP_RATIO * 100)} % bankroll)`}
+              value={`${Math.round(bankroll.amount * STAKE_CAP_RATIO).toLocaleString("fr-FR")}`}
+              tone="neon"
+            />
+            <KpiTile label="Kelly appliqué" value={`${KELLY_FRACTION === 0.25 ? "¼" : KELLY_FRACTION}`} />
+          </div>
+          <p className="mt-3 text-[10.5px] leading-relaxed text-white/30">
+            Les value bets et combinés affichent la mise conseillée selon Kelly {KELLY_FRACTION === 0.25 ? "¼" : KELLY_FRACTION} (variance réduite),
+            plafonnée à {Math.round(STAKE_CAP_RATIO * 100)} % de la bankroll. Le montant reste sur votre appareil — aucune donnée ne part.
+          </p>
+        </div>
+
         {/* architecture */}
         <SectionTitle>Architecture</SectionTitle>
         <div className="rounded-[26px] bg-ink-2 p-4 ring-1 ring-white/5">

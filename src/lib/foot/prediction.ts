@@ -28,7 +28,7 @@ import type { EspnScheduleGame, EspnStandingsTeam, EspnOdds, EspnInjury } from '
 // bttsProb = forme fermée BTTS indépendante (référence/legacy poissonModel).
 // Les probas de buts du moteur passent désormais par la grille bivariée
 // (montecarlo.ts, nov. 2026).
-import { bttsProb, deMarginOverUnder } from './market-odds';
+import { bttsProb, deMarginOverUnder, deMargin1x2, blend1x2WithMarket, oddsWithMargin, dcFromMarket, MARKET_BLEND_WEIGHT } from './market-odds';
 import {
   BIVARIATE_RHO,
   MC_ITERATIONS,
@@ -86,14 +86,33 @@ export interface TeamAnalysis {
 }
 
 export interface MatchPrediction {
-  // 1X2 final (ensemble)
+  // 1X2 final AFFICHÉ : ensemble modèle calé sur le marché (65 % marché
+  // dé-margé + 35 % modèle) quand les cotes existent — modèle seul sinon.
   probs: { home: number; draw: number; away: number };
+  // v3.0 (calage marché du 1X2) — traçabilité :
+  //   raw1x2  = ensemble modèle AVANT calage (c'est LUI qui nourrit les
+  //             value bets — indépendant du marché, sinon edge circulaire) ;
+  //   market1x2 = probas dé-margées du bookmaker (null si pas de cotes).
+  raw1x2: { home: number; draw: number; away: number };
+  market1x2: { home: number; draw: number; away: number } | null;
   // décomposition des modèles — « poisson » = composante BIVARIÉE
   // (nov. 2026) : grille conjointe exacte avec corrélation λ3, plus
   // 10 000 simulations Monte Carlo de contrôle (voir `mc`).
   poisson: { home: number; draw: number; away: number };
   elo: { home: number; draw: number; away: number };
   form: { home: number; draw: number; away: number };
+  // Double chance EXPOSÉE (v3.0) : probas = sommes du 1X2 calé, cotes =
+  // dérivées du 1X2 réel du bookmaker (dcFromMarket) quand il existe,
+  // sinon cote équitable oddsWithMargin.
+  doubleChance: {
+    p1x: number;
+    p12: number;
+    px2: number;
+    odds1x: number;
+    odds12: number;
+    oddsX2: number;
+    source: "bookmaker" | "equitable";
+  };
   // marchés de buts (issus du Poisson final, CALIBRÉS sur la ligne O/U réelle
   // quand les cotes marché existent — étape officielle du pipeline, audit 21-b FIX 1)
   overUnder: Array<{ line: number; over: number; under: number }>;
@@ -126,6 +145,10 @@ export interface MatchPrediction {
   firstToScore: { home: number; away: number; noGoal: number };
   // buts attendus
   lambda: { home: number; away: number; total: number };
+  // v3.0 : λ de PREMIER BUT = λ calé marché (celui qui matche la cote
+  // O/U réelle) quand elle existe — le brut restait incohérent avec les
+  // probas O/U affichées (tableau « premier but » vs onglet marchés).
+  lambdaCalibrated: { home: number; away: number; total: number } | null;
   // confiance
   confidence: number; // 1..5
   confidenceLabel: string;
@@ -911,21 +934,43 @@ export function runEngine(input: EngineInput): MatchAnalysis {
   // --- Ensemble final ---
   // v2.2 (backtest) : 45/30/25 → 40/35/25 au profit de l'Elo.
   const W = { poisson: 0.40, elo: 0.35, form: 0.25 };
-  const finalProbs = {
+  const modelProbs = {
     home: W.poisson * poissonRes.probs.home + W.elo * eloProbs.home + W.form * formProbs.home,
     draw: W.poisson * poissonRes.probs.draw + W.elo * eloProbs.draw + W.form * formProbs.draw,
     away: W.poisson * poissonRes.probs.away + W.elo * eloProbs.away + W.form * formProbs.away,
   };
-  const pSum = finalProbs.home + finalProbs.draw + finalProbs.away;
+  const pSum = modelProbs.home + modelProbs.draw + modelProbs.away;
   if (!Number.isFinite(pSum) || pSum <= 0) {
-    finalProbs.home = 0.38;
-    finalProbs.draw = 0.27;
-    finalProbs.away = 0.35;
+    modelProbs.home = 0.38;
+    modelProbs.draw = 0.27;
+    modelProbs.away = 0.35;
   } else {
-    finalProbs.home /= pSum;
-    finalProbs.draw /= pSum;
-    finalProbs.away /= pSum;
+    modelProbs.home /= pSum;
+    modelProbs.draw /= pSum;
+    modelProbs.away /= pSum;
   }
+
+  // --- v3.0 : calage marché du 1X2 (la correction « moteur aveugle aux
+  // cotes ») — 65 % marché dé-margé + 35 % modèle. Le modèle seul
+  // annonçait Angola 40 % quand le marché dit 8,5 % : tout l'affichage,
+  // les « meilleurs pronostics » et le combinateur héritaient de l'excès
+  // de confiance. Le modèle BRUT (modelProbs) nourrit toujours les value
+  // bets — comparer le calé au même marché serait circulaire. ---
+  const ml = odds?.moneyline;
+  const market1x2 = odds?.hasOdds && ml
+    ? deMargin1x2(
+        (ml.home.close ?? ml.home.open) ?? 0,
+        (ml.draw.close ?? ml.draw.open) ?? 0,
+        (ml.away.close ?? ml.away.open) ?? 0,
+      )
+    : null;
+  const finalProbs = market1x2
+    ? blend1x2WithMarket(modelProbs, {
+        home: market1x2.pH,
+        draw: market1x2.pD,
+        away: market1x2.pA,
+      })
+    : modelProbs;
 
   // --- Confiance ---
   const ranked = [
@@ -970,6 +1015,8 @@ export function runEngine(input: EngineInput): MatchAnalysis {
   const anchorLine = odds?.hasOdds ? (odds.total.over.line ?? odds.overUnderLine) : null;
   const marketOverOdds = odds?.total.over.closeOdds ?? odds?.total.over.openOdds ?? null;
   const marketUnderOdds = odds?.total.under.closeOdds ?? odds?.total.under.openOdds ?? null;
+  let calScale: number | null = null;
+  let calNoGoal: number | null = null;
   if (anchorLine !== null && marketOverOdds !== null && marketUnderOdds !== null) {
     const dm = deMarginOverUnder(marketOverOdds, marketUnderOdds);
     if (dm) {
@@ -977,6 +1024,8 @@ export function runEngine(input: EngineInput): MatchAnalysis {
       // corrélation λ3 est recalculée à chaque pas de dichotomie, le
       // modèle reste cohérent avec lui-même après ancrage marché.
       const cal = calibrateBivariate(lambdaHome, lambdaAway, BIVARIATE_RHO, anchorLine, dm.pOver, [1.5, 2.5, 3.5]);
+      calScale = cal.scale;
+      calNoGoal = cal.noGoal;
       finalOverUnder = [1.5, 2.5, 3.5].map((line) => {
         const o = round(cal.over[line], 4);
         return { line, over: o, under: round(1 - o, 4) }; // over + under ≡ 1 exactement
@@ -984,26 +1033,40 @@ export function runEngine(input: EngineInput): MatchAnalysis {
       finalBtts = { yes: cal.btts, no: 1 - cal.btts }; // bttsProb = forme fermée (FIX 2)
     }
   }
+  // v3.0 : λ calé marché (utilisé par le moteur du premier but) —
+  // facteur de la calibration O/U appliqué au ratio dom/ext du modèle.
+  const lambdaCalibrated =
+    calScale != null && calScale > 0
+      ? {
+          home: round(lambdaHome * calScale, 2),
+          away: round(lambdaAway * calScale, 2),
+          total: round((lambdaHome + lambdaAway) * calScale, 2),
+        }
+      : null;
 
   // --- Value bets & mouvement de cotes ---
-  // valueBets = probabilités BRUTES (rawOverUnder / finalProbs 1X2, jamais
-  // calibrées) vs cotes réelles du bookmaker — les calibrées donneraient une
-  // edge ≈ −marge systématique (value fictive, audit 21-b FIX 4).
+  // v3.0 : modelProb = MODÈLE BRUT (modelProbs, AVANT calage marché) vs
+  // cotes réelles — le calé donnerait une edge ≈ −marge systématique
+  // (value fictive). C'est le modèle pur qui détecte les écarts vs marché.
   const valueBets = buildValueBets(
-    { probs: finalProbs, overUnder: rawOverUnder, btts: rawBtts },
+    { probs: modelProbs, overUnder: rawOverUnder, btts: rawBtts },
     odds,
     mcSim.exact.grid
   );
   const oddsMovement = oddsMovementNote(odds);
 
   // --- Pronos recommandés (le meilleur de chaque marché) ---
+  // v3.0 : tout est calculé sur le 1X2 CALÉ marché (finalProbs).
   const recommendedBets: MatchPrediction['recommendedBets'] = [];
   const pick1x2 = ranked[0].k;
+  const MARKET_BLEND_WEIGHT_PCT = Math.round(MARKET_BLEND_WEIGHT * 100);
   recommendedBets.push({
     market: '1X2',
     pick: pick1x2 === 'home' ? 'Victoire ' + home.name : pick1x2 === 'away' ? 'Victoire ' + away.name : 'Match nul',
     prob: round(ranked[0].v, 4),
-    note: `Meilleur choix du modèle (confiance ${conf}/5)`,
+    note: market1x2
+      ? `Calé sur les cotes (${(MARKET_BLEND_WEIGHT_PCT)} % marché) — confiance ${conf}/5`
+      : `Meilleur choix du modèle, sans cotes — confiance ${conf}/5`,
   });
   const ou25 = finalOverUnder.find((o) => o.line === 2.5)!;
   recommendedBets.push({
@@ -1030,14 +1093,41 @@ export function runEngine(input: EngineInput): MatchAnalysis {
     note: 'Option la plus sûre du match',
   });
 
+  // --- v3.0 : Double chance EXPOSÉE (section dédiée de la fiche) ---
+  // Probas = sommes du 1X2 calé (affichage cohérent) ; cotes = dérivées du
+  // 1X2 réel du bookmaker (dcFromMarket : dé-marge puis marge bornée
+  // 3-8 % réappliquée) quand les 3 moneylines existent, sinon cote
+  // équitable oddsWithMargin — source étiquetée pour l'honnêteté.
+  const dcFromBook =
+    ml && odds?.hasOdds
+      ? dcFromMarket(
+          (ml.home.close ?? ml.home.open) ?? 0,
+          (ml.draw.close ?? ml.draw.open) ?? 0,
+          (ml.away.close ?? ml.away.open) ?? 0,
+        )
+      : null;
+  const doubleChance = {
+    p1x: round(finalProbs.home + finalProbs.draw, 4),
+    p12: round(finalProbs.home + finalProbs.away, 4),
+    px2: round(finalProbs.draw + finalProbs.away, 4),
+    odds1x: dcFromBook ? dcFromBook.odds1X : oddsWithMargin(finalProbs.home + finalProbs.draw),
+    odds12: dcFromBook ? dcFromBook.odds12 : oddsWithMargin(finalProbs.home + finalProbs.away),
+    oddsX2: dcFromBook ? dcFromBook.oddsX2 : oddsWithMargin(finalProbs.draw + finalProbs.away),
+    source: dcFromBook ? ("bookmaker" as const) : ("equitable" as const),
+  };
+
   // Minute du 1er but — MOTEUR DÉDIÉ (mission « moteur à part »,
   // 2026-11-09) : fetchTeamFirstGoals (first-goal.ts) lit les minutes
   // RÉELLES des 1ers buts des 12 derniers matchs de chaque équipe,
   // predictFirstGoal fusionne les deux profils par hazards cumulés,
   // met à l'échelle par le λ du match et ressort la minute attendue.
   // Aucune donnée → profil de ligue empirique, étiqueté 'ligue'.
+  // v3.0 : λ CALÉ MARCHÉ quand la calibration O/U existe — le tableau
+  // « premier but » et l'onglet marchés racontent le même match (le λ
+  // brut contredisait les probas O/U affichées).
+  const firstGoalLambda = lambdaCalibrated?.total ?? lambdaHome + lambdaAway;
   const firstGoals = predictFirstGoal(
-    lambdaHome + lambdaAway,
+    firstGoalLambda,
     input.firstGoals?.home ?? null,
     input.firstGoals?.away ?? null,
   );
@@ -1120,17 +1210,27 @@ export function runEngine(input: EngineInput): MatchAnalysis {
     away,
     prediction: {
       probs: { home: rH, draw: rD, away: rA },
+      raw1x2: {
+        home: round(modelProbs.home, 4),
+        draw: round(modelProbs.draw, 4),
+        away: round(modelProbs.away, 4),
+      },
+      market1x2: market1x2
+        ? { home: round(market1x2.pH, 4), draw: round(market1x2.pD, 4), away: round(market1x2.pA, 4) }
+        : null,
       poisson: poissonRes.probs,
       elo: eloProbs,
       form: formProbs,
+      doubleChance,
       overUnder: finalOverUnder,
       btts: finalBtts,
       raw: { overUnder: rawOverUnder, btts: rawBtts },
       topScores: poissonRes.topScores,
       firstGoalTiming,
       firstGoalHeadline,
-      firstToScore: firstToScoreProbs(lambdaHome, lambdaAway, mcSim.exact.noGoal),
+      firstToScore: firstToScoreProbs(lambdaHome, lambdaAway, calNoGoal ?? mcSim.exact.noGoal),
       lambda: { home: lambdaHome, away: lambdaAway, total: round(lambdaHome + lambdaAway, 2) },
+      lambdaCalibrated,
       confidence: conf,
       confidenceLabel: confidenceLabel,
       valueBets,

@@ -324,6 +324,8 @@ export interface CalibratedBivariate {
   over: Record<number, number>;
   /** P(BTTS) avec λ calibrés. */
   btts: number;
+  /** P(0-0) de la grille calibrée — ancre « première équipe à marquer ». */
+  noGoal: number;
 }
 
 /**
@@ -373,5 +375,5 @@ export function calibrateBivariate(
   for (const line of lines) over[line] = overAtLine(grid, line);
   let btts = 0;
   for (let x = 1; x < grid.length; x++) for (let y = 1; y < grid[x].length; y++) btts += grid[x][y];
-  return { scale, over, btts };
+  return { scale, over, btts, noGoal: grid[0][0] };
 }

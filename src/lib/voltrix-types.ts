@@ -147,15 +147,33 @@ export interface MatchDetailDTO {
   away: TeamAnalysisDTO;
   prediction: {
     probs: { home: number; draw: number; away: number };
+    /** v3.0 : ensemble modèle AVANT calage marché — c'est lui qui nourrit
+     *  les value bets (indépendance vs marché, sinon edge circulaire). */
+    raw1x2?: { home: number; draw: number; away: number };
+    /** v3.0 : probas dé-margées du bookmaker (null si pas de cotes). */
+    market1x2?: { home: number; draw: number; away: number } | null;
     poisson: { home: number; draw: number; away: number };
     elo: { home: number; draw: number; away: number };
     form: { home: number; draw: number; away: number };
+    /** v3.0 : double chance exposée — probas = 1X2 calé, cotes du
+     *  bookmaker (dérivées du 1X2 réel) ou équitables, source étiquetée. */
+    doubleChance?: {
+      p1x: number;
+      p12: number;
+      px2: number;
+      odds1x: number;
+      odds12: number;
+      oddsX2: number;
+      source: "bookmaker" | "equitable";
+    };
     overUnder: Array<{ line: number; over: number; under: number }>;
     btts: { yes: number; no: number };
     raw?: {
       overUnder: Array<{ line: number; over: number; under: number }>;
       btts: { yes: number; no: number };
     };
+    /** v3.0 : λ calé sur la ligne O/U réelle (moteur du premier but). */
+    lambdaCalibrated?: { home: number; away: number; total: number } | null;
     topScores: Array<{ score: string; prob: number }>;
     firstGoalTiming: Array<{
       window: string;

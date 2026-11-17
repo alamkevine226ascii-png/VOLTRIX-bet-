@@ -17,6 +17,7 @@ import {
   type ComboDayInput,
 } from "@/lib/foot/combinator";
 import { timeLabel, dayLabel } from "@/lib/voltrix";
+import { loadBankroll, kellyStakeCombo } from "@/lib/bankroll";
 import type { LightMatch } from "@/lib/voltrix-types";
 
 /* ---------- Paramètres ---------- */
@@ -26,6 +27,35 @@ const PROB_OPTIONS = [
   { value: 0.3, label: "30 %" },
   { value: 0.4, label: "40 %" },
 ] as const;
+
+/** Profils de risque v3.0 : cote max PAR JAMBE + premier but opt-in.
+ *  Le problème « combinateur trop risqué » venait des jambes à grosse
+ *  cote (Angola @11 avec proba moteur gonflée) et des jambes sans
+ *  cote réelle. Prudent = petites cotes, résultat+totaux seulement ;
+ *  Agressif relâche la cote max et inclut le premier but. */
+const RISK_PROFILES = [
+  {
+    id: "prudent" as const,
+    label: "Prudent",
+    maxLegOdds: 2.5,
+    maxLegs: 4,
+    includeFairOddsLegs: false,
+  },
+  {
+    id: "equilibre" as const,
+    label: "Équilibré",
+    maxLegOdds: 5.0,
+    maxLegs: 6,
+    includeFairOddsLegs: false,
+  },
+  {
+    id: "agressif" as const,
+    label: "Agressif",
+    maxLegOdds: 8.0,
+    maxLegs: 6,
+    includeFairOddsLegs: true,
+  },
+];
 
 const TARGET_MIN = 1.5;
 const TARGET_MAX = 10;
@@ -136,6 +166,10 @@ function ComboCard({
 }) {
   const pct = Math.round(combo.prob * 100);
   const pass = combo.meetsThreshold;
+  /* Mise Kelly ¼ plafonnée 10 % (v3.0) : bankroll des réglages —
+   * 0 si le combiné n'a pas d'edge (prob×cote ≤ 1). */
+  const bankroll = loadBankroll().amount;
+  const stake = kellyStakeCombo(bankroll, combo.prob, combo.odds);
   return (
     <motion.section
       initial={{ opacity: 0, y: 14 }}
@@ -185,7 +219,7 @@ function ComboCard({
         </div>
       </div>
 
-      {/* jauge de probabilité vs seuil */}
+        {/* jauge de probabilité vs seuil */}
       <div className="px-4 pt-3">
         <div className="relative h-2 overflow-hidden rounded-full bg-black/25">
           <div
@@ -202,6 +236,11 @@ function ComboCard({
           {pass
             ? `Seuil de ${Math.round(minProb * 100)} % atteint`
             : `Sous le seuil de ${Math.round(minProb * 100)} % — meilleur combiné possible`}
+        </p>
+        <p className={`mt-1 text-[10.5px] font-bold ${stake > 0 ? "text-black/75" : "text-black/45"}`}>
+          {stake > 0
+            ? `Mise conseillée : ${stake.toLocaleString("fr-FR")} (Kelly ¼, plafond 10 % bankroll)`
+            : "Pas d'edge détecté sur ce combiné — aucune mise conseillée."}
         </p>
       </div>
 
@@ -229,6 +268,7 @@ export function CombinatorScreen({
   const [target, setTarget] = useState(3);
   const [minProb, setMinProb] = useState<number>(0.4);
   const [scope, setScope] = useState<"day" | "week">("day");
+  const [riskProfile, setRiskProfile] = useState<"prudent" | "equilibre" | "agressif">("equilibre");
 
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -272,7 +312,11 @@ export function CombinatorScreen({
         );
       }
 
-      const { legs, matches } = buildLegPool(days);
+      const profile = RISK_PROFILES.find((p) => p.id === riskProfile) ?? RISK_PROFILES[1];
+      const { legs, matches } = buildLegPool(days, {
+        maxLegOdds: profile.maxLegOdds,
+        includeFairOddsLegs: profile.includeFairOddsLegs,
+      });
       if (matches === 0) {
         setOutcome({
           results: [],
@@ -288,7 +332,12 @@ export function CombinatorScreen({
         return;
       }
 
-      const res = findBestCombos(legs, matches, { target, minProb });
+      const res = findBestCombos(legs, matches, {
+        target,
+        minProb,
+        maxLegOdds: profile.maxLegOdds,
+        maxLegs: profile.maxLegs,
+      });
       setOutcome({
         results: res.results,
         matches: res.matches,
@@ -304,7 +353,7 @@ export function CombinatorScreen({
     } finally {
       setAnalyzing(false);
     }
-  }, [analyzing, scopeDays, target, minProb, scope]);
+  }, [analyzing, scopeDays, target, minProb, scope, riskProfile]);
 
   const scopeLabel =
     scope === "day"
@@ -363,6 +412,27 @@ export function CombinatorScreen({
               onChange={setMinProb}
             />
           </div>
+
+          {/* profil de risque */}
+          <p className="mt-4 text-[10.5px] font-black uppercase tracking-[0.14em] text-black/60">
+            Profil de risque
+          </p>
+          <div className="mt-1.5">
+            <Segmented
+              ariaLabel="Profil de risque"
+              value={riskProfile}
+              options={RISK_PROFILES.map((p) => ({ value: p.id, label: p.label }))}
+              onChange={setRiskProfile}
+            />
+          </div>
+          <p className="mt-1.5 text-[10px] font-semibold leading-relaxed text-black/60">
+            {(() => {
+              const p = RISK_PROFILES.find((x) => x.id === riskProfile)!;
+              return `Cote max ${p.maxLegOdds.toFixed(1)} par sélection · ${p.maxLegs} jambes max${
+                p.includeFairOddsLegs ? " · 1er but (cote équitable) inclus" : " · cotes bookmaker uniquement"
+              }.`;
+            })()}
+          </p>
 
           {/* périmètre */}
           <p className="mt-4 text-[10.5px] font-black uppercase tracking-[0.14em] text-black/60">

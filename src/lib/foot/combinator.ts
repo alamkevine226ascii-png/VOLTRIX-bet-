@@ -23,7 +23,7 @@
  * le meilleur combiné possible avec un avertissement.
  */
 
-import { dcFromMarket } from "./market-odds";
+import { dcFromMarket, deMargin1x2 } from "./market-odds";
 import type { LightMatch, MatchesResponse, QuickPred } from "../voltrix-types";
 
 /* ---------- Types ---------- */
@@ -69,6 +69,12 @@ export interface ComboSearchParams {
   tolerance?: number; // marge au-dessus de la cible (défaut 0.25 → 25 %)
   poolCap?: number; // taille max du pool (défaut 170)
   nodeBudget?: number; // sécurité performance (défaut 400 000 nœuds)
+  /** Cote max PAR JAMBE (v3.0, défaut 5.0) — plus de jambe Angola @11. */
+  maxLegOdds?: number;
+  /** Inclure les marchés sans cote bookmaker (premier but, cote
+   *  équitable 1/p) — v3.0 : opt-in, car leur prob×cote ≡ 1 traverse
+   *  toujours le filtre de value sans rien garantir. */
+  includeFairOddsLegs?: boolean;
 }
 
 export interface ComboSearchOutcome {
@@ -85,6 +91,16 @@ const ODDS_MIN = 1.05;
 const ODDS_MAX = 20;
 const KICKOFF_MARGIN_MS = 10 * 60 * 1000; // le match doit commencer dans > 10 min
 
+/** Cote max PAR JAMBE par défaut (v3.0) : 5,0 — les jambes à grosse
+ *  cote (Angola @11) concentrent le biais favori/outsider du modèle
+ *  et faisaient passer les filtres avec des probas gonflées. */
+const LEG_ODDS_MAX_DEFAULT = 5.0;
+/** Test de cohérence modèle/marché (v3.0) : une jambe est rejetée si
+ *  la proba moteur dépasse 1,6 × la proba implicite dé-margée du
+ *  bookmaker — modèle « trop beau » = surconfiance, pas de la value.
+ *  Ne s'applique qu'aux jambes avec cote réelle. */
+const MODEL_VS_MARKET_RATIO_MAX = 1.6;
+
 function validOdds(o: number | null | undefined): o is number {
   return typeof o === "number" && Number.isFinite(o) && o >= ODDS_MIN && o <= ODDS_MAX;
 }
@@ -98,12 +114,34 @@ function validProb(p: number | null | undefined): p is number {
  * 1X2 (cotes moneyline), double chance (dérivée du 1X2 réel) et
  * total buts (ligne + cotes du bookmaker). Un match déjà commencé
  * ou terminé est ignoré, ainsi qu'un match sans prono moteur.
+ *
+ * v3.0 (garde-fous « combinateur trop risqué ») :
+ *  - les probas 1X2 viennent du moteur CALÉ marché (probs de QuickPred,
+ *    désormais 65 % marché + 35 % modèle) ;
+ *  - cote max PAR JAMBE (défaut 5,0, réglable) ;
+ *  - test de cohérence : proba modèle vs proba implicite dé-margée —
+ *    rejet si le modèle dépasse 1,6× le marché (jambe « trop belle ») ;
+ *  - premier but : OPT-IN (cote équitable 1/p, pas de cote réelle).
  */
-export function buildLegPool(days: ComboDayInput[]): { legs: ComboLeg[]; matches: number } {
+export function buildLegPool(
+  days: ComboDayInput[],
+  opts: { maxLegOdds?: number; includeFairOddsLegs?: boolean } = {},
+): { legs: ComboLeg[]; matches: number } {
   const legs: ComboLeg[] = [];
   const seenMatches = new Set<string>();
   const now = Date.now();
   let matches = 0;
+  const legOddsMax = Math.min(ODDS_MAX, Math.max(1.5, opts.maxLegOdds ?? LEG_ODDS_MAX_DEFAULT));
+  const includeFair = opts.includeFairOddsLegs === true;
+
+  /* Test de cohérence modèle/marché pour une jambe à cote réelle :
+   * proba moteur ≤ 1,6 × proba implicite dé-margée. Sans dé-marge
+   * exploitable (cote unique), la jambe est gardée (le filtre
+   * prob×cote ≥ 0,8 reste actif). */
+  const modelNotCoherent = (prob: number, odds: number): boolean => {
+    const implied = 1 / odds; // marge bookmaker ≈ 5-7 % → implicite minore le marché
+    return prob > MODEL_VS_MARKET_RATIO_MAX * implied;
+  };
 
   for (const day of days) {
     if (!day.foot) continue;
@@ -130,8 +168,11 @@ export function buildLegPool(days: ComboDayInput[]): { legs: ComboLeg[]; matches
           dayKey: day.date,
         };
 
-        /* --- Résultat 1X2 (cotes réelles du bookmaker) --- */
-        if (validOdds(m.mlHome) && validProb(pred.probs.home)) {
+        /* --- Résultat 1X2 (cotes réelles du bookmaker, probas moteur
+         *     calées marché depuis v3.0) --- */
+        const okLeg = (o: number | null | undefined, p: number | null | undefined): o is number =>
+          validOdds(o) && o <= legOddsMax && validProb(p) && !modelNotCoherent(p, o);
+        if (okLeg(m.mlHome, pred.probs.home)) {
           legs.push({
             ...base,
             market: "Résultat",
@@ -140,7 +181,7 @@ export function buildLegPool(days: ComboDayInput[]): { legs: ComboLeg[]; matches
             odds: m.mlHome,
           });
         }
-        if (validOdds(m.mlDraw) && validProb(pred.probs.draw)) {
+        if (okLeg(m.mlDraw, pred.probs.draw)) {
           legs.push({
             ...base,
             market: "Résultat",
@@ -149,7 +190,7 @@ export function buildLegPool(days: ComboDayInput[]): { legs: ComboLeg[]; matches
             odds: m.mlDraw,
           });
         }
-        if (validOdds(m.mlAway) && validProb(pred.probs.away)) {
+        if (okLeg(m.mlAway, pred.probs.away)) {
           legs.push({
             ...base,
             market: "Résultat",
@@ -159,39 +200,22 @@ export function buildLegPool(days: ComboDayInput[]): { legs: ComboLeg[]; matches
           });
         }
 
-        /* --- Double chance (dérivée du 1X2 réel, marge bornée) --- */
+        /* --- Double chance (dérivée du 1X2 réel, marge bornée) ---
+         * v3.0 : garde-fous identiques (cote max jambe, cohérence
+         * modèle vs marché : la proba DC affichée vient du marché
+         * dé-margé — même test 1,6× contre sa propre cote). */
         const dc =
           validOdds(m.mlHome) && validOdds(m.mlDraw) && validOdds(m.mlAway)
             ? dcFromMarket(m.mlHome, m.mlDraw, m.mlAway)
             : null;
         if (dc) {
-          if (validProb(dc.prob1X)) {
-            legs.push({
-              ...base,
-              market: "Double chance",
-              pick: `1X — ${base.homeShort} ou nul`,
-              prob: dc.prob1X,
-              odds: dc.odds1X,
-            });
-          }
-          if (validProb(dc.prob12)) {
-            legs.push({
-              ...base,
-              market: "Double chance",
-              pick: "12 — pas de match nul",
-              prob: dc.prob12,
-              odds: dc.odds12,
-            });
-          }
-          if (validProb(dc.probX2)) {
-            legs.push({
-              ...base,
-              market: "Double chance",
-              pick: `X2 — ${base.awayShort} ou nul`,
-              prob: dc.probX2,
-              odds: dc.oddsX2,
-            });
-          }
+          const dcLeg = (pick: string, p: number, o: number) => {
+            if (!(o <= legOddsMax) || !validProb(p) || modelNotCoherent(p, o)) return;
+            legs.push({ ...base, market: "Double chance", pick, prob: p, odds: o });
+          };
+          dcLeg(`1X — ${base.homeShort} ou nul`, dc.prob1X, dc.odds1X);
+          dcLeg("12 — pas de match nul", dc.prob12, dc.odds12);
+          dcLeg(`X2 — ${base.awayShort} ou nul`, dc.probX2, dc.oddsX2);
         }
 
         /* --- Total buts (ligne et cotes du bookmaker) --- */
@@ -199,7 +223,7 @@ export function buildLegPool(days: ComboDayInput[]): { legs: ComboLeg[]; matches
         if (ou && validOdds(ou.over) && validOdds(ou.under) && ou.line != null) {
           const entry = pred.overUnder?.find((e) => Math.abs(e.line - ou.line!) < 0.01);
           if (entry) {
-            if (validProb(entry.over)) {
+            if (validProb(entry.over) && ou.over <= legOddsMax && !modelNotCoherent(entry.over, ou.over)) {
               legs.push({
                 ...base,
                 market: `Total buts ${entry.line}`,
@@ -208,7 +232,7 @@ export function buildLegPool(days: ComboDayInput[]): { legs: ComboLeg[]; matches
                 odds: ou.over,
               });
             }
-            if (validProb(entry.under)) {
+            if (validProb(entry.under) && ou.under <= legOddsMax && !modelNotCoherent(entry.under, ou.under)) {
               legs.push({
                 ...base,
                 market: `Total buts ${entry.line}`,
@@ -220,31 +244,35 @@ export function buildLegPool(days: ComboDayInput[]): { legs: ComboLeg[]; matches
           }
         }
 
-        /* --- Premier but (probabilités moteur, cote dérivée = cote
-         *     équitable 1/p — ESPN ne publie pas ce marché). Les
-         *     fenêtres 15 min donnent « avant la Xe » / « après la
-         *     Xe » aux bornes clés 15/30/45/60/75. --- */
-        const fg = pred.firstGoal;
-        if (fg && fg.windows.length >= 6) {
-          const bounds = [15, 30, 45, 60, 75];
-          let cumBefore = 0;
-          for (let i = 0; i < bounds.length; i++) {
-            cumBefore += fg.windows[i];
-            const after = 1 - cumBefore - fg.noGoal;
-            const b = bounds[i];
-            const fgLeg = (pick: string, p: number) => {
-              if (!validProb(p)) return;
-              const odds = Math.min(ODDS_MAX, Math.max(ODDS_MIN, 1 / p));
-              legs.push({
-                ...base,
-                market: "Premier but",
-                pick,
-                prob: p,
-                odds: Math.round(odds * 100) / 100,
-              });
-            };
-            fgLeg(`1er but avant la ${b + 1}e minute`, cumBefore);
-            fgLeg(`1er but après la ${b}e minute`, after);
+        /* --- Premier but — OPT-IN (v3.0) : probabilités moteur, cote
+         *     dérivée = cote équitable 1/p (ESPN ne publie pas ce
+         *     marché). Leur prob×cote ≡ 1 passe TOUJOURS le filtre de
+         *     value sans rien garantir : ils ne figurent plus dans le
+         *     pool par défaut, uniquement si l'utilisateur les active.
+         *     Cote équitable soumise à la même cote max par jambe. --- */
+        if (includeFair) {
+          const fg = pred.firstGoal;
+          if (fg && fg.windows.length >= 6) {
+            const bounds = [15, 30, 45, 60, 75];
+            let cumBefore = 0;
+            for (let i = 0; i < bounds.length; i++) {
+              cumBefore += fg.windows[i];
+              const after = 1 - cumBefore - fg.noGoal;
+              const b = bounds[i];
+              const fgLeg = (pick: string, p: number) => {
+                if (!validProb(p)) return;
+                const odds = Math.min(legOddsMax, Math.max(ODDS_MIN, 1 / p));
+                legs.push({
+                  ...base,
+                  market: "Premier but",
+                  pick,
+                  prob: p,
+                  odds: Math.round(odds * 100) / 100,
+                });
+              };
+              fgLeg(`1er but avant la ${b + 1}e minute`, cumBefore);
+              fgLeg(`1er but après la ${b}e minute`, after);
+            }
           }
         }
       }
@@ -307,9 +335,13 @@ export function findBestCombos(
   const target = Math.max(1.2, params.target);
   const minProb = params.minProb;
   const maxLegs = Math.min(6, Math.max(2, params.maxLegs ?? 6));
-  const maxOdds = target * (1 + (params.tolerance ?? 0.25));
+  const maxOdds = Math.min(target * (1 + (params.tolerance ?? 0.25)), 60);
   const poolCap = params.poolCap ?? 170;
   const nodeBudget = params.nodeBudget ?? 400_000;
+  /* v3.0 : la cote max par jambe s'applique aussi au pré-filtrage du
+   * pool de recherche (la borne buildLegPool filtre la CONSTRUCTION,
+   * celle-ci filtre le pool fourni — défense en profondeur). */
+  const legOddsMax = Math.min(ODDS_MAX, Math.max(1.5, params.maxLegOdds ?? LEG_ODDS_MAX_DEFAULT));
 
   /* Pré-filtrage :
    *  - une jambe dont la probabilité est déjà sous le seuil ne peut
@@ -317,7 +349,7 @@ export function findBestCombos(
    *  - une jambe sans valeur minimale (prob × cote) traîne tous les
    *    combinés vers le bas. */
   const eligible = pool.filter(
-    (l) => l.odds <= maxOdds && l.prob >= minProb && l.prob * l.odds >= 0.8,
+    (l) => l.odds <= Math.min(maxOdds, legOddsMax) && l.prob >= minProb && l.prob * l.odds >= 0.8,
   );
 
   /* Au plus 6 jambes par match, dont au plus 3 par marché : un

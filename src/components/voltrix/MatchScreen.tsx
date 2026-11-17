@@ -23,6 +23,7 @@ import {
 import { oddsFmt, pct, timeLabel } from "@/lib/voltrix";
 import { getFootballDetail, type FootballDetail } from "@/lib/fixtures-client";
 import { stadiumImageFor } from "@/lib/stadiums";
+import { loadBankroll } from "@/lib/bankroll";
 import type { LightMatch } from "@/lib/voltrix-types";
 import { TeamBadge } from "./TeamBadge";
 import {
@@ -113,6 +114,19 @@ export function MatchScreen({
 
   const pred = detail?.prediction;
   const bestPick = useMemo(() => pred?.recommendedBets[0] ?? null, [pred]);
+
+  /* Bankroll (v3.0) : mise Kelly ¼ du value bet. `kelly` publié par le
+   * moteur est la fraction Kelly COMPLÈTE plafonnée (edge/(cote−1)) —
+   * on applique le quart (variance réduite) et le plafond 10 %. */
+  const bankrollAmount = useMemo(() => loadBankroll().amount, []);
+  const stakeFmt = useCallback(
+    (kelly: number) => {
+      const f = Math.min(kelly / 4, 0.1);
+      const s = Math.round(bankrollAmount * (Number.isFinite(f) && f > 0 ? f : 0));
+      return `${s.toLocaleString("fr-FR")}`;
+    },
+    [bankrollAmount],
+  );
 
   /* Premier but : fenêtre surlignée = celle qui CONTIENT la minute
    * médiane annoncée en titre (medianWindow). Avant v2.3 la barre
@@ -557,7 +571,25 @@ export function MatchScreen({
                       <ChevronDown size={15} strokeWidth={2.6} className="shrink-0 text-white/50 transition-transform duration-200 group-open:rotate-180" />
                     </summary>
                     <div className="space-y-2.5 px-3 pb-3">
-                      <ComponentRow name="VOLTRIX (final)" probs={pred.probs} note="calibré" />
+                      <ComponentRow
+                        name="VOLTRIX (affiché)"
+                        probs={pred.probs}
+                        note={pred.market1x2 ? "calé marché 65/35" : "sans cotes"}
+                      />
+                      {pred.raw1x2 ? (
+                        <ComponentRow
+                          name="Modèle brut"
+                          probs={pred.raw1x2}
+                          note="value / écarts vs marché"
+                        />
+                      ) : null}
+                      {pred.market1x2 ? (
+                        <ComponentRow
+                          name="Marché dé-margé"
+                          probs={pred.market1x2}
+                          note="cotes bookmaker"
+                        />
+                      ) : null}
                       <ComponentRow name="Poisson" probs={pred.poisson} note={pred.mc ? "bivarié + MC" : "buts attendus"} />
                       <ComponentRow name="Elo" probs={pred.elo} note="force relative" />
                       <ComponentRow name="Forme" probs={pred.form} note="5 derniers" />
@@ -607,6 +639,9 @@ export function MatchScreen({
                               <span className="block truncate text-[12px] font-black text-white">{vb.pick}</span>
                               <span className="text-[10.5px] font-bold uppercase tracking-wider text-white/40">
                                 {vb.market} · modèle {pct(vb.modelProb)} · cote {oddsFmt(vb.odds)}
+                              </span>
+                              <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-black text-white/70">
+                                Mise conseillée {stakeFmt(vb.kelly)} (Kelly ¼)
                               </span>
                             </span>
                             <span className="flex shrink-0 items-center gap-1.5">
@@ -682,11 +717,55 @@ export function MatchScreen({
                     </div>
                   ) : null}
 
+                  <SectionTitle>Double chance</SectionTitle>
+                  {pred.doubleChance ? (
+                    <div className="space-y-1.5">
+                      {[
+                        { label: `1X — ${homeShort} ou nul`, p: pred.doubleChance.p1x, o: pred.doubleChance.odds1x },
+                        { label: "12 — pas de nul", p: pred.doubleChance.p12, o: pred.doubleChance.odds12 },
+                        { label: `X2 — ${awayShort} ou nul`, p: pred.doubleChance.px2, o: pred.doubleChance.oddsX2 },
+                      ].map((dc) => (
+                        <div key={dc.label} className="flex items-center gap-3 rounded-2xl bg-ink-3 px-3.5 py-2">
+                          <span className="w-[132px] text-[10.5px] font-bold text-white/60">{dc.label}</span>
+                          <div className="h-[6px] flex-1 overflow-hidden rounded-full bg-black/50">
+                            <div
+                              className="h-full rounded-full bg-neon"
+                              style={{ width: `${Math.min(100, dc.p * 100)}%` }}
+                            />
+                          </div>
+                          <span className="w-11 text-right text-[11px] font-black text-white/80">{pct(dc.p, 1)}</span>
+                          <span className="w-11 text-right font-display text-[12px] font-black text-white/90">
+                            {dc.o.toFixed(2)}
+                          </span>
+                        </div>
+                      ))}
+                      <p className="mt-1 text-[10px] leading-relaxed text-white/35">
+                        Cotes{" "}
+                        {pred.doubleChance.source === "bookmaker"
+                          ? "dérivées du 1X2 réel du bookmaker (dé-marge puis marge bornée 3-8 %)"
+                          : "équitables (1/proba, marge 7 %) — ESPN ne publie pas ce marché"}{" "}
+                        · probabilités = 1X2 calé marché.
+                      </p>
+                    </div>
+                  ) : null}
+
                   <SectionTitle>Les deux équipes marquent</SectionTitle>
                   <div className="grid grid-cols-2 gap-2">
                     <ProbBar label="BTTS Oui" value={pred.btts.yes} />
                     <ProbBar label="BTTS Non" value={pred.btts.no} />
                   </div>
+                  {(() => {
+                    /* Cote équitable BTTS (v3.0) : 1/p − marge 7 %, plafond
+                     * 20 — ESPN ne publie qu'une ligne O/U, pas de marché
+                     * BTTS : la cote est dérivée, étiquetée honnêtement. */
+                    const fq = (p: number) => Math.min(20, Math.max(1.04, Math.round((1 / Math.min(p, 0.97)) * 0.93 * 100) / 100));
+                    return (
+                      <p className="mt-2 text-[10px] font-bold text-white/45">
+                        Cotes équitables : Oui {fq(pred.btts.yes).toFixed(2)} · Non {fq(pred.btts.no).toFixed(2)}
+                        <span className="text-white/30"> (1/proba − marge 7 %, marché non publié par ESPN)</span>
+                      </p>
+                    );
+                  })()}
                   {pred.raw ? (
                     <p className="mt-2 text-[10.5px] leading-relaxed text-white/35">
                       Probabilités brutes (pré-calibrage marché) : Over {pct(pred.raw.overUnder[0]?.over, 1)} · BTTS Oui {pct(pred.raw.btts.yes, 1)}. La calibration marché s&apos;applique aux totals.

@@ -461,6 +461,47 @@ export function MmaFightScreen({
                   {pred.marginLabel} · {pred.dimensionsUsed}/{pred.dimensionsTotal} dimensions observées ·
                   probabilité bornée 25-75 % (modèle {pred.modelVersion}).
                 </p>
+
+                {/* v3.0 : cotes équitables des marchés MMA (moneyline,
+                    méthode, distance) — 1/proba − marge 7 %. ESPN ne
+                    publie pas les cotes MMA : cote dérivée, étiquetée. */}
+                <div className="mt-3 rounded-2xl bg-black/10 px-3.5 py-3">
+                  <p className="text-[9.5px] font-black uppercase tracking-widest text-black/45">
+                    Marchés · cotes équitables
+                  </p>
+                  <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1">
+                    {[
+                      { label: aShort, p: pred.probs.a },
+                      { label: bShort, p: pred.probs.b },
+                    ].map((x) => {
+                      const o = Math.min(20, Math.max(1.04, Math.round((1 / Math.min(x.p, 0.97)) * 0.93 * 100) / 100));
+                      return (
+                        <span key={x.label} className="text-[11px] font-black text-black/80">
+                          {x.label} <span className="font-display">{o.toFixed(2)}</span>
+                        </span>
+                      );
+                    })}
+                    {pred.method && pred.method.share != null ? (
+                      <span className="text-[11px] font-black text-black/80">
+                        {pred.method.label}{" "}
+                        <span className="font-display">
+                          {Math.min(20, Math.max(1.04, Math.round((100 / pred.method.share) * 0.93 * 100) / 100)).toFixed(2)}
+                        </span>
+                      </span>
+                    ) : null}
+                    {pred.goesToDecision != null ? (
+                      <span className="text-[11px] font-black text-black/80">
+                        Va à la décision{" "}
+                        <span className="font-display">
+                          {Math.min(20, Math.max(1.04, Math.round((1 / Math.min(pred.goesToDecision, 0.97)) * 0.93 * 100) / 100)).toFixed(2)}
+                        </span>
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="mt-1.5 text-[9.5px] font-semibold leading-relaxed text-black/40">
+                    Cote = 1/proba − 7 % (marge simulée) — ESPN ne publie pas de cotes MMA ; à comparer avec celles de ton book.
+                  </p>
+                </div>
               </section>
             ) : (
               <section className="flex items-start gap-2.5 rounded-[26px] bg-ink-2 px-4 py-4 ring-1 ring-white/10">
@@ -691,6 +732,43 @@ export function MmaFightScreen({
                           value={pred.goesToDecision != null ? (1 - pred.goesToDecision > 0.5 ? "Avant la limite" : "Aux points") : "—"}
                         />
                       </div>
+
+                      {/* v3.0 : Over/Under rounds — cotes équitables sur
+                          la ligne 2.5 (la plus jouée) et la distance. */}
+                      <SectionTitle>Over/Under rounds (cotes équitables)</SectionTitle>
+                      <div className="space-y-1.5">
+                        {(() => {
+                          const fmtO = (p: number) =>
+                            Math.min(20, Math.max(1.04, Math.round((1 / Math.min(p, 0.97)) * 0.93 * 100) / 100));
+                          /* P(fini au round 1 ou 2) = somme des fenêtres
+                           * rounds 1-2 (Under 2.5). */
+                          const under25 = pred.roundFinish.filter((r) => r.round <= 2).reduce((s, r) => s + r.prob, 0);
+                          const over25 = 1 - under25;
+                          return [
+                            { label: "Moins de 2.5 rounds", p: under25 },
+                            { label: "Plus de 2.5 rounds", p: over25 },
+                            { label: "Va à la décision", p: pred.goesToDecision ?? null },
+                          ].map((x) => (
+                            <div key={x.label} className="flex items-center gap-2.5 rounded-2xl bg-ink-3 px-3.5 py-2">
+                              <span className="w-[152px] shrink-0 truncate text-[10.5px] font-bold text-white/70">{x.label}</span>
+                              <div className="h-[6px] flex-1 overflow-hidden rounded-full bg-black/50">
+                                <div
+                                  className="h-full rounded-full bg-neon"
+                                  style={{ width: `${Math.min(100, (x.p ?? 0) * 100)}%` }}
+                                />
+                              </div>
+                              <span className="w-11 text-right text-[11px] font-black text-white/80">{x.p != null ? pct(x.p, 1) : "—"}</span>
+                              <span className="w-11 text-right font-display text-[12px] font-black text-white/90">
+                                {x.p != null ? fmtO(x.p).toFixed(2) : "—"}
+                              </span>
+                            </div>
+                          ));
+                        })()}
+                        <p className="mt-1 text-[9.5px] leading-relaxed text-white/35">
+                          Cote = 1/proba − 7 % (marge simulée) — ESPN ne publie pas ce marché ; ligne 2.5 rounds = la plus jouée.
+                        </p>
+                      </div>
+
                       <p className="mt-3 rounded-2xl bg-ink-3 px-4 py-3 text-[10.5px] leading-relaxed text-white/55">
                         {pred.goesToDecision != null
                           ? 1 - pred.goesToDecision > 0.5

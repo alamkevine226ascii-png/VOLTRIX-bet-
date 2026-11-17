@@ -272,6 +272,30 @@ function medianOf(minutes: Array<number | null>): number | null {
 }
 
 /**
+ * Minute médiane lue sur UNE courbe de survie donnée par ses hazards
+ * cumulés aux 7 bords (même interpolation que le titre du match) —
+ * null si P(aucun but) ≥ 50 %. Extraite de predictFirstGoal pour être
+ * réutilisée par les courbes PAR ÉQUIPE (v3.0 : « 1er médian » dérivé
+ * du modèle, cohérent avec le titre et le tableau de fenêtres).
+ */
+function medianMinuteOfHazards(hFinal: number[]): number | null {
+  const survAt = (i: number): number => Math.exp(-hFinal[i]);
+  if (1 - survAt(6) < 0.5) return null;
+  if (1 - survAt(0) >= 0.5) {
+    return Math.max(1, Math.round((0.5 / (1 - survAt(0))) * 15));
+  }
+  for (let w = 0; w < 6; w++) {
+    const sLo = survAt(w);
+    const sHi = survAt(w + 1);
+    if (sLo > 0.5 && sHi <= 0.5) {
+      const t = 15 * w + 15 * ((sLo - 0.5) / Math.max(1e-9, sLo - sHi));
+      return Math.max(1, Math.min(90, Math.round(t)));
+    }
+  }
+  return 90; // défense
+}
+
+/**
  * PRÉDICTION DU 1ER BUT.
  *
  * @param lambdaTotal buts totaux attendus du match (moteur principal)
@@ -345,24 +369,7 @@ export function predictFirstGoal(
   for (let w = 1; w < 6; w++) if (rounded[w] > rounded[bestWindow]) bestWindow = w;
 
   /* --- minute médiane attendue (interpolation linéaire de la survie) --- */
-  let expectedMinute: number | null = null;
-  if (1 - noGoalRaw >= 0.5) {
-    // plus petite minute t telle que P(1er but ≤ t) ≥ 50 %
-    if (1 - survAt(0) >= 0.5) {
-      expectedMinute = Math.max(1, Math.round((0.5 / (1 - survAt(0))) * 15));
-    } else {
-      for (let w = 0; w < 6; w++) {
-        const sLo = survAt(w);
-        const sHi = survAt(w + 1);
-        if (sLo > 0.5 && sHi <= 0.5) {
-          const t = 15 * w + 15 * ((sLo - 0.5) / Math.max(1e-9, sLo - sHi));
-          expectedMinute = Math.max(1, Math.min(90, Math.round(t)));
-          break;
-        }
-      }
-      if (expectedMinute === null) expectedMinute = 90; // défense
-    }
-  }
+  const expectedMinute = medianMinuteOfHazards(HFinal);
   /* Fenêtre contenant la médiane : la surbrillance de l'interface
    * suit cette fenêtre pour rester cohérente avec le titre. */
   const medianWindow =
@@ -388,8 +395,22 @@ export function predictFirstGoal(
       medianWindow,
       bestWindowProb: rounded[bestWindow],
       noGoalProb: noGoal,
-      homeMedianMinute: home ? medianOf(home.minuteOf) : null,
-      awayMedianMinute: away ? medianOf(away.minuteOf) : null,
+      /* v3.0 : « 1er médian » de chaque équipe DÉRIVÉ DU MODÈLE (sa
+       * propre courbe de survie : hazard équipe + ligue, même mise à
+       * l'échelle ρ que le match) — remplace la médiane brute de
+       * l'échantillon qui contredisait le titre (37e affiché contre
+       * 28e médian). Repli médiane observée si l'équipe n'a pas de
+       * hazard propre (pas de données). */
+      homeMedianMinute: HHome
+        ? medianMinuteOfHazards(HHome.map((h) => h * rho))
+        : home
+          ? medianOf(home.minuteOf)
+          : null,
+      awayMedianMinute: HAway
+        ? medianMinuteOfHazards(HAway.map((h) => h * rho))
+        : away
+          ? medianOf(away.minuteOf)
+          : null,
       basis,
       sampleMatches,
       lambdaScale: Math.round(rho * 100) / 100,
