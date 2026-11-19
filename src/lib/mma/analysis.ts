@@ -29,7 +29,7 @@ import {
   inchesToCm,
   lastResultsFromHistory,
 } from './types'
-import { computePrediction, type PredictionView } from './prediction'
+import { computePrediction, MODEL_VERSION, type PredictionView } from './prediction'
 
 /** Fenêtre de calcul des indicateurs avancés (limité côté navigateur). */
 export const DERIVED_WINDOW = 8
@@ -262,11 +262,12 @@ export interface DerivedResult {
   }[]
 }
 
-// v3 : + champs d'enrichissement n°4 (cibles/positions/knockdowns de la
-// fenêtre). v2 : invalidation des caches calculés avec l'ancienne formule
-// de durée (temps intra-round inversé — audit 2026-11-09). Stockage
-// PERSISTANT (localStorage) : survit à la fermeture de l'App (10 min min).
-const DERIVED_SS_PREFIX = 'voltrix:derived:v3:'
+// v4 (v2.5 app) : préfixe VERSIONNÉ par MODEL_VERSION — même correctif que
+// le cache football : après une montée de version du moteur MMA, les vieux
+// caches dérivés ne doivent plus être lus. v3 : + champs d'enrichissement
+// n°4. v2 : invalidation de l'ancienne formule de durée (audit 2026-11-09).
+// Stockage PERSISTANT (localStorage) : survit à la fermeture (10 min min).
+const DERIVED_SS_PREFIX = `voltrix:derived:${MODEL_VERSION}:`
 const derivedInFlight = new Map<string, Promise<DerivedResult | null>>()
 
 function readDerivedCache(athleteId: string): DerivedResult | null {

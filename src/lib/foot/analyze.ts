@@ -26,7 +26,7 @@ import { getLeague } from "./leagues";
 // fuite) injectées dans le moteur. Effet mesuré (val+test) :
 // +0,3 pt de précision O/U 2,5, log-loss O/U −0,0013, neutre 1X2.
 // Ligue non couverte → null → constantes globales (v2.1 inchangé).
-import { leagueGoalAverages } from "./league-params";
+import { leagueGoalAverages, FOOT_PARAMS_VERSION } from "./league-params";
 import { recordValueBets } from "./bets-ledger";
 import { persistGet, persistSet } from "../persist";
 
@@ -141,7 +141,14 @@ interface CacheEntry<T> {
   expiresAt: number;
 }
 
-const SS_PREFIX = "voltrix:foot:";
+/* v2.5 — CACHE VERSIONNÉ : le préfixe porte la version du moteur.
+ * BUG (retour utilisateur) : après une montée de version moteur,
+ * l'app servait encore les ANCIENS pronos depuis le localStorage
+ * (clé "voltrix:foot:analysis:{id}" sans version, TTL 30 min).
+ * Désormais chaque bump de FOOT_PARAMS_VERSION change le préfixe :
+ * les entrées orphelines de l'ancienne version ne sont plus lues et
+ * sont évacuées par le nettoyage de quota de persist.ts. */
+const SS_PREFIX = `voltrix:foot:${FOOT_PARAMS_VERSION}:`;
 const memory = new Map<string, CacheEntry<unknown>>();
 
 function cacheGet<T>(key: string): T | null {

@@ -32,11 +32,15 @@ import { bttsProb, deMarginOverUnder, deMargin1x2, blend1x2WithMarket, oddsWithM
 import {
   BIVARIATE_RHO,
   MC_ITERATIONS,
+  bivariateLambdas,
+  bivariateGrid,
   calibrateBivariate,
+  marketsFromGrid,
   overAtLine,
   simulateMatch,
   type JointGrid,
   type McMatchResult,
+  type ExactMarkets,
 } from './montecarlo';
 // Discipline de value betting calibrée par backtest (implémentation n°5) :
 // seuil d'edge 5 % (était 2 %) + cote plafonnée à 2,5 (était illimitée).
@@ -143,6 +147,19 @@ export interface MatchPrediction {
   firstGoalHeadline: FirstGoalHeadline;
   // première équipe à marquer
   firstToScore: { home: number; away: number; noGoal: number };
+  // v2.5 — MARCHÉS PARIEURS exacts de la grille bivariée (aucune donnée
+  // inventée, tout se déduit de P(x,y) sur la grille calibrée marché) :
+  //  - handicap : DNB + AH ±0.5/±1.5 orientés domicile, probas + cotes
+  //    équitables (ESPN ne publie pas ce marché — étiquetage honnête) ;
+  //  - totaux PAR ÉQUIPE : marginaux de la grille, O/U 0.5 et 1.5.
+  handicap: {
+    dnb: { home: number; away: number; oddsHome: number; oddsAway: number };
+    ah: Array<{ line: number; label: string; home: number; away: number; oddsHome: number; oddsAway: number }>;
+  };
+  teamTotals: {
+    home: Array<{ line: number; over: number; under: number; oddsOver: number; oddsUnder: number }>;
+    away: Array<{ line: number; over: number; under: number; oddsOver: number; oddsUnder: number }>;
+  };
   // buts attendus
   lambda: { home: number; away: number; total: number };
   // v3.0 : λ de PREMIER BUT = λ calé marché (celui qui matche la cote
@@ -920,6 +937,28 @@ export function runEngine(input: EngineInput): MatchAnalysis {
     rho: BIVARIATE_RHO,
     iterations: MC_ITERATIONS,
   });
+  /* v2.5 — grille CALIBRÉE marché (celle qui matche la cote O/U réelle) :
+   * tous les nouveaux marchés parieurs (handicap, totaux par équipe,
+   * première équipe à marquer) s'en déduisent exactement. Sans cote →
+   * grille brute du modèle. */
+  const anchorLine0 = odds?.hasOdds ? (odds.total.over.line ?? odds.overUnderLine) : null;
+  const marketOverOdds0 = odds?.total.over.closeOdds ?? odds?.total.over.openOdds ?? null;
+  const marketUnderOdds0 = odds?.total.under.closeOdds ?? odds?.total.under.openOdds ?? null;
+  let gridMarkets: ExactMarkets;
+  let gridIsCalibrated = false;
+  if (anchorLine0 !== null && marketOverOdds0 !== null && marketUnderOdds0 !== null) {
+    const dm0 = deMarginOverUnder(marketOverOdds0, marketUnderOdds0);
+    if (dm0) {
+      const cal0 = calibrateBivariate(lambdaHome, lambdaAway, BIVARIATE_RHO, anchorLine0, dm0.pOver, [1.5, 2.5, 3.5]);
+      const { l1, l2, l3 } = bivariateLambdas(cal0.scale * lambdaHome, cal0.scale * lambdaAway, BIVARIATE_RHO);
+      gridMarkets = marketsFromGrid(bivariateGrid(l1, l2, l3), [1.5, 2.5, 3.5]);
+      gridIsCalibrated = true;
+    } else {
+      gridMarkets = mcSim.exact;
+    }
+  } else {
+    gridMarkets = mcSim.exact;
+  }
   const poissonRes: PoissonResult = {
     probs: mcSim.exact.probs,
     overUnder: mcSim.exact.overUnder,
@@ -1043,6 +1082,59 @@ export function runEngine(input: EngineInput): MatchAnalysis {
           total: round((lambdaHome + lambdaAway) * calScale, 2),
         }
       : null;
+
+  // --- v2.5 : marchés parieurs exacts de la grille calibrée ---
+  // Handicap (DNB + AH ±0.5/±1.5) et totaux PAR ÉQUIPTE, avec cotes
+  // équitables oddsWithMargin (ESPN ne publie pas ces marchés — les cotes
+  // sont dérivées du modèle, étiquetées honnêtement dans l'UI).
+  // DNB : P(victoire | non-nul) — cohérent avec finalProbs (calé marché).
+  const dnbHome = finalProbs.home / (finalProbs.home + finalProbs.away);
+  const dnbAway = 1 - dnbHome;
+  const fair = (p: number): number => oddsWithMargin(p);
+  const handicap: MatchPrediction['handicap'] = {
+    dnb: {
+      home: round(dnbHome, 4),
+      away: round(dnbAway, 4),
+      oddsHome: fair(dnbHome),
+      oddsAway: fair(dnbAway),
+    },
+    ah: [-1.5, -0.5, 0.5, 1.5].map((line) => {
+      const a = gridMarkets.handicap.ah[line];
+      const label =
+        line === -1.5 ? `${home.name.slice(0, 14)} −1.5` :
+        line === -0.5 ? `${home.name.slice(0, 14)} −0.5` :
+        line === 0.5 ? `${away.name.slice(0, 14)} +0.5` :
+        `${away.name.slice(0, 14)} +1.5`;
+      return {
+        line,
+        label,
+        home: a.home,
+        away: a.away,
+        oddsHome: fair(a.home),
+        oddsAway: fair(a.away),
+      };
+    }),
+  };
+  // Totaux par équipe : marginaux de la grille calibrée, lignes 0.5/1.5.
+  const teamTotalsOf = (marg: number[]): MatchPrediction['teamTotals']['home'] =>
+    [0.5, 1.5].map((line) => {
+      const k = line + 0.5; // 0.5 → 1 but ou plus
+      let over = 0;
+      for (let i = Math.ceil(k); i < marg.length; i++) over += marg[i];
+      over = round(clamp(over, 0.001, 0.999), 4);
+      return { line, over, under: round(1 - over, 4), oddsOver: fair(over), oddsUnder: fair(1 - over) };
+    });
+  const teamTotals: MatchPrediction['teamTotals'] = {
+    home: teamTotalsOf(gridMarkets.teamTotals.home),
+    away: teamTotalsOf(gridMarkets.teamTotals.away),
+  };
+  const gridMarketsSource: 'calibré marché' | 'modèle brut' = gridIsCalibrated ? 'calibré marché' : 'modèle brut';
+  void gridMarketsSource; // réservé à l'affichage de la source dans l'UI
+
+  // v2.5 : première équipe à marquer — DÉSORMAISS depuis la grille calibrée
+  // (mêmes λ que le tableau « premier but »), fini le ratio des λ bruts
+  // qui contredisait la fiche quand le marché disait autre chose.
+  const firstToScore = gridMarkets.firstToScore;
 
   // --- Value bets & mouvement de cotes ---
   // v3.0 : modelProb = MODÈLE BRUT (modelProbs, AVANT calage marché) vs
@@ -1228,7 +1320,13 @@ export function runEngine(input: EngineInput): MatchAnalysis {
       topScores: poissonRes.topScores,
       firstGoalTiming,
       firstGoalHeadline,
-      firstToScore: firstToScoreProbs(lambdaHome, lambdaAway, calNoGoal ?? mcSim.exact.noGoal),
+      firstToScore: {
+        home: round(firstToScore.home, 4),
+        away: round(firstToScore.away, 4),
+        noGoal: round(firstToScore.noGoal, 4),
+      },
+      handicap,
+      teamTotals,
       lambda: { home: lambdaHome, away: lambdaAway, total: round(lambdaHome + lambdaAway, 2) },
       lambdaCalibrated,
       confidence: conf,

@@ -2,9 +2,11 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: "standalone",
-  /* config options here */
+  /* v2.5 : plus de ignoreBuildErrors — tsc doit être PROPRE au build
+     (les erreurs types étaient masquées par ce drapeau : check() 2 args,
+     examples/websocket…). La CI vérifie tsc --noEmit avant build. */
   typescript: {
-    ignoreBuildErrors: true,
+    ignoreBuildErrors: false,
   },
   reactStrictMode: false,
   /* indicateur dev "N" masqué : il flottait à côté de la capsule

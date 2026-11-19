@@ -26,8 +26,13 @@
  *  v2.4 : calage marché du 1X2 (65 % marché dé-margé + 35 % modèle),
  *  double chance exposée, garde-fous combinateur (cote max par jambe,
  *  cohérence modèle/marché 1,6×), médianes 1er but par équipe dérivées
- *  du modèle, λ premier but calé marché. */
-export const FOOT_PARAMS_VERSION = 'voltrix-foot-v2.4';
+ *  du modèle, λ premier but calé marché.
+ *  v2.5 : marchés parieurs exacts de la grille calibrée (handicap
+ *  DNB/±0.5/±1.5, totaux par équipe), première équipe à marquer
+ *  depuis la grille calibrée, caches UI VERSIONNÉS par cette constante
+ *  (un bump de version invalide le localStorage — plus de vieux
+ *  pronos servis après une mise à jour du moteur). */
+export const FOOT_PARAMS_VERSION = 'voltrix-foot-v2.5';
 
 /** Source et date de calibration. */
 export const FOOT_PARAMS_SOURCE =

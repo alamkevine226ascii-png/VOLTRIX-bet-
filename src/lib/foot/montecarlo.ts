@@ -181,9 +181,27 @@ export interface ExactMarkets {
   winToNil: { home: number; away: number };
   /** P(total = t) pour t = 0..2·max (somme 1 — grille complète). */
   totalGoalsHist: number[];
+  /** v2.5 — marchés parieurs dérivés de la MÊME grille (exacts) :
+   *  handicap (DNB/±0.5/±1.5), totaux PAR ÉQUIPE, première équipe à
+   *  marquer (premier but du hazard de la grille). */
+  handicap: {
+    /** Draw No Bet : P(victoire) conditionnelle au non-nul. */
+    dnb: { home: number; away: number };
+    /** P(x + line > y) / P(x + line < y) pour line ∈ {−1.5, −0.5, +0.5, +1.5},
+     *  orientés ÉQUIPE DOMICILE (line positive = faveur dom). */
+    ah: Record<number, { home: number; away: number }>;
+  };
+  teamTotals: {
+    /** Marginaux du nombre de buts de chaque équipe : P(k) pour k = 0..6+. */
+    home: number[];
+    away: number[];
+  };
+  /** P(équipe X marque le 1er but) — ratio des marginaux sur chaque case. */
+  firstToScore: { home: number; away: number; noGoal: number };
 }
 
-function marketsFromGrid(grid: JointGrid, lines: number[]): ExactMarkets {
+/** Marchés exacts dérivés d'une grille (exporté pour prediction.ts v2.5). */
+export function marketsFromGrid(grid: JointGrid, lines: number[]): ExactMarkets {
   let pHome = 0,
     pDraw = 0,
     pAway = 0,
@@ -193,6 +211,11 @@ function marketsFromGrid(grid: JointGrid, lines: number[]): ExactMarkets {
     wtnAway = 0;
   const hist: number[] = new Array(2 * MAX + 1).fill(0);
   const scores: Array<{ score: string; prob: number }> = [];
+  /* v2.5 — marginaux par équipe (0..MAX), handicap et 1er buteur. */
+  const mh: number[] = new Array(MAX + 1).fill(0);
+  const ma: number[] = new Array(MAX + 1).fill(0);
+  let firstHome = 0,
+    firstAway = 0;
   for (let x = 0; x < grid.length; x++) {
     for (let y = 0; y < grid[x].length; y++) {
       const p = grid[x][y];
@@ -207,10 +230,36 @@ function marketsFromGrid(grid: JointGrid, lines: number[]): ExactMarkets {
       if (x >= 1 && y >= 1) btts += p;
       if (x === 0 && y === 0) noGoal = p;
       hist[x + y] += p;
+      mh[x] += p;
+      ma[y] += p;
+      /* 1er buteur de la case : l'équipe avec le plus grand but dans
+       * cette case marque d'abord (le t0 du hazard bivarié) ; 0-0 →
+       * personne. Répartition x>y → dom, y>x → ext, x=y>0 → nul de
+       * buteur : attribué au prorata des marginaux (indiscernable). */
+      if (x > 0 && y === 0) firstHome += p;
+      else if (y > 0 && x === 0) firstAway += p;
+      else if (x > 0 && y > 0) {
+        firstHome += (p * x) / (x + y);
+        firstAway += (p * y) / (x + y);
+      }
       if (x <= 6 && y <= 6) scores.push({ score: `${x}-${y}`, prob: p });
     }
   }
   scores.sort((a, b) => b.prob - a.prob);
+  /* Handicap : marges orientées domicile. DNB = P(victoire | non-nul).
+   * AH ±0.5/±1.5 : P(x + line > y) — une seule passe par comparaison. */
+  const dnb = { home: pHome / (pHome + pAway), away: pAway / (pHome + pAway) };
+  const ah: Record<number, { home: number; away: number }> = {};
+  for (const line of [-1.5, -0.5, 0.5, 1.5]) {
+    let h = 0;
+    for (let x = 0; x < grid.length; x++) {
+      for (let y = 0; y < grid[x].length; y++) {
+        /* adj === 0 impossible sur lignes .5 : home + away ≡ 1 */
+        if (x + line - y > 0) h += grid[x][y];
+      }
+    }
+    ah[line] = { home: round(h, 4), away: round(1 - h, 4) };
+  }
   return {
     probs: { home: pHome, draw: pDraw, away: pAway },
     overUnder: lines.map((line) => {
@@ -223,6 +272,9 @@ function marketsFromGrid(grid: JointGrid, lines: number[]): ExactMarkets {
     doubleChance: { p1x: pHome + pDraw, p12: pHome + pAway, px2: pDraw + pAway },
     winToNil: { home: wtnHome, away: wtnAway },
     totalGoalsHist: hist,
+    handicap: { dnb, ah },
+    teamTotals: { home: mh, away: ma },
+    firstToScore: { home: firstHome, away: firstAway, noGoal },
   };
 }
 

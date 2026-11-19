@@ -14,15 +14,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { CheckCircle2 } from "lucide-react";
-import { Home, Settings } from "lucide-react";
+import { ClipboardList, Home, Settings } from "lucide-react";
 import { HomeScreen } from "./HomeScreen";
 import { MatchScreen } from "./MatchScreen";
 import { MmaFightScreen } from "./MmaFightScreen";
 import { SettingsScreen } from "./SettingsScreen";
 import { CombinatorScreen } from "./CombinatorScreen";
+import { BetsScreen } from "./BetsScreen";
 import type { LightMatch } from "@/lib/voltrix-types";
 
-export type TabId = "home" | "settings";
+export type TabId = "home" | "bets" | "settings";
 
 export type Screen =
   | { name: TabId }
@@ -43,6 +44,7 @@ function LogoBadge() {
 
 const TABS: Array<{ id: TabId; icon: typeof Home; label: string }> = [
   { id: "home", icon: Home, label: "Accueil" },
+  { id: "bets", icon: ClipboardList, label: "Suivi" },
   { id: "settings", icon: Settings, label: "Réglages" },
 ];
 
@@ -74,10 +76,13 @@ export function VoltrixApp() {
   }, []);
 
   const goTab = useCallback((t: TabId) => {
-    setDirection(t === "home" ? -1 : 1);
+    /* ordre visuel des onglets : accueil < suivi < réglages — le
+       glissement suit cet ordre (retour vers la gauche = −1). */
+    const order: TabId[] = ["home", "bets", "settings"];
+    setDirection(order.indexOf(t) < order.indexOf(tab) ? -1 : 1);
     setTab(t);
     setStack([{ name: t }]);
-  }, []);
+  }, [tab]);
 
   const openMatch = useCallback(
     (matchId: string, leagueCode: string, date: string, light?: LightMatch) => {
@@ -174,6 +179,8 @@ export function VoltrixApp() {
                 onOpenCombinator={openCombinator}
                 showToast={showToast}
               />
+            ) : tab === "bets" ? (
+              <BetsScreen headerSlot={<LogoBadge />} />
             ) : (
               <SettingsScreen headerSlot={<LogoBadge />} />
             )}

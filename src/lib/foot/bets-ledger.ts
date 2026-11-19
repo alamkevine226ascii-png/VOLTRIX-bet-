@@ -1,12 +1,14 @@
 "use client";
 
 /* ============================================================
-   VOLTRIX — Registre persistant des value bets (impl. n°5)
+   VOLTRIX — Registre persistant des paris (impl. n°5, v2.5)
    Objectif : suivre dans la durée la performance RÉELLE des
-   value bets proposés par le moteur — ROI en mise plate et
-   score de Brier des probabilités annoncées — pour confronter
-   l'app à ses propres chiffres (éthique VOLTRIX : publier les
-   résultats, y compris défavorables).
+   paris — value bets auto ET paris saisis par le parieur —
+   ROI (mises réelles) et score de Brier des probabilités
+   annoncées, pour confronter l'app à ses propres chiffres
+   (éthique VOLTRIX : publier les résultats, y compris
+   défavorables).
+   v2.5 : mises réelles + codes DC/BTTS + recordManualBet.
 
    Stockage : localStorage via persist.ts, SANS expiration
    (ttlMs = 0 → Infinity) — un registre ne doit jamais expirer.
@@ -39,11 +41,19 @@ export interface BetSlip {
   awayName: string;
   market: string;       // libellé affiché (ex. "1X2")
   pick: string;         // libellé affiché (ex. "Victoire domicile")
-  code: string;         // machine : 1X2:H | 1X2:D | 1X2:A | OU:O:2.5 | OU:U:3.5
+  code: string;         // machine : 1X2:H | 1X2:D | 1X2:A | OU:O:2.5 | OU:U:3.5 | DC:1X | BTTS:Y | BTTS:N
   modelProb: number;
   odds: number;
   edge: number;
   kelly: number;
+  /** v2.5 : mise réellement engagée (devise utilisateur). null = mise
+   *  plate 1 u (ancien format, rétrocompatible). Les MANUELS (saisis
+   *  par le parieur) portent toujours une mise. */
+  stake?: number | null;
+  /** v2.5 : pari saisi à la main par le parieur (vs auto value bet). */
+  manual?: boolean;
+  /** v2.5 : profit réellement encaissé (null → déduit de stake/odds). */
+  profitReal?: number | null;
   recordedAt: number;
   status: BetStatus;
   resolvedAt?: number;
@@ -109,11 +119,18 @@ export function recordValueBets(analysis: {
   }
 }
 
-/** Un pari est-il gagné au vu du score final ? */
+/** Un pari est-il gagné au vu du score final ?
+ *  v2.5 : codes étendus — DC:1X / DC:12 / DC:X2 (double chance),
+ *  BTTS:Y / BTTS:N (les deux équipes marquent). */
 function slipWon(code: string, homeScore: number, awayScore: number): boolean {
   if (code === "1X2:H") return homeScore > awayScore;
   if (code === "1X2:D") return homeScore === awayScore;
   if (code === "1X2:A") return homeScore < awayScore;
+  if (code === "DC:1X") return homeScore >= awayScore;
+  if (code === "DC:12") return homeScore !== awayScore;
+  if (code === "DC:X2") return homeScore <= awayScore;
+  if (code === "BTTS:Y") return homeScore >= 1 && awayScore >= 1;
+  if (code === "BTTS:N") return homeScore === 0 || awayScore === 0;
   const parts = code.split(":"); // OU:O:2.5 → ["OU", "O", "2.5"]
   if (parts[0] === "OU" && parts.length === 3) {
     const line = Number(parts[2]);
@@ -121,6 +138,63 @@ function slipWon(code: string, homeScore: number, awayScore: number): boolean {
     return parts[1] === "O" ? homeScore + awayScore > line : homeScore + awayScore < line;
   }
   return false;
+}
+
+/** Profit d'un pari résolu selon sa mise réelle (v2.5).
+ *  Mise inconnue (ancien format) → convention mise plate 1 u. */
+function slipProfit(s: BetSlip, won: boolean): number {
+  if (won) {
+    if (s.profitReal != null && Number.isFinite(s.profitReal)) return s.profitReal;
+    const stake = s.stake ?? 1;
+    return stake * (s.odds - 1);
+  }
+  if (s.profitReal != null && Number.isFinite(s.profitReal)) return s.profitReal;
+  return -(s.stake ?? 1);
+}
+
+/** Enregistre un pari SAISI PAR LE PARIEUR (v2.5) — n'importe quel marché
+ *  1X2/DC/OU/BTTS, mise libre, idempotent. Auto-résolu comme les autres. */
+export function recordManualBet(bet: {
+  matchId: string;
+  leagueCode: string;
+  matchDate: string;
+  homeName: string;
+  awayName: string;
+  market: string;
+  pick: string;
+  code: string;
+  odds: number;
+  stake: number;
+  modelProb?: number;
+}): void {
+  try {
+    if (!bet.matchId || !bet.code || !(bet.odds > 1) || !(bet.stake > 0)) return;
+    const id = `${bet.matchId}#${bet.code}`;
+    const slips = loadLedger();
+    if (slips.some((s) => s.id === id)) return; // idempotence
+    slips.push({
+      id,
+      matchId: bet.matchId,
+      leagueCode: bet.leagueCode,
+      matchDate: bet.matchDate,
+      homeName: bet.homeName,
+      awayName: bet.awayName,
+      market: bet.market,
+      pick: bet.pick,
+      code: bet.code,
+      modelProb: bet.modelProb ?? 0,
+      odds: bet.odds,
+      edge: 0,
+      kelly: 0,
+      stake: bet.stake,
+      manual: true,
+      recordedAt: Date.now(),
+      status: "pending",
+    });
+    saveLedger(slips);
+  } catch {
+    /* registre best-effort */
+  }
 }
 
 /**
@@ -169,7 +243,7 @@ export async function resolvePendingBets(): Promise<number> {
         const won = slipWon(s.code, hs, as);
         s.status = won ? "won" : "lost";
         s.resolvedAt = Date.now();
-        s.profit = won ? s.odds - 1 : -1;
+        s.profit = slipProfit(s, won);
         resolved++;
       }
     } catch {
@@ -188,19 +262,21 @@ export interface BetsLedgerStats {
   void: number;
   won: number;
   hitRate: number | null;   // won / resolved
-  profit: number;           // mise plate 1u par pari
-  roi: number | null;       // profit / resolved
+  profit: number;           // v2.5 : mises réelles (manuels) ou mise plate
+  staked: number;           // v2.5 : total engagé sur les résolus
+  roi: number | null;       // v2.5 : profit / staked (ROI réel du parieur)
   avgEdge: number | null;   // edge moyen des paris RESOLUS
   brier: number | null;     // mean((p_model - issue)²) sur les résolus
   avgOdds: number | null;
 }
 
-/** Statistiques du registre (ROI/Brier) pour l'écran Réglages. */
+/** Statistiques du registre (ROI/Brier) pour l'écran Suivi. */
 export function betsLedgerStats(): BetsLedgerStats {
   const slips = loadLedger();
   const resolvedSlips = slips.filter((s) => s.status === "won" || s.status === "lost");
   const won = resolvedSlips.filter((s) => s.status === "won").length;
   const profit = resolvedSlips.reduce((sum, s) => sum + (s.profit ?? 0), 0);
+  const staked = resolvedSlips.reduce((sum, s) => sum + (s.stake ?? 1), 0);
   const n = resolvedSlips.length;
   const brier = n
     ? resolvedSlips.reduce((sum, s) => sum + Math.pow(s.modelProb - (s.status === "won" ? 1 : 0), 2), 0) / n
@@ -213,15 +289,16 @@ export function betsLedgerStats(): BetsLedgerStats {
     won,
     hitRate: n ? won / n : null,
     profit,
-    roi: n ? profit / n : null,
+    staked,
+    roi: staked > 0 ? profit / staked : n ? profit / n : null,
     avgEdge: n ? resolvedSlips.reduce((s, x) => s + x.edge, 0) / n : null,
     brier,
     avgOdds: n ? resolvedSlips.reduce((s, x) => s + x.odds, 0) / n : null,
   };
 }
 
-/** Derniers paris du registre (affichage compact). */
-export function betsLedgerRecent(limit = 6): BetSlip[] {
+/** Derniers paris du registre (affichage complet écran Suivi). */
+export function betsLedgerRecent(limit = 50): BetSlip[] {
   return loadLedger()
     .filter((s) => s.status !== "void")
     .sort((a, b) => b.recordedAt - a.recordedAt)

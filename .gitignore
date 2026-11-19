@@ -60,3 +60,11 @@ scripts/backtest-mma/data/
 
 # crash dumps
 /core
+
+# données brutes backtest (re-téléchargeables via download_data.py)
+scripts/backtest/data/
+scripts/backtest/charts_pdf/
+
+# données brutes backtest (re-téléchargeables via download_data.py)
+scripts/backtest/data/
+scripts/backtest/charts_pdf/

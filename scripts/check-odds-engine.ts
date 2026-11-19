@@ -21,7 +21,7 @@ import { buildLegPool, findBestCombos, type ComboDayInput } from "../src/lib/foo
 import { kellyStake } from "../src/lib/bankroll";
 
 let failures = 0;
-const check = (name: string, ok: boolean, detail: string) => {
+const check = (name: string, ok: boolean, detail = "") => {
   console.log(`${ok ? "✓" : "✗ FAIL"} — ${name}${detail ? ` (${detail})` : ""}`);
   if (!ok) failures++;
 };
@@ -206,6 +206,101 @@ const b10k = 10_000;
 check("Kelly ¼ plafonné : jamais > 10 % bankroll", kellyStake(b10k, 0.9, 3) <= 1000, `mise ${kellyStake(b10k, 0.9, 3)}`);
 check("Kelly ¼ : mise > 0 si edge (p .55 @2.0)", kellyStake(b10k, 0.55, 2.0) > 0, `mise ${kellyStake(b10k, 0.55, 2.0)}`);
 check("Kelly ¼ : mise = 0 sans edge (p .45 @2.0)", kellyStake(b10k, 0.45, 2.0) === 0);
+
+/* ---------- 5. v2.5 : marchés parieurs de la grille bivariée ---------- */
+import { simulateMatch, marketsFromGrid, bivariateGrid, bivariateLambdas } from "../src/lib/foot/montecarlo";
+import { FOOT_PARAMS_VERSION } from "../src/lib/foot/league-params";
+
+const sim = simulateMatch(2.6, 1.1, { iterations: 1000 });
+const ex = sim.exact;
+/* DNB cohérent avec le 1X2 de la grille : P(H)/(P(H)+P(A)). */
+check(
+  "DNB = P(victoire | non-nul) de la grille",
+  Math.abs(ex.handicap.dnb.home - ex.probs.home / (ex.probs.home + ex.probs.away)) < 1e-9,
+  `dnb ${Math.round(ex.handicap.dnb.home * 100)} % vs 1X2 ${Math.round(ex.probs.home * 100)}/${Math.round(ex.probs.draw * 100)}/${Math.round(ex.probs.away * 100)}`,
+);
+/* AH −0.5 domicile ≡ victoire domicile ; AH +0.5 domicile ≡ 1X.
+ * Tolérance 2e-4 : ah est round(4) dans marketsFromGrid, probs non —
+ * l'écart d'arrondi d'affichage est ≤ 5e-5. */
+check(
+  "AH −0.5 dom = P(victoire dom) (x − 0.5 > y ≡ x > y)",
+  Math.abs(ex.handicap.ah[-0.5].home - ex.probs.home) < 2e-4,
+  `ah-0.5 ${Math.round(ex.handicap.ah[-0.5].home * 100)} % vs victoire ${Math.round(ex.probs.home * 100)} %`,
+);
+check(
+  "AH +0.5 dom = 1X (dom ou nul)",
+  Math.abs(ex.handicap.ah[0.5].home - (ex.probs.home + ex.probs.draw)) < 2e-4,
+  `ah+0.5 ${Math.round(ex.handicap.ah[0.5].home * 100)} % vs 1X ${Math.round((ex.probs.home + ex.probs.draw) * 100)} %`,
+);
+check(
+  "AH −1.5 dom ≤ AH −0.5 dom ≤ AH +0.5 dom (monotonie)",
+  ex.handicap.ah[-1.5].home <= ex.handicap.ah[-0.5].home && ex.handicap.ah[-0.5].home <= ex.handicap.ah[0.5].home,
+);
+check(
+  "AH home + away = 1 sur chaque ligne",
+  [-1.5, -0.5, 0.5, 1.5].every((l) => Math.abs(ex.handicap.ah[l].home + ex.handicap.ah[l].away - 1) < 1e-9),
+);
+/* Totaux par équipe : marginaux somment à 1 et cohérents avec overAtLine
+ * du total (marginal dom + marginal ext ≠ dist totale mais marginaux exacts). */
+const mhSum = ex.teamTotals.home.reduce((a, b) => a + b, 0);
+const maSum = ex.teamTotals.away.reduce((a, b) => a + b, 0);
+check("marginaux équipe somment à 1", Math.abs(mhSum - 1) < 1e-9 && Math.abs(maSum - 1) < 1e-9);
+/* P(dom ≥ 1) marginal = 1 − P(x=0) : marginal home[0] = P(x=0) doit
+ * égaler la somme de la colonne x=0 de la grille. */
+let pHomeZero = 0;
+for (let y = 0; y < ex.grid.length; y++) pHomeZero += ex.grid[0][y];
+check(
+  "marginal équipe[0] = P(x=0) de la grille",
+  Math.abs(ex.teamTotals.home[0] - pHomeZero) < 1e-9,
+  `P(dom 0 but) ${Math.round(ex.teamTotals.home[0] * 100)} %`,
+);
+/* firstToScore : cohérent avec λ (dominateur 2.6 vs 1.1 → dom devant). */
+check(
+  "première équipe à marquer : favori λ devant",
+  ex.firstToScore.home > ex.firstToScore.away,
+  `${Math.round(ex.firstToScore.home * 100)}/${Math.round(ex.firstToScore.away * 100)}/0-0 ${Math.round(ex.firstToScore.noGoal * 100)} %`,
+);
+check(
+  "firstToScore : home + away + noGoal = 1",
+  Math.abs(ex.firstToScore.home + ex.firstToScore.away + ex.firstToScore.noGoal - 1) < 1e-9,
+);
+/* Grille recalibrée = même marchés que calibrateBivariate (réutilisation). */
+const cal = (function () {
+  // ancrage over 2.5 à 55 % sur (2.6, 1.1)
+  const { l1, l2, l3 } = bivariateLambdas(2.6, 1.1, 0.1);
+  void l1; void l2; void l3;
+  const grid = bivariateGrid(2.6 * 0.8, 1.1 * 0.8, 0.1 * Math.sqrt(0.8));
+  return marketsFromGrid(grid, [1.5, 2.5, 3.5]);
+})();
+check("marketsFromGrid exporté et calcule (grille arbitraire)", cal.probs.home > 0 && cal.btts.yes > 0);
+
+/* Version moteur v2.5 (bump = invalidation cache). */
+check("FOOT_PARAMS_VERSION = v2.5", FOOT_PARAMS_VERSION === "voltrix-foot-v2.5", FOOT_PARAMS_VERSION);
+
+/* ---------- 6. v2.5 : BTTS dans le combinateur (opt-in Agressif) ---------- */
+const bttsPred = {
+  ...angolaPred,
+  btts: { yes: 0.55, no: 0.45 },
+};
+const dayBtts = mkDay(4.2);
+(dayBtts[0].footPreds as Record<string, unknown>)["m-angola"] = bttsPred;
+check(
+  "BTTS absent du pool par défaut (cote équitable = opt-in)",
+  !buildLegPool(dayBtts, { maxLegOdds: 5 }).legs.some((l) => l.market === "Deux équipes marquent"),
+);
+check(
+  "BTTS présent en opt-in (profil Agressif)",
+  buildLegPool(dayBtts, { maxLegOdds: 5, includeFairOddsLegs: true }).legs.some((l) => l.market === "Deux équipes marquent"),
+);
+check(
+  "jambe BTTS : cote équitable 1/p plafonnée à la cote max",
+  (() => {
+    const legs = buildLegPool(dayBtts, { maxLegOdds: 5, includeFairOddsLegs: true }).legs.filter(
+      (l) => l.market === "Deux équipes marquent",
+    );
+    return legs.length === 2 && legs.every((l) => l.odds <= 5 && Math.abs(l.odds - 1 / l.prob) < 0.02);
+  })(),
+);
 
 /* ---------- verdict ---------- */
 console.log("");

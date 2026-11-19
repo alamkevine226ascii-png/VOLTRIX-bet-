@@ -274,6 +274,28 @@ export function buildLegPool(
               fgLeg(`1er but après la ${b}e minute`, after);
             }
           }
+
+          /* --- v2.5 : BTTS « les deux équipes marquent » Oui/Non —
+           *     OPT-IN (même raison que le premier but : ESPN ne publie
+           *     pas ce marché, la cote est équitable 1/p − marge). C'est
+           *     LE marché parieur le plus demandé après 1X2/DC/O/U —
+           *     il entre dans le pool uniquement en profil Agressif. */
+          const bt = pred.btts;
+          if (bt && (validProb(bt.yes) || validProb(bt.no))) {
+            const bttsLeg = (pick: string, p: number) => {
+              if (!validProb(p)) return;
+              const odds = Math.min(legOddsMax, Math.max(ODDS_MIN, 1 / p));
+              legs.push({
+                ...base,
+                market: "Deux équipes marquent",
+                pick,
+                prob: p,
+                odds: Math.round(odds * 100) / 100,
+              });
+            };
+            bttsLeg("Deux équipes marquent — Oui", bt.yes);
+            bttsLeg("Deux équipes marquent — Non", bt.no);
+          }
         }
       }
     }

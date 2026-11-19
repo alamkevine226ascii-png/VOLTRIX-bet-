@@ -754,6 +754,82 @@ export function MatchScreen({
                     <ProbBar label="BTTS Oui" value={pred.btts.yes} />
                     <ProbBar label="BTTS Non" value={pred.btts.no} />
                   </div>
+
+                  {/* v2.5 — handicap (DNB + AH) : marchés parieurs exacts de
+                      la grille calibrée, cotes équitables (ESPN ne publie pas). */}
+                  {pred.handicap ? (
+                    <>
+                      <SectionTitle>Handicap</SectionTitle>
+                      <div className="space-y-1.5">
+                        <div className="grid grid-cols-2 gap-2">
+                          <ProbBar
+                            label={`DNB ${homeShort}`}
+                            value={pred.handicap.dnb.home}
+                            odds={pred.handicap.dnb.oddsHome}
+                          />
+                          <ProbBar
+                            label={`DNB ${awayShort}`}
+                            value={pred.handicap.dnb.away}
+                            odds={pred.handicap.dnb.oddsAway}
+                          />
+                        </div>
+                        {pred.handicap.ah.map((h) => (
+                          <div key={h.line} className="flex items-center gap-3 rounded-2xl bg-ink-3 px-3.5 py-2">
+                            <span className="w-[104px] text-[10.5px] font-bold text-white/60">{h.label}</span>
+                            <div className="h-[6px] flex-1 overflow-hidden rounded-full bg-black/50">
+                              <div className="h-full rounded-full bg-neon" style={{ width: `${Math.min(100, h.home * 100)}%` }} />
+                            </div>
+                            <span className="w-11 text-right text-[11px] font-black text-white/80">{pct(h.home, 1)}</span>
+                            <span className="w-11 text-right font-display text-[12px] font-black text-white/90">
+                              {h.oddsHome.toFixed(2)}
+                            </span>
+                          </div>
+                        ))}
+                        <p className="mt-1 text-[10px] leading-relaxed text-white/35">
+                          DNB = victoire hors nul (remboursé si nul) · AH ±0.5/±1.5 : la probabilité affichée est celle
+                          du favori couvrant le handicap. Probabilités exactes de la grille Poisson bivariée calée sur la
+                          cote O/U réelle — cotes équitables (1/proba − marge 7 %), ESPN ne publie pas ces marchés.
+                        </p>
+                      </div>
+                    </>
+                  ) : null}
+
+                  {/* v2.5 — totaux PAR ÉQUIPE (marginaux exacts de la grille). */}
+                  {pred.teamTotals ? (
+                    <>
+                      <SectionTitle>Totaux par équipe</SectionTitle>
+                      <div className="space-y-2">
+                        {[
+                          { name: detail.home.name, short: homeShort, tt: pred.teamTotals.home },
+                          { name: detail.away.name, short: awayShort, tt: pred.teamTotals.away },
+                        ].map((t) => (
+                          <div key={t.name} className="rounded-2xl bg-ink-3 px-3.5 py-2.5">
+                            <p className="text-[10px] font-black uppercase tracking-wider text-white/45">{t.name}</p>
+                            <div className="mt-1.5 space-y-1">
+                              {t.tt.map((e) => (
+                                <div key={e.line} className="flex items-center gap-3">
+                                  <span className="w-[64px] text-[10.5px] font-bold text-white/60">
+                                    {e.line.toFixed(1)} buts+
+                                  </span>
+                                  <div className="h-[6px] flex-1 overflow-hidden rounded-full bg-black/50">
+                                    <div className="h-full rounded-full bg-neon" style={{ width: `${Math.min(100, e.over * 100)}%` }} />
+                                  </div>
+                                  <span className="w-11 text-right text-[11px] font-black text-white/80">{pct(e.over, 1)}</span>
+                                  <span className="w-11 text-right font-display text-[12px] font-black text-white/90">
+                                    {e.oddsOver.toFixed(2)}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                        <p className="mt-1 text-[10px] leading-relaxed text-white/35">
+                          Probabilité que chaque équipe marque plus de 0.5 / 1.5 but — marginaux EXACTS de la grille
+                          bivariée calée marché. Cotes équitables (marché non publié par ESPN).
+                        </p>
+                      </div>
+                    </>
+                  ) : null}
                   {(() => {
                     /* Cote équitable BTTS (v3.0) : 1/p − marge 7 %, plafond
                      * 20 — ESPN ne publie qu'une ligne O/U, pas de marché
