@@ -23,7 +23,7 @@
  * le meilleur combiné possible avec un avertissement.
  */
 
-import { dcFromMarket, deMargin1x2 } from "./market-odds";
+import { dcFromMarket, deMargin1x2, deMarginOverUnder } from "./market-odds";
 import type { LightMatch, MatchesResponse, QuickPred } from "../voltrix-types";
 
 /* ---------- Types ---------- */
@@ -44,6 +44,11 @@ export interface ComboLeg {
   pick: string; // libellé lisible
   prob: number; // probabilité moteur
   odds: number; // cote décimale réelle
+  /** v3.2 (boost parlay) : proba implicite DÉ-MARGÉE du marché
+   *  pour cette jambe — 1/cote corrigée de la marge bookmaker
+   *  (normalisation par famille, cf. betting-recommender). Null si
+   *  la famille n'est pas dé-margable (cote équitable 1/p). */
+  probMarket?: number | null;
 }
 
 /** Un combiné trouvé par le moteur. */
@@ -53,6 +58,23 @@ export interface ComboResult {
   prob: number; // probabilité de réussite (produit)
   /** false : seuil demandé non atteint (meilleur possible). */
   meetsThreshold: boolean;
+  /** v3.2 (boost parlay) : edge du combiné = prob × cote − 1
+   *  (EV par unité misée). > 0 : le combiné bat le marché. */
+  edge: number;
+  /** v3.2 : indice de confiance = edge × prob (parlay-optimizer
+   *  « confidence score ») — pondère l'edge par la probabilité
+   *  réelle de toucher le combiné, élimine les monstres à 0,1 %
+   *  de réussite même à forte EV théorique. */
+  confidence: number;
+  /** v3.2 : proba implicite du MARCHÉ pour le même combiné
+   *  (produit des probas dé-margées). prob > probMarket = le
+   *  moteur voit mieux le combiné que les books. */
+  probMarket: number | null;
+  /** v3.2 : seuil de rentabilité = 1/cote : taux de réussite
+   *  minimum pour un EV nul (parlay-optimizer « break-even »). */
+  breakEven: number;
+  /** v3.2 : pénalité de concentration (0 = diversifié). */
+  leaguePenalty: number;
 }
 
 /** Journée pré-calculée en entrée du pool. */
@@ -100,6 +122,24 @@ const LEG_ODDS_MAX_DEFAULT = 5.0;
  *  bookmaker — modèle « trop beau » = surconfiance, pas de la value.
  *  Ne s'applique qu'aux jambes avec cote réelle. */
 const MODEL_VS_MARKET_RATIO_MAX = 1.6;
+
+/* ---------- v3.2 (boost parlay) : probas marché dé-margées ---------- */
+
+/** Proba implicite dé-margée pour une jambe 1X2 (normalisation
+ *  par la somme des inverses, cf. betting-recommender
+ *  utilities.odds_to_probabilities : p_i = (1/o_i) / Σ(1/o_j)). */
+function marketProb1x2(
+  o: number,
+  mH: number | null | undefined,
+  mD: number | null | undefined,
+  mA: number | null | undefined,
+): number | null {
+  const dm = deMargin1x2(mH ?? 0, mD ?? 0, mA ?? 0);
+  if (!dm) return null;
+  const idx = o === mH ? 0 : o === mD ? 1 : o === mA ? 2 : -1;
+  if (idx < 0) return null;
+  return idx === 0 ? dm.pH : idx === 1 ? dm.pD : dm.pA;
+}
 
 function validOdds(o: number | null | undefined): o is number {
   return typeof o === "number" && Number.isFinite(o) && o >= ODDS_MIN && o <= ODDS_MAX;
@@ -169,9 +209,12 @@ export function buildLegPool(
         };
 
         /* --- Résultat 1X2 (cotes réelles du bookmaker, probas moteur
-         *     calées marché depuis v3.0) --- */
+         *     calées marché depuis v3.0) — v3.2 : proba marché
+         *     dé-margée par famille (1X2) attachée à la jambe. --- */
         const okLeg = (o: number | null | undefined, p: number | null | undefined): o is number =>
           validOdds(o) && o <= legOddsMax && validProb(p) && !modelNotCoherent(p, o);
+        const mkt1 = (o: number | null | undefined) =>
+          o == null ? null : marketProb1x2(o, m.mlHome, m.mlDraw, m.mlAway);
         if (okLeg(m.mlHome, pred.probs.home)) {
           legs.push({
             ...base,
@@ -179,6 +222,7 @@ export function buildLegPool(
             pick: `Victoire ${base.home}`,
             prob: pred.probs.home,
             odds: m.mlHome,
+            probMarket: mkt1(m.mlHome),
           });
         }
         if (okLeg(m.mlDraw, pred.probs.draw)) {
@@ -188,6 +232,7 @@ export function buildLegPool(
             pick: "Match nul",
             prob: pred.probs.draw,
             odds: m.mlDraw,
+            probMarket: mkt1(m.mlDraw),
           });
         }
         if (okLeg(m.mlAway, pred.probs.away)) {
@@ -197,6 +242,7 @@ export function buildLegPool(
             pick: `Victoire ${base.away}`,
             prob: pred.probs.away,
             odds: m.mlAway,
+            probMarket: mkt1(m.mlAway),
           });
         }
 
@@ -211,18 +257,22 @@ export function buildLegPool(
         if (dc) {
           const dcLeg = (pick: string, p: number, o: number) => {
             if (!(o <= legOddsMax) || !validProb(p) || modelNotCoherent(p, o)) return;
-            legs.push({ ...base, market: "Double chance", pick, prob: p, odds: o });
+            legs.push({ ...base, market: "Double chance", pick, prob: p, odds: o, probMarket: null });
           };
           dcLeg(`1X — ${base.homeShort} ou nul`, dc.prob1X, dc.odds1X);
           dcLeg("12 — pas de match nul", dc.prob12, dc.odds12);
           dcLeg(`X2 — ${base.awayShort} ou nul`, dc.probX2, dc.oddsX2);
         }
 
-        /* --- Total buts (ligne et cotes du bookmaker) --- */
+        /* --- Total buts (ligne et cotes du bookmaker) — v3.2 : proba
+         *     marché dé-margée par la famille over/under de la ligne. --- */
         const ou = pred.ouOdds;
         if (ou && validOdds(ou.over) && validOdds(ou.under) && ou.line != null) {
           const entry = pred.overUnder?.find((e) => Math.abs(e.line - ou.line!) < 0.01);
           if (entry) {
+            const dmOU = deMarginOverUnder(ou.over, ou.under);
+            const mktO = dmOU?.pOver ?? null;
+            const mktU = dmOU?.pUnder ?? null;
             if (validProb(entry.over) && ou.over <= legOddsMax && !modelNotCoherent(entry.over, ou.over)) {
               legs.push({
                 ...base,
@@ -230,6 +280,7 @@ export function buildLegPool(
                 pick: `Plus de ${entry.line} buts`,
                 prob: entry.over,
                 odds: ou.over,
+                probMarket: mktO,
               });
             }
             if (validProb(entry.under) && ou.under <= legOddsMax && !modelNotCoherent(entry.under, ou.under)) {
@@ -239,6 +290,7 @@ export function buildLegPool(
                 pick: `Moins de ${entry.line} buts`,
                 prob: entry.under,
                 odds: ou.under,
+                probMarket: mktU,
               });
             }
           }
@@ -268,6 +320,7 @@ export function buildLegPool(
                   pick,
                   prob: p,
                   odds: Math.round(odds * 100) / 100,
+                  probMarket: null, // cote équitable : pas de marché de référence
                 });
               };
               fgLeg(`1er but avant la ${b + 1}e minute`, cumBefore);
@@ -291,6 +344,7 @@ export function buildLegPool(
                 pick,
                 prob: p,
                 odds: Math.round(odds * 100) / 100,
+                probMarket: null, // cote équitable : pas de marché de référence
               });
             };
             bttsLeg("Deux équipes marquent — Oui", bt.yes);
@@ -310,13 +364,56 @@ interface Candidate {
   legs: ComboLeg[];
   odds: number;
   prob: number;
+  /** v3.2 : produit des probas marché dé-margées (null si une jambe
+   *  au moins est à cote équitable — comparaison impossible). */
+  probMarket: number | null;
+}
+
+/* ---------- v3.2 (boost parlay) : métriques du combiné ---------- */
+
+/** Edge du combiné = P×C − 1 : gain espéré par unité misée
+ *  (parlay-optimizer calculate_parlay_ev : EV = P·C − 1). */
+function edgeOf(prob: number, odds: number): number {
+  return prob * odds - 1;
+}
+
+/** Indice de confiance = edge × prob (parlay-optimizer
+ *  « confidence_score ») : une EV théorique de +40 % sur un combiné
+ *  à 3 % de réussite vaut moins qu'une EV de +5 % à 60 %. */
+function confidenceOf(prob: number, odds: number): number {
+  return edgeOf(prob, odds) * prob;
+}
+
+/** Pénalité de concentration : les jambes d'une même ligue ou d'un
+ *  même créneau horaire (même jour ± 2 h) partagent des facteurs
+ *  latents (météo, arbitrage, état du terrain, sur-réaction du
+ *  marché sur la même soirée) que le produit des probas suppose
+ *  indépendants. > 2 jambes concentrées → pénalité croissante
+ *  (le score est comparé à des probas de l'ordre de 0,2-0,6 :
+ *  0,01 par jambe concentrée au-delà de la 2e). */
+function leaguePenaltyOf(legs: ComboLeg[]): number {
+  const byLeague = new Map<string, number>();
+  const bySlot = new Map<string, number>();
+  const slotOf = (k: string) => {
+    const t = new Date(k).getTime();
+    return `${Math.floor(t / (2 * 3600_000))}`;
+  };
+  for (const l of legs) {
+    byLeague.set(l.leagueCode, (byLeague.get(l.leagueCode) ?? 0) + 1);
+    bySlot.set(slotOf(l.kickoff), (bySlot.get(slotOf(l.kickoff)) ?? 0) + 1);
+  }
+  let pen = 0;
+  for (const n of byLeague.values()) if (n > 2) pen += 0.01 * (n - 2);
+  for (const n of bySlot.values()) if (n > 2) pen += 0.005 * (n - 2);
+  return Math.round(pen * 10000) / 10000;
 }
 
 function scoreOf(c: Candidate, target: number): number {
-  /* On maximise la probabilité ; léger malus pour les combinés qui
-     dépassent beaucoup la cible demandée (à proba égale, le combiné
-     le plus proche de la cible est le plus utile). */
-  return c.prob - 0.015 * (c.odds - target);
+  /* v3.2 : on maximise l'INDICE DE CONFIANCE (edge × proba), pas la
+   * proba seule — un combiné très probable mais à cote sous-évaluée
+   * (prob×cote < 1) n'a aucune valeur pour le parieur. Léger malus
+   * pour les combinés qui dépassent beaucoup la cible demandée. */
+  return confidenceOf(c.prob, c.odds) - 0.015 * (c.odds - target) - leaguePenaltyOf(c.legs);
 }
 
 function matchDiff(a: Candidate, b: Candidate): number {
@@ -436,7 +533,9 @@ export function findBestCombos(
     legs.sort((a, b) => a.odds - b.odds);
     const sufTop = suffixTopOdds(legs);
 
-    const dfs = (startIdx: number, odds: number, prob: number) => {
+    /* v3.2 : proba marché en miroir du DFS — produit des dé-margées,
+     * null dès qu'une jambe sans référence entre dans le combiné. */
+    const dfs = (startIdx: number, odds: number, prob: number, probMkt: number | null) => {
       if (aborted) return;
       if (++nodes > budget) {
         aborted = true;
@@ -456,28 +555,34 @@ export function findBestCombos(
         if (o < target && o * reach[Math.min(slotsLeft, reach.length - 1)] < target) continue;
         used.add(l.matchId);
         cur.push(l);
+        const pMkt = probMkt == null || l.probMarket == null ? null : probMkt * l.probMarket;
         if (cur.length >= 2 && o >= target) {
-          cands.push({ legs: [...cur], odds: o, prob: p });
+          cands.push({ legs: [...cur], odds: o, prob: p, probMarket: pMkt });
           if (cands.length >= 4000) {
             cands.sort((a, b) => scoreOf(b, target) - scoreOf(a, target));
             cands.length = 40;
           }
         }
-        if (cur.length < maxLegs) dfs(i + 1, o, p);
+        if (cur.length < maxLegs) dfs(i + 1, o, p, pMkt);
         cur.pop();
         used.delete(l.matchId);
       }
     };
 
-    dfs(0, 1, 1);
+    dfs(0, 1, 1, 1);
     return { cands, aborted };
   };
 
   /** Graine gloutonne : ajoute des jambes distinctes selon un ordre
-   *  donné en coupant celles qui rendent la cible inatteignable. */
-  const greedySeed = (order: "prob" | "odds"): Candidate | null => {
+   *  donné en coupant celles qui rendent la cible inatteignable.
+   *  v3.2 : l'ordre « prob » devient l'ordre du score de Kelly-
+   *  numérateur (p·cote − 1)/p (betting-recommender BetPicker) —
+   *  positif ssi value, monotone dans l'edge : la value passe devant
+   *  la proba brute, les cotes équitables (prob×cote ≡ 1) coulent. */
+  const greedySeed = (order: "value" | "odds"): Candidate | null => {
+    const kellyScore = (l: ComboLeg) => (l.prob * l.odds - 1) / l.prob;
     const sorted = [...perMatchCapped].sort((a, b) =>
-      order === "prob" ? b.prob - a.prob : b.odds - a.odds,
+      order === "value" ? kellyScore(b) - kellyScore(a) : b.odds - a.odds,
     );
     const allOdds = sorted.map((l) => l.odds).sort((a, b) => b - a);
     const topProd = (k: number) => {
@@ -489,6 +594,7 @@ export function findBestCombos(
     const used = new Set<string>();
     let o = 1;
     let p = 1;
+    let pMkt: number | null = 1;
     for (const l of sorted) {
       if (chosen.length >= maxLegs) break;
       if (used.has(l.matchId)) continue;
@@ -500,17 +606,22 @@ export function findBestCombos(
       chosen.push(l);
       o = o2;
       p *= l.prob;
+      pMkt = pMkt == null || l.probMarket == null ? null : pMkt * l.probMarket;
       if (o >= target && chosen.length >= 2) break;
     }
-    if (o >= target && chosen.length >= 2) return { legs: chosen, odds: o, prob: p };
+    if (o >= target && chosen.length >= 2) return { legs: chosen, odds: o, prob: p, probMarket: pMkt };
     return null;
   };
 
   /* Phase 1 : stricte — seules les branches ≥ seuil sont explorées.
-   * Pool trié par probabilité décroissante : les 170 meilleures
-   * jambes de tout le périmètre (semaine comprise), pas seulement
-   * celles des premiers jours. */
-  const pool1 = [...perMatchCapped].sort((a, b) => b.prob - a.prob).slice(0, poolCap);
+   * Pool trié par v3.2 : score de Kelly-numérateur (value d'abord,
+   * cf. greedySeed), proba en départage — les 170 meilleures jambes
+   * de tout le périmètre (semaine comprise), pas seulement celles
+   * des premiers jours. */
+  const kellyScore = (l: ComboLeg) => (l.prob * l.odds - 1) / l.prob;
+  const pool1 = [...perMatchCapped]
+    .sort((a, b) => kellyScore(b) - kellyScore(a) || b.prob - a.prob)
+    .slice(0, poolCap);
   const strict = run(pool1, true, nodeBudget);
 
   let cands = strict.cands;
@@ -521,15 +632,16 @@ export function findBestCombos(
    * un pool « probabilité seule » ne peut pas toujours atteindre
    * la cible. */
   if (cands.length === 0) {
-    for (const order of ["prob", "odds"] as const) {
+    for (const order of ["value", "odds"] as const) {
       const seed = greedySeed(order);
       if (seed) cands.push(seed);
     }
     const byProb = [...perMatchCapped].sort((a, b) => b.prob - a.prob);
     const byOdds = [...perMatchCapped].sort((a, b) => b.odds - a.odds);
+    const byValue = [...perMatchCapped].sort((a, b) => kellyScore(b) - kellyScore(a));
     const seen = new Set<string>();
     const pool2: ComboLeg[] = [];
-    for (const l of [...byProb.slice(0, 40), ...byOdds.slice(0, 20)]) {
+    for (const l of [...byValue.slice(0, 40), ...byProb.slice(0, 25), ...byOdds.slice(0, 20)]) {
       const key = `${l.matchId}|${l.market}|${l.pick}`;
       if (seen.has(key)) continue;
       seen.add(key);
@@ -558,6 +670,11 @@ export function findBestCombos(
     odds: Math.round(c.odds * 100) / 100,
     prob: c.prob,
     meetsThreshold: c.prob >= minProb,
+    edge: Math.round(edgeOf(c.prob, c.odds) * 10000) / 10000,
+    confidence: Math.round(confidenceOf(c.prob, c.odds) * 10000) / 10000,
+    probMarket: c.probMarket != null ? Math.round(c.probMarket * 10000) / 10000 : null,
+    breakEven: Math.round((1 / c.odds) * 10000) / 10000,
+    leaguePenalty: leaguePenaltyOf(c.legs),
   }));
 
   return {

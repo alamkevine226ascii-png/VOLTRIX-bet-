@@ -167,9 +167,18 @@ function ComboCard({
   const pct = Math.round(combo.prob * 100);
   const pass = combo.meetsThreshold;
   /* Mise Kelly ¼ plafonnée 10 % (v3.0) : bankroll des réglages —
-   * 0 si le combiné n'a pas d'edge (prob×cote ≤ 1). */
+   *  0 si le combiné n'a pas d'edge (prob×cote ≤ 1). */
   const bankroll = loadBankroll().amount;
   const stake = kellyStakeCombo(bankroll, combo.prob, combo.odds);
+  /* v3.2 (boost parlay) : métriques parieur — edge, indice de
+   *  confiance, break-even, comparaison modèle vs marché. */
+  const edgePct = Math.round(combo.edge * 1000) / 10;
+  const hasEdge = combo.edge > 0;
+  const modelVsMarket =
+    combo.probMarket != null && combo.probMarket > 0
+      ? Math.round((combo.prob / combo.probMarket - 1) * 1000) / 10
+      : null;
+  const breakEvenPct = Math.round(combo.breakEven * 1000) / 10;
   return (
     <motion.section
       initial={{ opacity: 0, y: 14 }}
@@ -237,6 +246,49 @@ function ComboCard({
             ? `Seuil de ${Math.round(minProb * 100)} % atteint`
             : `Sous le seuil de ${Math.round(minProb * 100)} % — meilleur combiné possible`}
         </p>
+
+        {/* v3.2 (boost parlay) : ligne de métriques parieur —
+            edge / confiance / break-even / modèle vs marché. */}
+        <div className="mt-2 grid grid-cols-3 gap-1.5">
+          <div className="rounded-xl bg-black/[0.06] px-2 py-1.5 text-center ring-1 ring-black/10">
+            <p className="text-[8.5px] font-black uppercase tracking-widest text-black/50">Edge</p>
+            <p
+              className={`mt-0.5 text-[13px] font-black leading-none ${
+                hasEdge ? "text-[#0a8f4f]" : "text-black/50"
+              }`}
+            >
+              {hasEdge ? "+" : ""}
+              {edgePct.toFixed(1)}%
+            </p>
+          </div>
+          <div className="rounded-xl bg-black/[0.06] px-2 py-1.5 text-center ring-1 ring-black/10">
+            <p className="text-[8.5px] font-black uppercase tracking-widest text-black/50">Confiance</p>
+            <p className="mt-0.5 text-[13px] font-black leading-none text-black">
+              {Math.round(combo.confidence * 1000) / 10 > 99.9
+                ? "99.9"
+                : (Math.round(combo.confidence * 1000) / 10).toFixed(1)}
+            </p>
+          </div>
+          <div className="rounded-xl bg-black/[0.06] px-2 py-1.5 text-center ring-1 ring-black/10">
+            <p className="text-[8.5px] font-black uppercase tracking-widest text-black/50">Rentable dès</p>
+            <p className="mt-0.5 text-[13px] font-black leading-none text-black">{breakEvenPct.toFixed(1)}%</p>
+          </div>
+        </div>
+        <p className="mt-1.5 text-[10px] leading-relaxed text-black/60">
+          {hasEdge
+            ? `Edge = proba modèle × cote − 1 : tu as un avantage mathématique estimé de ${edgePct.toFixed(1)} % par unité misée.`
+            : "Edge négatif : le combiné est sous-évalué (proba × cote ≤ 1) — aucune mise conseillée."}
+          {modelVsMarket != null ? (
+            <>
+              {" "}Moteur {modelVsMarket >= 0 ? "+" : ""}
+              {modelVsMarket.toFixed(1)} % vs marché dé-margé.
+            </>
+          ) : null}
+          {combo.leaguePenalty > 0 ? (
+            <> Concentration ligue/horaire détectée (corrélation possible).</>
+          ) : null}
+        </p>
+
         <p className={`mt-1 text-[10.5px] font-bold ${stake > 0 ? "text-black/75" : "text-black/45"}`}>
           {stake > 0
             ? `Mise conseillée : ${stake.toLocaleString("fr-FR")} (Kelly ¼, plafond 10 % bankroll)`
