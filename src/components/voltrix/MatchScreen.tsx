@@ -751,8 +751,22 @@ export function MatchScreen({
 
                   <SectionTitle>Les deux équipes marquent</SectionTitle>
                   <div className="grid grid-cols-2 gap-2">
-                    <ProbBar label="BTTS Oui" value={pred.btts.yes} />
-                    <ProbBar label="BTTS Non" value={pred.btts.no} />
+                    {/* v3.1 : cotes équitables affichées directement sur les
+                        barres — le BTTS est LE marché parieur après 1X2/DC
+                        (recherche : ~52 % des matchs toutes ligues), les
+                        cotes Oui/Non manquaient à l'écran marchés.
+                        1/p − marge 7 %, plafond 20 — ESPN ne publie pas ce
+                        marché, la cote est dérivée et étiquetée honnêtement. */}
+                    {(() => {
+                      const fq = (p: number) =>
+                        Math.min(20, Math.max(1.04, Math.round((1 / Math.min(p, 0.97)) * 0.93 * 100) / 100));
+                      return (
+                        <>
+                          <ProbBar label="BTTS Oui" value={pred.btts.yes} odds={fq(pred.btts.yes)} />
+                          <ProbBar label="BTTS Non" value={pred.btts.no} odds={fq(pred.btts.no)} />
+                        </>
+                      );
+                    })()}
                   </div>
 
                   {/* v2.5 — handicap (DNB + AH) : marchés parieurs exacts de
@@ -832,8 +846,8 @@ export function MatchScreen({
                   ) : null}
                   {(() => {
                     /* Cote équitable BTTS (v3.0) : 1/p − marge 7 %, plafond
-                     * 20 — ESPN ne publie qu'une ligne O/U, pas de marché
-                     * BTTS : la cote est dérivée, étiquetée honnêtement. */
+                     * 20 — détaillée sous les barres depuis v3.1 (les cotes
+                     * figurent désormais sur les barres elles-mêmes). */
                     const fq = (p: number) => Math.min(20, Math.max(1.04, Math.round((1 / Math.min(p, 0.97)) * 0.93 * 100) / 100));
                     return (
                       <p className="mt-2 text-[10px] font-bold text-white/45">

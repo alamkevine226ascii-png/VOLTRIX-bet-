@@ -26,7 +26,7 @@ const check = (name: string, ok: boolean, detail = "") => {
   if (!ok) failures++;
 };
 
-/* ---------- 1. Blend marché 65/35 : cas V1 @16 / X @7 / V2 @1,23 ---------- */
+/* ---------- 1. Blend marché : cas V1 @16 / X @7 / V2 @1,23 ---------- */
 const dm = deMargin1x2(16, 7, 1.23);
 check("dé-marge 1X2 exploitée (marge plausible)", dm !== null, dm ? `marge ${(dm.margin * 100).toFixed(1)} %` : "");
 if (dm) {
@@ -39,7 +39,7 @@ if (dm) {
   );
   check("le trio calé somme à 1", Math.abs(blended.home + blended.draw + blended.away - 1) < 1e-9);
   check(
-    "poids du marché = 65 %",
+    "poids du marché minimal = 65 % (accord parfait)",
     MARKET_BLEND_WEIGHT === 0.65,
     `MARKET_BLEND_WEIGHT=${MARKET_BLEND_WEIGHT}`,
   );
@@ -274,8 +274,37 @@ const cal = (function () {
 })();
 check("marketsFromGrid exporté et calcule (grille arbitraire)", cal.probs.home > 0 && cal.btts.yes > 0);
 
-/* Version moteur v2.5 (bump = invalidation cache). */
-check("FOOT_PARAMS_VERSION = v2.5", FOOT_PARAMS_VERSION === "voltrix-foot-v2.5", FOOT_PARAMS_VERSION);
+/* Version moteur (bump = invalidation cache + recalcul Neon complet). */
+check("FOOT_PARAMS_VERSION = v2.6", FOOT_PARAMS_VERSION === "voltrix-foot-v2.6", FOOT_PARAMS_VERSION);
+
+/* ---------- 6bis. v3.1 : blend divergence-pondéré + dé-margage élargi ---------- */
+/* Le trio 16/9.5/1.23 (somme implicite 0.981) doit être accepté —
+   c'était la 3e cause du « moteur aveugle aux cotes » (rejet
+   silencieux du dé-margage → probas modèle seul sous les cotes). */
+const dmSous = deMargin1x2(16, 9.5, 1.23);
+check("deMargin1x2 accepte le trio sous-margé ESPN 16/9.5/1.23", dmSous !== null);
+/* V2 @1.23 vs modèle 38 % : après blend divergence-pondéré, V2 doit
+   être largement favorite (> 70 %), comme la cote l'indique. */
+if (dmSous) {
+  const b = blend1x2WithMarket(
+    { home: 0.34, draw: 0.28, away: 0.38 },
+    { home: dmSous.pH, draw: dmSous.pD, away: dmSous.pA },
+  );
+  check(
+    "blend divergence-pondéré : V2 @1,23 → largement favorite (> 70 %)",
+    b.away > 0.7 && b.home < 0.15,
+    `H/D/A = ${(b.home * 100).toFixed(1)}/${(b.draw * 100).toFixed(1)}/${(b.away * 100).toFixed(1)}`,
+  );
+  /* Accord parfait modèle/marché : divergence nulle → w = 0,65 → sortie = entrée. */
+  const same = blend1x2WithMarket(
+    { home: 0.5, draw: 0.27, away: 0.23 },
+    { home: 0.5, draw: 0.27, away: 0.23 },
+  );
+  check(
+    "blend : accord parfait → probas inchangées",
+    Math.abs(same.home - 0.5) < 1e-9 && Math.abs(same.draw - 0.27) < 1e-9,
+  );
+}
 
 /* ---------- 6. v2.5 : BTTS dans le combinateur (opt-in Agressif) ---------- */
 const bttsPred = {

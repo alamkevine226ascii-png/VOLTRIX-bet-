@@ -9,14 +9,32 @@
  * Ce module est consommé par les composants client : il ne fait QUE des
  * fetch vers /api/fixtures. Aucune clé de base de données ne franchit
  * cette frontière (la connexion Neon vit côté serveur uniquement).
+ *
+ * Garantie de fraîcheur moteur (correctif « ligne périmée ») : un prono
+ * de la base n'est accepté que si son engineVersion correspond à la
+ * version COURANTE du moteur embarqué dans CE bundle — sinon le
+ * navigateur recalcule localement. Sans cela, l'App affichait des
+ * pronos d'une version antérieure pendant toute la fenêtre entre le
+ * déploiement et le passage suivant du cron (probas non calées marché,
+ * premier but incohérent, combinateur héritant des probas gonflées).
  */
 
 import type { MatchesResponse, QuickPred } from "./voltrix-types";
 import type { MmaEventsResponse, MmaQuickPred } from "./mma-types";
 import { analyzeFootballMatch, type FootballDetail } from "./foot/bridge";
 import { loadMmaFightDetail } from "./mma-bridge";
+import { FOOT_PARAMS_VERSION } from "./foot/league-params";
+import { MODEL_VERSION } from "./mma/prediction";
 
 export type { FootballDetail };
+
+/* ---------- Version courante des moteurs embarqués ---------- */
+
+/** Le prono foot d'une ligne de la base n'est accepté que s'il vient
+ *  de CETTE version du moteur (celle embarquée dans le bundle). */
+export const FOOT_ENGINE_VERSION = FOOT_PARAMS_VERSION;
+/** Idem MMA. */
+export const MMA_ENGINE_VERSION = MODEL_VERSION;
 
 /* ---------- Formes de réponse ---------- */
 
@@ -59,20 +77,58 @@ async function fetchJson(url: string, timeoutMs: number): Promise<unknown | null
 
 /** Journée pré-calculée (foot + MMA + pronos) — null → repli local.
  * Délai généreux : la base Neon est serverless et peut mettre 1-3 s à
- * se réveiller après une période d'inactivité (premier visiteur). */
+ * se réveiller après une période d'inactivité (premier visiteur).
+ *
+ * Version moteur : chaque entrée de footPreds emporte le engineVersion
+ * de sa ligne ; les pronos d'une version différente de celle embarquée
+ * dans CE bundle sont écartés (le composant appelant retombe sur le
+ * moteur local) — une ligne périmée ne s'affiche JAMAIS, quelle que
+ * soit la fraîcheur du cron. */
 export async function fetchDayFixtures(
   date: string,
   timeoutMs = 6000,
 ): Promise<DayFixtures | null> {
   const j = (await fetchJson(`/api/fixtures?date=${encodeURIComponent(date)}`, timeoutMs)) as
-    | (Omit<DayFixtures, "foot"> & { foot: MatchesResponse | null; error?: string })
+    | (Omit<DayFixtures, "foot"> & {
+        foot: MatchesResponse | null;
+        error?: string;
+        /** Version du moteur des lignes foot/mma renvoyées (max des
+         *  lignes du jour — la réponse peut mélanger après un bump). */
+        engineVersions?: { foot?: string; mma?: string };
+        /** Version moteur PAR match (foot) : seuls les pronos de la
+         *  version courante sont conservés dans footPreds. */
+        footEngine?: Record<string, string>;
+        /** Version moteur PAR combat (mma). */
+        mmaEngine?: Record<string, string>;
+      })
     | null;
   if (!j || (!j.foot && !j.mma) || j.error) return null;
+
+  /* Écart de version moteur par entrée : on ne garde, dans les records
+   * de pronos renvoyés, que les pronos produits par la version du
+   * moteur EMBARQUÉE dans ce bundle. Les autres sont laissés au
+   * composant appelant, qui déclenchera le calcul local en repli. */
+  const keepCurrent = <P>(
+    preds: Record<string, P> | null,
+    versions: Record<string, string> | undefined,
+    current: string,
+  ): Record<string, P> | null => {
+    if (!preds) return null;
+    const kept: Record<string, P> = {};
+    let any = false;
+    for (const [id, p] of Object.entries(preds)) {
+      if (versions && versions[id] !== undefined && versions[id] !== current) continue;
+      kept[id] = p;
+      any = true;
+    }
+    return any ? kept : null;
+  };
+
   return {
     foot: j.foot ?? null,
-    footPreds: j.footPreds ?? null,
+    footPreds: keepCurrent(j.footPreds ?? null, j.footEngine, FOOT_ENGINE_VERSION),
     mma: j.mma ?? null,
-    mmaPreds: j.mmaPreds ?? null,
+    mmaPreds: keepCurrent(j.mmaPreds ?? null, j.mmaEngine, MMA_ENGINE_VERSION),
     computedAt: j.computedAt,
   };
 }
@@ -94,7 +150,8 @@ export async function fetchFixtureFull(
 
 /**
  * Analyse complète d'un match football : lecture de la base de
- * pré-calcul si disponible et non périmée, sinon moteur navigateur.
+ * pré-calcul si disponible, NON PÉRIMÉE et calculée par la version
+ * moteur embarquée dans ce bundle — sinon moteur navigateur.
  */
 export async function getFootballDetail(
   matchId: string,
@@ -106,7 +163,10 @@ export async function getFootballDetail(
     const staleLive =
       row.status === "pre" &&
       new Date(row.kickoff).getTime() < Date.now() - 10 * 60 * 1000;
-    if (!staleLive) return row.predFull as FootballDetail;
+    /* Ligne calculée par une version de moteur antérieure au bundle :
+       recalcul local — c'est LUI qui porte les correctifs attendus. */
+    const staleEngine = row.engineVersion !== FOOT_ENGINE_VERSION;
+    if (!staleLive && !staleEngine) return row.predFull as FootballDetail;
   }
   return analyzeFootballMatch(matchId, leagueCode, date);
 }
@@ -127,7 +187,10 @@ export async function getMmaFightDetailById(
     const staleLive =
       row.status === "pre" &&
       new Date(row.kickoff).getTime() < Date.now() - 30 * 60 * 1000;
-    if (!staleLive) return row.predFull as Awaited<ReturnType<typeof loadMmaFightDetail>>;
+    /* Ligne calculée par une version de moteur antérieure au bundle :
+       recalcul local, comme côté football. */
+    const staleEngine = row.engineVersion !== MMA_ENGINE_VERSION;
+    if (!staleLive && !staleEngine) return row.predFull as Awaited<ReturnType<typeof loadMmaFightDetail>>;
   }
   return loadMmaFightDetail(fightId);
 }

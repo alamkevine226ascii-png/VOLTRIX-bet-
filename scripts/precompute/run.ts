@@ -22,10 +22,14 @@
  *   PRECOMPUTE_MAX_MMA  — limite de combats analysés (tests de fumée)
  *
  * Incrémental : une ligne dont predQuick existe déjà avec la bonne
- * version de moteur et dont le statut n'a pas changé n'est PAS
- * recalculée — seule sa fiche (scores/statuts du scan) est rafraîchie.
- * Les calculs complets ne portent que sur les nouveaux matchs, les
- * changements de version moteur et les débuts de match.
+ * version de moteur, dont le statut n'a pas changé et dont l'empreinte
+ * des cotes (oddsStamp) est inchangée n'est PAS recalculée — seule sa
+ * fiche (scores/statuts du scan) est rafraîchie. Les calculs complets
+ * portent sur les nouveaux matchs, les changements de version moteur,
+ * les débuts de match ET l'apparition/variation des cotes du bookmaker
+ * (une ligne calculée AVANT la publication des cotes doit être
+ * recalculée dès qu'elles arrivent : le blend marché 65/35 du 1X2 et
+ * la calibration O/U n'existaient pas dans ce calcul).
  */
 
 import { PrismaClient, Prisma } from "@prisma/client";
@@ -111,6 +115,31 @@ async function mapLimited<T>(
 }
 
 /* ------------------------------------------------------------------ */
+/* Empreinte des cotes d'un match (recalcul incrémental)               */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Empreinte stable des cotes d'un LightMatch : « pas de cotes » vs
+ * « cotes présentes » vs « cotes changées » se distinguent par simple
+ * égalité de chaîne. Arrondies au centième : les micro-variations
+ * de cote d'un même bookmaker ne déclenchent pas un recalcul moteur
+ * complet (le prix close DraftKings bouge d'un centime sans changer
+ * les probabilités dé-margées au dixième de pourcent près).
+ */
+function oddsStampOf(match: {
+  hasOdds: boolean;
+  mlHome: number | null;
+  mlDraw: number | null;
+  mlAway: number | null;
+  ouLine: number | null;
+}): string {
+  if (!match.hasOdds) return "none";
+  const r = (v: number | null | undefined): string =>
+    typeof v === "number" && Number.isFinite(v) ? v.toFixed(2) : "-";
+  return `ml:${r(match.mlHome)}/${r(match.mlDraw)}/${r(match.mlAway)}|ou:${r(match.ouLine)}`;
+}
+
+/* ------------------------------------------------------------------ */
 /* Football : 7 jours de scan -> analyse moteur -> upsert              */
 /* ------------------------------------------------------------------ */
 
@@ -139,14 +168,24 @@ async function precomputeFootball(): Promise<void> {
         const existing = await prisma.fixture.findUnique({ where: { id } });
 
         /* Recalcul complet nécessaire si : jamais calculé, version de
-           moteur différente, prono absent, ou statut changé depuis le
-           dernier passage (début/fin de match). */
+           moteur différente, prono absent, statut changé depuis le
+           dernier passage (début/fin de match)… */
         const staleStatus =
           existing != null && existing.status !== match.status;
+        /* …ou COTES APPARUES/CHANGÉES (correctif « moteur aveugle aux
+           cotes ») : une ligne calculée avant la publication des cotes
+           garde sinon pour toujours ses probas « modèle seul » (ex.
+           34/28/38 affiché sur un match à 1,23/16 — le calage marché
+           n'était pas dans ce calcul). Empreinte au centième : les
+           micro-mouvements de cote ne re-déclenchent pas le moteur. */
+        const newStamp = oddsStampOf(match);
+        const staleOdds =
+          existing != null && existing.oddsStamp !== newStamp;
         const needEngine =
           !existing?.predQuick ||
           existing.engineVersion !== FOOT_PARAMS_VERSION ||
-          staleStatus;
+          staleStatus ||
+          staleOdds;
 
         let predQuick: object | null = (existing?.predQuick as object | null) ?? null;
         let predFull: object | null = (existing?.predFull as object | null) ?? null;
@@ -188,6 +227,7 @@ async function precomputeFootball(): Promise<void> {
             predQuick: jsonOrNull(predQuick),
             predFull: jsonOrNull(predFull),
             engineVersion: FOOT_PARAMS_VERSION,
+            oddsStamp: newStamp,
           },
           update: {
             kickoff: match.date,
@@ -197,6 +237,7 @@ async function precomputeFootball(): Promise<void> {
             ...(predQuick ? { predQuick } : {}),
             ...(predFull ? { predFull } : {}),
             engineVersion: FOOT_PARAMS_VERSION,
+            oddsStamp: newStamp,
           },
         });
         stats.footStored++;

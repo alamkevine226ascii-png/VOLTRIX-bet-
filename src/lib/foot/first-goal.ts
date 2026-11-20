@@ -302,10 +302,20 @@ function medianMinuteOfHazards(hFinal: number[]): number | null {
  * @param home        historique 1ers buts de l'équipe domicile (ou null)
  * @param away        historique 1ers buts de l'équipe extérieure (ou null)
  *
- * Math : à chaque bord de fenêtre, hazard cumulé du match =
- *   (wH/2)·H_domicile + (wA/2)·H_extérieur + (1−(wH+wA)/2)·H_ligue,
- * avec wT = m_T/(m_T+α) le poids des données de l'équipe T, puis
- * multiplié par ρ = λ_match / λ_référence_des_échantillons.
+ * Math (v3.1 — correctif « premier but incohérent », superposition) :
+ * le 1er but du match est le MINIMUM des processus de but des deux
+ * équipes — en hazards cumulés, la superposition est ADDITIVE, pas
+ * une moyenne. Chaque H_T estimé sur les matchs de l'équipe T inclut
+ * déjà un adversaire moyen : superposer brutalement H_H + H_A
+ * compterait deux fois cet adversaire → on retire UNE baseline :
+ *   H_match(t) = wH·(H_H − H_base) + wA·(H_A − H_base) + H_base
+ * (poids complets → H_H + H_A − H_base ; une seule équipe → H_T ;
+ * aucune donnée → H_base), puis × ρ = λ_match / λ_référence.
+ * L'ancienne MOYENNE pondérée sous-estimait le taux de 1er but : deux
+ * équipes à ouverture rapide donnaient un match PLUS TARDIF que
+ * chacun de leurs matchs — la médiane du titre (ex. 37e) contredisait
+ * les médianes par équipe affichées juste en dessous (ex. 28e), ce
+ * qui est mathématiquement impossible pour un minimum.
  * P(fenêtre w) = S(w−1) − S(w) → somme EXACTEMENT 1 par télescopage.
  */
 export function predictFirstGoal(
@@ -328,12 +338,8 @@ export function predictFirstGoal(
   const wHome = home ? home.matches / (home.matches + ALPHA) : 0;
   const wAway = away ? away.matches / (away.matches + ALPHA) : 0;
 
-  const HMatch = HBase.map((_, i) => {
-    let h = (1 - (wHome + wAway) / 2) * HBase[i];
-    if (HHome) h += (wHome / 2) * HHome[i];
-    if (HAway) h += (wAway / 2) * HAway[i];
-    return h;
-  });
+  /* (la fusion par superposition se fait après la mise à l'échelle λ,
+   * voir le bloc « v3.1 : SUPERPOSITION » plus bas) */
 
   /* --- mise à l'échelle par le λ du match --- */
   const lam = Number.isFinite(lambdaTotal) && lambdaTotal > 0 ? lambdaTotal : SAMPLE_AVG_GOALS;
@@ -345,6 +351,16 @@ export function predictFirstGoal(
     lamRefs.length > 0 ? lamRefs.reduce((s, v) => s + v, 0) / lamRefs.length : SAMPLE_AVG_GOALS,
   );
   const rho = Math.min(RHO_MAX, Math.max(RHO_MIN, lam / lamRef));
+
+  /* --- v3.1 : SUPERPOSITION (hazard du minimum de deux processus) ---
+   * H_T est estimé sur les matchs de l'équipe T (déjà contre un
+   * adversaire moyen) → la superposition exacte du 1er but du match
+   * retranche UNE baseline : H = H_base + wH·(H_H−H_base) + wA·(H_A−H_base).
+   * Les (H_T − H_base) sont bornés à ≥ 0 par bord : une équipe plus
+   * fermée que la ligue ne doit pas ralentir le processus de l'AUTRE. */
+  const superpose = (base: number[], team: number[] | null, w: number): number[] =>
+    base.map((b, i) => b + (team ? w * Math.max(0, team[i] - b) : 0));
+  const HMatch = superpose(superpose(HBase, HHome, wHome), HAway, wAway);
 
   const HFinal = HMatch.map((h) => h * rho);
 

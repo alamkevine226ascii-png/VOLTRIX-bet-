@@ -31,8 +31,16 @@
  *  DNB/±0.5/±1.5, totaux par équipe), première équipe à marquer
  *  depuis la grille calibrée, caches UI VERSIONNÉS par cette constante
  *  (un bump de version invalide le localStorage — plus de vieux
- *  pronos servis après une mise à jour du moteur). */
-export const FOOT_PARAMS_VERSION = 'voltrix-foot-v2.5';
+ *  pronos servis après une mise à jour du moteur).
+ *  v2.6 : correctifs « moteur aveugle aux cotes » + « premier but
+ *  incohérent » — blend 1X2 pondéré par la DIVERGENCE modèle/marché
+ *  (65 → 90 % marché), dé-margage acceptant les trios sous-margés
+ *  ESPN (somme implicite ≥ 0,90), 1er but par SUPERPOSITION des
+ *  hazards (minimum de deux processus — la médiane du match ne peut
+ *  plus dépasser celle des équipes), recalcul Neon sur apparition des
+ *  cotes (oddsStamp), client écartant les lignes d'une version
+ *  moteur antérieure au bundle. */
+export const FOOT_PARAMS_VERSION = 'voltrix-foot-v2.6';
 
 /** Source et date de calibration. */
 export const FOOT_PARAMS_SOURCE =

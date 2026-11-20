@@ -69,6 +69,7 @@ export async function GET(req: NextRequest) {
           status: true,
           kickoff: true,
           computedAt: true,
+          engineVersion: true,
         },
       }),
       prisma.fixture.findMany({
@@ -76,13 +77,17 @@ export async function GET(req: NextRequest) {
           sport: "mma",
           kickoff: { gte: mmaFrom.toISOString(), lt: mmaTo.toISOString() },
         },
-        select: { data: true, predQuick: true, eventMeta: true, computedAt: true },
+        select: { data: true, predQuick: true, eventMeta: true, computedAt: true, engineVersion: true },
       }),
     ]);
 
     /* ----- Football : reconstruction de MatchesResponse ----- */
     const groups = new Map<string, MatchesResponse["leagues"][number]>();
     const footPreds: Record<string, QuickPred> = {};
+    /* Version moteur PAR match : le client écarte les pronos d'une
+       version antérieure à celle embarquée dans son bundle (correctif
+       « ligne périmée ») et déclenche le calcul local en repli. */
+    const footEngine: Record<string, string> = {};
     let newestFoot = 0;
 
     for (const row of footRows) {
@@ -101,6 +106,7 @@ export async function GET(req: NextRequest) {
       }
       g.matches.push(match);
       if (row.predQuick) footPreds[match.id] = row.predQuick as unknown as QuickPred;
+      footEngine[match.id] = row.engineVersion;
       const at = row.computedAt instanceof Date ? row.computedAt.getTime() : 0;
       if (at > newestFoot) newestFoot = at;
     }
@@ -123,6 +129,8 @@ export async function GET(req: NextRequest) {
     /* ----- MMA : reconstruction de MmaEventsResponse ----- */
     const eventGroups = new Map<string, MmaEventGroup>();
     const mmaPreds: Record<string, MmaQuickPred> = {};
+    /* Version moteur par combat (même correctif que le football). */
+    const mmaEngine: Record<string, string> = {};
     let newestMma = 0;
 
     for (const row of mmaRows) {
@@ -147,6 +155,7 @@ export async function GET(req: NextRequest) {
       }
       if (g) g.fights.push(fight);
       if (row.predQuick) mmaPreds[fight.id] = row.predQuick as unknown as MmaQuickPred;
+      mmaEngine[fight.id] = row.engineVersion;
       const at = row.computedAt instanceof Date ? row.computedAt.getTime() : 0;
       if (at > newestMma) newestMma = at;
     }
@@ -168,8 +177,13 @@ export async function GET(req: NextRequest) {
       {
         foot,
         footPreds: Object.keys(footPreds).length > 0 ? footPreds : null,
+        /* Version moteur par match : le client n'accepte que les pronos
+           de la version embarquée dans son bundle (correctif « ligne
+           périmée » — repli local sinon). */
+        footEngine: Object.keys(footPreds).length > 0 ? footEngine : null,
         mma,
         mmaPreds: Object.keys(mmaPreds).length > 0 ? mmaPreds : null,
+        mmaEngine: Object.keys(mmaPreds).length > 0 ? mmaEngine : null,
         computedAt: new Date(Math.max(newestFoot, newestMma) || Date.now()).toISOString(),
       },
       { headers: { "Cache-Control": "public, max-age=60, stale-while-revalidate=240" } },

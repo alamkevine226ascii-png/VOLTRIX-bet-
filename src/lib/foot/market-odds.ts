@@ -57,6 +57,17 @@ function isValidOdds(o: unknown): o is number {
  * Retire la marge du bookmaker d'un 1X2 réel.
  * Ex. 1.85/3.60/4.20 → probas implicites 54.0/27.8/23.8 % (marge 5.7 %)
  *     → dé-margé 51.2/26.3/22.5 %.
+ *
+ * v3.1 — plage de marge élargie [−10 % ; +40 %] (correctif « moteur
+ * aveugle aux cotes », 3e cause) : l'ancien garde `sum > 1.001` rejetait
+ * SILENCIEUSEMENT les trios sous-margés (somme implicite < 1), or c'est
+ * courant sur ESPN — cotes arrondies au centime côté bookmaker, trio
+ * incomplet (une jambe d'un autre provider), ouverture très liquide.
+ * Ex. réel vu en test : 16/9.5/1.23 → somme 0.981 → rejet → la fiche
+ * affichait ces cotes MAIS le moteur restait « modèle seul » (34/28/38).
+ * La normalisation par la somme traite correctement la sous-marge
+ * (elle dilue légèrement les probas, sans inversions) ; la borne haute
+ * 1.4 reste le garde contre les trios aberrants (cotes de secours).
  */
 export function deMargin1x2(
   mlHome: number,
@@ -68,7 +79,7 @@ export function deMargin1x2(
   const iD = 1 / mlDraw;
   const iA = 1 / mlAway;
   const sum = iH + iD + iA;
-  if (sum <= 1.001 || sum > 1.4) return null; // marge invraisemblable
+  if (sum <= 0.9 || sum > 1.4) return null; // marge invraisemblable
   return { pH: iH / sum, pD: iD / sum, pA: iA / sum, margin: sum - 1 };
 }
 
@@ -217,20 +228,49 @@ export function blendWithMarket(pModel: number, pMarket: number | null): number 
 // ---------- Blend modèle ↔ marché (Task 61 bis — 1X2 entier) ----------
 
 /**
- * Blend VECTORIEL du trio 1X2 : p_eff = 0,65 × marché dé-margé + 0,35 × modèle,
- * composante par composante, puis renormalisation (le trio sommme à 1).
- * Version trio de blendWithMarket (mêmes poids, forme vectorielle) — le
- * 1X2 final du moteur s'ancre désormais sur les cotes réelles du bookmaker.
+ * Blend VECTORIEL du trio 1X2, pondéré par la DIVERGENCE modèle/marché
+ * (v3.1 — correctif « V2 @1,23 affichée 38 % »).
+ *
+ * Principe : le poids du marché w monte avec la divergence entre le trio
+ * modèle et le trio marché. Deux justifications, l'une statistique et
+ * l'autre opérationnelle :
+ *  - statistique — quand le modèle et le marché sont d'accord (divergence
+ *    faible), le blend 65/35 fixe historique (calibré sur 4 110 pronos
+ *    résolus, buckets 80-90 % → 62,3 % réels) suffit ; quand ils
+ *    DIVERGENT fortement, l'historique empirique dit clairement que c'est
+ *    le MODÈLE qui se trompe (Brier 0,2496 brut, surestimation sévère
+ *    des fortes probas). Plus l'écart est grand, plus le marché est la
+ *    référence : w → 90 %.
+ *  - opérationnelle — un parieur qui lit « V2 38 % » sur une fiche où
+ *    s'affiche @1,23/@16 ne comprend pas la cote affichée sous ses yeux.
+ *    La proba affichée doit refléter le marché au premier ordre ; le
+ *    modèle ne garde une influence que là où il ne contredit pas le
+ *    marché de manière flagrante.
+ *
+ * w = 0,65 + 0,25 × (divergence / 0,35), bornée à [0,65 ; 0,90], où la
+ * divergence = Σ|modèle − marché|/2 (distance totale de variation sur le
+ * trio). Ex. modèle 34/28/38 vs marché 6/6/88 → divergence 0,47 →
+ * w ≈ 0,90 → V2 ≈ 0,9×88 + 0,1×38 ≈ 82 % : largement favorite, comme
+ * le parieur l'attend sous une cote @1,23 (proba implicite ~81 %).
+ * Accord parfait (divergence 0) → w = 0,65, comportement inchangé.
  */
 export function blend1x2WithMarket(
   pModel: { home: number; draw: number; away: number },
   pMarket: { home: number; draw: number; away: number } | null,
 ): { home: number; draw: number; away: number } {
   if (!pMarket) return pModel;
-  const blend = (m: number, x: number): number => MARKET_BLEND_WEIGHT * m + (1 - MARKET_BLEND_WEIGHT) * x;
-  let h = blend(Math.min(0.97, Math.max(0.02, pMarket.home)), pModel.home);
-  let d = blend(Math.min(0.97, Math.max(0.02, pMarket.draw)), pModel.draw);
-  let a = blend(Math.min(0.97, Math.max(0.02, pMarket.away)), pModel.away);
+  const clamp01 = (x: number): number => Math.min(0.97, Math.max(0.02, x));
+  const mh = clamp01(pMarket.home);
+  const md = clamp01(pMarket.draw);
+  const ma = clamp01(pMarket.away);
+  /* Divergence totale de variation entre les deux trios (0..~0,7). */
+  const divergence =
+    (Math.abs(pModel.home - mh) + Math.abs(pModel.draw - md) + Math.abs(pModel.away - ma)) / 2;
+  const w = Math.min(0.9, MARKET_BLEND_WEIGHT + 0.25 * (divergence / 0.35));
+  const blend = (m: number, x: number): number => w * m + (1 - w) * x;
+  let h = blend(mh, pModel.home);
+  let d = blend(md, pModel.draw);
+  let a = blend(ma, pModel.away);
   const s = h + d + a;
   if (!Number.isFinite(s) || s <= 0) return pModel;
   h /= s; d /= s; a /= s;

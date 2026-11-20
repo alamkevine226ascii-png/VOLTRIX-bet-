@@ -28,7 +28,7 @@ import type { EspnScheduleGame, EspnStandingsTeam, EspnOdds, EspnInjury } from '
 // bttsProb = forme fermée BTTS indépendante (référence/legacy poissonModel).
 // Les probas de buts du moteur passent désormais par la grille bivariée
 // (montecarlo.ts, nov. 2026).
-import { bttsProb, deMarginOverUnder, deMargin1x2, blend1x2WithMarket, oddsWithMargin, dcFromMarket, MARKET_BLEND_WEIGHT } from './market-odds';
+import { bttsProb, deMarginOverUnder, deMargin1x2, blend1x2WithMarket, oddsWithMargin, dcFromMarket } from './market-odds';
 import {
   BIVARIATE_RHO,
   MC_ITERATIONS,
@@ -1151,13 +1151,12 @@ export function runEngine(input: EngineInput): MatchAnalysis {
   // v3.0 : tout est calculé sur le 1X2 CALÉ marché (finalProbs).
   const recommendedBets: MatchPrediction['recommendedBets'] = [];
   const pick1x2 = ranked[0].k;
-  const MARKET_BLEND_WEIGHT_PCT = Math.round(MARKET_BLEND_WEIGHT * 100);
   recommendedBets.push({
     market: '1X2',
     pick: pick1x2 === 'home' ? 'Victoire ' + home.name : pick1x2 === 'away' ? 'Victoire ' + away.name : 'Match nul',
     prob: round(ranked[0].v, 4),
     note: market1x2
-      ? `Calé sur les cotes (${(MARKET_BLEND_WEIGHT_PCT)} % marché) — confiance ${conf}/5`
+      ? `Calé sur les cotes (65-90 % marché selon la divergence modèle/marché) — confiance ${conf}/5`
       : `Meilleur choix du modèle, sans cotes — confiance ${conf}/5`,
   });
   const ou25 = finalOverUnder.find((o) => o.line === 2.5)!;

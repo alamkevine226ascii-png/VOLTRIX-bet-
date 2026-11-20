@@ -70,6 +70,15 @@ model Fixture {
   // Un changement de version permet d'invalider et recalculer les lignes.
   engineVersion String
 
+  // Empreinte des cotes du match au moment du calcul (« none » si
+  // aucune cote publiée) — arrondie au centième pour ignorer les micro-
+  // mouvements de cote d'un même bookmaker. Une variation de cette
+  // empreinte déclenche le recalcul moteur au prochain passage : une
+  // ligne calculée AVANT la publication des cotes ne reste jamais avec
+  // ses probas « modèle seul » (correctif « moteur aveugle aux cotes »
+  // — ex. 34/28/38 affiché sur un match coté 1,23/16). Null pour le MMA.
+  oddsStamp String? @default("none")
+
   computedAt DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
