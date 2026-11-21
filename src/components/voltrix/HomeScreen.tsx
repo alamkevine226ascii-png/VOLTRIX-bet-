@@ -791,14 +791,29 @@ export function HomeScreen({
     );
   }, [mmaData]);
 
-  const groups = useMemo(() => {
+  /* v3.3 : la home classe les matchs par HEURE DE COUP D'ENVOI, plus
+   * par compétition — la ligue reste visible sur chaque carte (pastille
+   * du bandeau bas). Les filtres ligue restent actifs : la liste
+   * filtrée est elle aussi chronologique. Départage à heure égale par
+   * code de ligue (ordre stable d'un rendu à l'autre). */
+  const leagueShortByCode = useMemo(() => {
+    const map = new Map<string, string>();
+    footData?.leagues.forEach((l) => map.set(l.code, l.shortName || l.code));
+    return map;
+  }, [footData]);
+
+  const footMatches = useMemo(() => {
     if (!footData) return [];
-    if (activeFilter !== "all" && !activeFilter.startsWith("mma:")) {
-      const lg = footData.leagues.find((l) => l.code === activeFilter);
-      return lg ? [lg] : [];
-    }
     if (activeFilter.startsWith("mma:")) return [];
-    return footData.leagues;
+    let ms = footData.leagues.flatMap((l) => l.matches);
+    if (activeFilter !== "all") {
+      ms = ms.filter((m) => m.leagueCode === activeFilter);
+    }
+    return [...ms].sort(
+      (a, b) =>
+        new Date(a.date).getTime() - new Date(b.date).getTime() ||
+        (a.leagueCode < b.leagueCode ? -1 : a.leagueCode > b.leagueCode ? 1 : 0),
+    );
   }, [footData, activeFilter]);
 
   const eventGroups = useMemo(() => {
@@ -890,27 +905,33 @@ export function HomeScreen({
           <ErrorPanel message={error} onRetry={() => void load(date)} />
         ) : (
           <div className="space-y-5 pt-2">
-            {/* ---------- sections football ---------- */}
-            {groups.map((lg) => (
-              <section key={lg.code} aria-label={lg.name}>
+            {/* ---------- section football : file chronologique unique ----------
+             * v3.3 : les matchs sont classés par heure de coup d'envoi (plus
+             * de regroupement par compétition) ; la ligue reste sur chaque
+             * carte via la pastille du bandeau bas. Filtre ligue actif →
+             * même liste chronologique, restreinte à la ligue choisie. */}
+            {footMatches.length > 0 ? (
+              <section aria-label="Matchs du jour par heure de coup d'envoi">
                 <div className="mb-2.5 flex items-center gap-2">
                   <span className="h-[3px] w-4 rounded-full bg-neon" />
-                  <h2 className="text-[11px] font-black uppercase tracking-[0.14em] text-white/70">{lg.name}</h2>
-                  <span className="text-[9.5px] font-bold text-white/30">{lg.matches.length}</span>
+                  <h2 className="text-[11px] font-black uppercase tracking-[0.14em] text-white/70">
+                    {activeFilter === "all" ? "Tous les matchs · par coup d'envoi" : "Matchs · par coup d'envoi"}
+                  </h2>
+                  <span className="text-[9.5px] font-bold text-white/30">{footMatches.length}</span>
                 </div>
                 <div className="space-y-4">
-                  {lg.matches.map((m) => (
+                  {footMatches.map((m) => (
                     <MatchCard
                       key={m.id}
                       match={m}
                       pred={preds[m.id]}
-                      leagueShort={lg.shortName || m.leagueShort}
+                      leagueShort={m.leagueShort || leagueShortByCode.get(m.leagueCode) || m.leagueCode}
                       onOpen={() => openMatch(m)}
                     />
                   ))}
                 </div>
               </section>
-            ))}
+            ) : null}
 
             {/* ---------- pas de combat MMA à cette date : prochain événement ---------- */}
             {mmaData &&
@@ -965,7 +986,7 @@ export function HomeScreen({
             ))}
 
             {/* ---------- vide (jamais pendant le scan progressif) ---------- */}
-            {!loading && groups.length === 0 && eventGroups.length === 0 ? (
+            {!loading && footMatches.length === 0 && eventGroups.length === 0 ? (
               <div className="flex flex-col items-center gap-2 py-14 text-center">
                 <span className="text-[32px]">🏟️</span>
                 <p className="text-[12px] font-semibold text-white/50">
@@ -977,7 +998,7 @@ export function HomeScreen({
               </div>
             ) : null}
 
-            {predsBusy && groups.length > 0 ? (
+            {predsBusy && footMatches.length > 0 ? (
               <LoadingPanel label="Le moteur VOLTRIX analyse les matchs à venir…" />
             ) : null}
 
